@@ -18,6 +18,11 @@ export type Tournament = {
   createdByUserId: string;
 };
 
+export type TournamentParticipant = {
+  playerId: number;
+  displayName: string;
+};
+
 export type TournamentMatchStatus = "open" | "pending_approval" | "completed";
 
 export type TournamentMatch = {
@@ -255,6 +260,21 @@ export function createTournamentService(db: Database.Database) {
 
     participants(tournamentId: number): number[] {
       return participantsFor(tournamentId);
+    },
+
+    participantRecords(tournamentId: number): TournamentParticipant[] {
+      return db
+        .prepare(
+          `
+          select p.id as player_id, p.display_name
+          from tournament_participants tp
+          inner join players p on p.id = tp.player_id
+          where tp.tournament_id = ?
+          order by tp.joined_at asc, tp.rowid asc
+        `,
+        )
+        .all(tournamentId)
+        .map((row: any) => ({ playerId: row.player_id, displayName: row.display_name }));
     },
 
     start(tournamentId: number): Tournament {
