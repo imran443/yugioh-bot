@@ -7,6 +7,7 @@ import { createMatchService } from "../../src/services/matches.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
 
 type FakeUser = { id: string; username: string };
+type FakeRole = { id: string; name: string };
 
 function setup() {
   const db = new Database(":memory:");
@@ -22,10 +23,11 @@ function fakeInteraction(input: {
   commandName: string;
   user: FakeUser;
   subcommand?: string;
+  roles?: Record<string, FakeRole>;
   users?: Record<string, FakeUser>;
   strings?: Record<string, string>;
 }) {
-  const replies: string[] = [];
+  const replies: Array<string | { content: string; components?: readonly unknown[] }> = [];
   const interaction: CommandInteractionLike = {
     commandName: input.commandName,
     guildId: "guild-1",
@@ -33,10 +35,11 @@ function fakeInteraction(input: {
     options: {
       getSubcommand: () => input.subcommand ?? "",
       getString: (name) => input.strings?.[name] ?? null,
+      getRole: (name) => input.roles?.[name] ?? null,
       getUser: (name) => input.users?.[name] ?? null,
     },
     reply: (message) => {
-      replies.push(typeof message === "string" ? message : message.content);
+      replies.push(message);
     },
   };
 
@@ -76,6 +79,130 @@ describe("command handlers", () => {
     await handleCommand(interaction, app);
 
     expect(replies[0]).toContain("Yugi: 0W - 0L");
+  });
+
+  it("/event list shows active tournaments before pending tournaments", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        users: { player1: yugi, player2: kaiba },
+        strings: { name: "active cup", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        users: { player1: yugi },
+        strings: { name: "pending cup", format: "single_elim" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({ commandName: "event", subcommand: "start", user: yugi, strings: { name: "active cup" } })
+        .interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "report",
+        user: yugi,
+        users: { player: kaiba },
+        strings: { name: "active cup", result: "win" },
+      }).interaction,
+      app,
+    );
+
+    const { interaction, replies } = fakeInteraction({ commandName: "event", subcommand: "list", user: yugi });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe(
+      "Active events:\n- active cup (round_robin): 0 open match(es)\nPending events:\n- pending cup (single_elim): 1 participant(s)",
+    );
+  });
+
+  it("/event signup requires the creator and posts a join button", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+    const role = { id: "role-1", name: "Duelists" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+
+    await expect(
+      handleCommand(
+        fakeInteraction({ commandName: "event", subcommand: "signup", user: kaiba, strings: { name: "locals" } })
+          .interaction,
+        app,
+      ),
+    ).rejects.toThrow("Only the event creator can do that");
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "signup",
+      user: yugi,
+      roles: { role },
+      strings: { name: "locals" },
+    });
+
+    await handleCommand(interaction, app);
+
+    const tournament = app.tournaments.findByName("guild-1", "locals")!;
+    expect(replies[0]).toMatchObject({
+      content: `<@&${role.id}> Signups are open for locals (round_robin). Click Join Tournament to enter.`,
+    });
+    expect(replies[0]).not.toHaveProperty("ephemeral", true);
+    expect(JSON.parse(JSON.stringify(replies[0])).components[0].components[0].custom_id).toBe(
+      `join_tournament:${tournament.id}`,
+    );
+  });
+
+  it("/event signup only works for pending tournaments", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        users: { player1: yugi, player2: kaiba },
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({ commandName: "event", subcommand: "start", user: yugi, strings: { name: "locals" } })
+        .interaction,
+      app,
+    );
+
+    await expect(
+      handleCommand(
+        fakeInteraction({ commandName: "event", subcommand: "signup", user: yugi, strings: { name: "locals" } })
+          .interaction,
+        app,
+      ),
+    ).rejects.toThrow("Tournament has already started");
   });
 
   it("handles event create, join, start, report, and cancel", async () => {

@@ -80,6 +80,22 @@ export const commandDefinitions = [
           option.setName("name").setDescription("Tournament name").setRequired(true),
         ),
     )
+    .addSubcommand((subcommand) => subcommand.setName("list").setDescription("List events"))
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("signup")
+        .setDescription("Post tournament signup")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addRoleOption((option) =>
+          option.setName("role").setDescription("Role to notify").setRequired(false),
+        ),
+    )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("start")
