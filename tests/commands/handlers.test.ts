@@ -133,6 +133,43 @@ describe("command handlers", () => {
     expect(app.tournaments.findByName("guild-1", "locals")?.status).toBe("cancelled");
   });
 
+  it("/event create seeds unique provided players", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+    const joey = { id: "user-3", username: "Joey" };
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "create",
+      user: yugi,
+      users: { player1: yugi, player2: kaiba, player3: yugi, player4: joey },
+      strings: { name: "locals", format: "round_robin" },
+    });
+
+    await handleCommand(interaction, app);
+
+    const tournament = app.tournaments.findByName("guild-1", "locals")!;
+    expect(app.tournaments.participants(tournament.id)).toHaveLength(3);
+    expect(replies[0]).toBe("Event created: locals (round_robin). Seeded 3 participant(s).");
+  });
+
+  it("/event create without seeded players still works", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "create",
+      user: yugi,
+      strings: { name: "locals", format: "round_robin" },
+    });
+
+    await handleCommand(interaction, app);
+
+    const tournament = app.tournaments.findByName("guild-1", "locals")!;
+    expect(app.tournaments.participants(tournament.id)).toHaveLength(0);
+    expect(replies[0]).toBe("Event created: locals (round_robin).");
+  });
+
   it("prevents non-creators from starting or cancelling events", async () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };

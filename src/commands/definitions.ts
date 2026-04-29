@@ -1,5 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 
+const playerSeedOptions = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
+
 export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName("duel")
@@ -44,6 +46,30 @@ export const commandDefinitions = [
               { name: "round robin", value: "round_robin" },
               { name: "single elimination", value: "single_elim" },
             ),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[0]).setDescription("Seeded player 1").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[1]).setDescription("Seeded player 2").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[2]).setDescription("Seeded player 3").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[3]).setDescription("Seeded player 4").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[4]).setDescription("Seeded player 5").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[5]).setDescription("Seeded player 6").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[6]).setDescription("Seeded player 7").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[7]).setDescription("Seeded player 8").setRequired(false),
         ),
     )
     .addSubcommand((subcommand) =>

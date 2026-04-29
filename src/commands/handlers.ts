@@ -27,6 +27,8 @@ type CommandDependencies = {
   tournaments: TournamentService;
 };
 
+const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
+
 function displayName(user: DiscordUserLike): string {
   return user.displayName ?? user.username;
 }
@@ -178,7 +180,24 @@ async function handleEvent(
     case "create": {
       const format = requireStringOption(interaction, "format") as TournamentFormat;
       const tournament = deps.tournaments.create(guildId, name, format, interaction.user.id);
-      await interaction.reply(`Event created: ${tournament.name} (${tournament.format}).`);
+      const seededUserIds = new Set<string>();
+
+      for (const optionName of playerSeedOptionNames) {
+        const user = interaction.options.getUser(optionName);
+
+        if (!user || seededUserIds.has(user.id)) {
+          continue;
+        }
+
+        seededUserIds.add(user.id);
+        const player = deps.players.upsert(guildId, user.id, displayName(user));
+        deps.tournaments.join(tournament.id, player.id);
+      }
+
+      const seededCount = seededUserIds.size;
+      const seededText = seededCount > 0 ? ` Seeded ${seededCount} participant(s).` : "";
+
+      await interaction.reply(`Event created: ${tournament.name} (${tournament.format}).${seededText}`);
       return;
     }
     case "join": {
