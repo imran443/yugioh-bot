@@ -49,6 +49,31 @@ describe("tournament service", () => {
     expect(app.tournaments.participants(tournament.id)).toEqual([yugi.id]);
   });
 
+  it("lists tournament participant records in join order", () => {
+    const app = setup();
+    const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const joey = app.players.upsert("guild-1", "user-3", "Joey");
+
+    app.tournaments.join(tournament.id, joey.id);
+    app.tournaments.join(tournament.id, yugi.id);
+    app.tournaments.join(tournament.id, kaiba.id);
+
+    expect(app.tournaments.participantRecords(tournament.id)).toEqual([
+      { playerId: joey.id, displayName: "Joey" },
+      { playerId: yugi.id, displayName: "Yugi" },
+      { playerId: kaiba.id, displayName: "Kaiba" },
+    ]);
+  });
+
+  it("returns no participant records for an empty tournament", () => {
+    const app = setup();
+    const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+
+    expect(app.tournaments.participantRecords(tournament.id)).toEqual([]);
+  });
+
   it("prevents players from joining after a tournament starts", () => {
     const app = setup();
     const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");

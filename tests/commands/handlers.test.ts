@@ -67,6 +67,7 @@ describe("command handlers", () => {
     expect(replies[0]).toEqual(expect.stringContaining("/event list"));
     expect(replies[0]).toEqual(expect.stringContaining("/event start"));
     expect(replies[0]).toEqual(expect.stringContaining("/event show"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event participants"));
     expect(replies[0]).toEqual(expect.stringContaining("/event report"));
     expect(replies[0]).toEqual(expect.stringContaining("/event cancel"));
   });
@@ -447,6 +448,108 @@ describe("command handlers", () => {
     expect(reply).not.toContain("active-06");
     expect(reply).not.toContain("pending-06");
     expect(reply.length).toBeLessThan(2000);
+  });
+
+  it("/event participants lists tournament participants with count and numbered names", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+    const joey = { id: "user-3", username: "Joey" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        users: { player1: yugi, player2: kaiba, player3: joey },
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "participants",
+      user: yugi,
+      strings: { name: "locals" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe("locals participants (3):\n1. Yugi\n2. Kaiba\n3. Joey");
+  });
+
+  it("/event participants says when the tournament has no participants", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "participants",
+      user: yugi,
+      strings: { name: "locals" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe("locals has no participants yet.");
+  });
+
+  it("/event participants caps long lists and summarizes hidden participants", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const users = Object.fromEntries(
+      Array.from({ length: 30 }, (_, index) => {
+        const playerNumber = index + 1;
+
+        return [
+          `player${playerNumber}`,
+          { id: `user-${playerNumber}`, username: `Player ${playerNumber}` },
+        ];
+      }),
+    );
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+
+    const tournament = app.tournaments.findByName("guild-1", "locals")!;
+    for (const user of Object.values(users)) {
+      const player = app.players.upsert("guild-1", user.id, user.username);
+      app.tournaments.join(tournament.id, player.id);
+    }
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "participants",
+      user: yugi,
+      strings: { name: "locals" },
+    });
+
+    await handleCommand(interaction, app);
+
+    const reply = replies[0] as string;
+    expect(reply).toContain("locals participants (30):");
+    expect(reply).toContain("25. Player 25");
+    expect(reply).not.toContain("26. Player 26");
+    expect(reply).toContain("...and 5 more participant(s).");
+    expect(reply.length).toBeLessThanOrEqual(2000);
   });
 
   it("/event signup requires the creator and posts a join button", async () => {

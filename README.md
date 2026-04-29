@@ -13,6 +13,7 @@ A Discord-native bot for tracking Yugioh 1v1 matches, server rankings, approved 
 - `/help` shows available bot commands.
 - `/event list` shows current tournaments.
 - `/event signup` posts a tournament signup message with a Join Tournament button and optional role mention.
+- `/event participants` lists participants for a tournament.
 - `/event` creates, joins, starts, shows, reports, and cancels tournaments, including direct creator-seeded participants.
 - Tournament name autocomplete helps pick existing events in supported tournament options.
 - Daily reminders ping a configured channel for unplayed tournament matches.
@@ -61,17 +62,18 @@ Use a test Discord server and two Discord accounts if possible.
 7. Run `/rankings` and confirm approved records are shown.
 8. Run `/event create name:locals format:round_robin player1:@player1 player2:@player2` and confirm the seeded participant count is shown.
 9. Run `/event list` and confirm `locals` appears.
-10. Confirm autocomplete suggestions match the option context: `/event signup` and `/event start` suggest your pending events, `/event show` suggests server events, `/event report` suggests active events you are in, `/event cancel` suggests your pending or active events, and `/stats tournament` suggests active or completed events.
+10. Confirm autocomplete suggestions match the option context: `/event signup` and `/event start` suggest your pending events, `/event show` and `/event participants` suggest server events, `/event report` suggests active events you are in, `/event cancel` suggests your pending or active events, and `/stats tournament` suggests active or completed events.
 11. Run `/event signup name:locals role:@role` and confirm the signup post mentions the role and includes a Join Tournament button.
 12. Click Join Tournament from another account and confirm the player is added and receives an ephemeral reply. Click again and confirm participants are not duplicated.
 13. Run `/event start name:locals`.
 14. Run `/stats player:@player1 tournament:locals` and confirm that player's stats for the tournament appear.
 15. Run `/stats player:@player1` with no tournament option and confirm active tournament stats appear when that player is in exactly one active tournament.
 16. Run `/event show name:locals` and confirm the open match count is shown.
-17. Run `/event report name:locals @player result:win`.
-18. Have the opponent run `/approve`.
-19. Run `/event show name:locals` and confirm the match count changed.
-20. Run `/event cancel name:locals` if you want to clean up the test event.
+17. Run `/event participants name:locals` and confirm the seeded and joined participants are listed.
+18. Run `/event report name:locals @player result:win`.
+19. Have the opponent run `/approve`.
+20. Run `/event show name:locals` and confirm the match count changed.
+21. Run `/event cancel name:locals` if you want to clean up the test event.
 
 ## Quality Checks
 

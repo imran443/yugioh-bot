@@ -42,10 +42,11 @@ type CommandDependencies = {
 
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
 const tournamentListSectionLimit = 5;
+const tournamentParticipantListLimit = 25;
 
 const helpMessage = [
   "Duel commands: /duel, /approve, /deny, /stats, /rankings",
-  "Tournament commands: /event create, /event signup, /event join, /event list, /event start, /event show, /event report, /event cancel",
+  "Tournament commands: /event create, /event signup, /event join, /event list, /event start, /event show, /event participants, /event report, /event cancel",
 ].join("\n");
 
 function displayName(user: DiscordUserLike): string {
@@ -149,6 +150,24 @@ function formatTournamentList(
           ...(extraPendingCount > 0 ? [`...and ${extraPendingCount} more pending event(s).`] : []),
         ]
       : []),
+  ].join("\n");
+}
+
+function formatTournamentParticipants(
+  tournamentName: string,
+  participants: ReturnType<TournamentService["participantRecords"]>,
+): string {
+  if (participants.length === 0) {
+    return `${tournamentName} has no participants yet.`;
+  }
+
+  const visibleParticipants = participants.slice(0, tournamentParticipantListLimit);
+  const hiddenCount = participants.length - visibleParticipants.length;
+
+  return [
+    `${tournamentName} participants (${participants.length}):`,
+    ...visibleParticipants.map((participant, index) => `${index + 1}. ${participant.displayName}`),
+    ...(hiddenCount > 0 ? [`...and ${hiddenCount} more participant(s).`] : []),
   ].join("\n");
 }
 
@@ -342,6 +361,13 @@ async function handleEvent(
       const tournament = requireTournament(deps, guildId, name);
       const openMatches = deps.tournaments.openMatches(tournament.id);
       await interaction.reply(`${tournament.name}: ${openMatches.length} open match(es).`);
+      return;
+    }
+    case "participants": {
+      const name = requireStringOption(interaction, "name");
+      const tournament = requireTournament(deps, guildId, name);
+      const participants = deps.tournaments.participantRecords(tournament.id);
+      await interaction.reply(formatTournamentParticipants(tournament.name, participants));
       return;
     }
     case "report": {
