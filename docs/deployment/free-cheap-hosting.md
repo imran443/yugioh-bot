@@ -55,6 +55,28 @@ docker compose logs -f bot
 
 SQLite lives in `./data/bot.sqlite` on the VM. Do not delete this directory.
 
+## Backups
+
+Install SQLite CLI on the VM:
+
+```bash
+sudo apt install -y sqlite3
+```
+
+Create a backup manually:
+
+```bash
+./scripts/backup-sqlite.sh
+```
+
+Optional daily cron:
+
+```cron
+0 3 * * * cd /home/ubuntu/yugioh-discord-bot && ./scripts/backup-sqlite.sh >> backup.log 2>&1
+```
+
+Periodically copy `./backups` off the VM.
+
 ## Avoid
 
 - Serverless functions
