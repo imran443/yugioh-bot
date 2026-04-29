@@ -8,8 +8,13 @@ A Discord-native bot for tracking Yugioh 1v1 matches, server rankings, approved 
 - `/approve` approves your latest pending match report.
 - `/deny` rejects your latest pending match report.
 - `/stats` shows lifetime wins, losses, and win rate.
+- `/stats` can include a tournament option to show your player stats for that tournament.
 - `/rankings` shows the server leaderboard.
-- `/event` creates, joins, starts, shows, reports, and cancels tournaments.
+- `/help` shows available bot commands.
+- `/event list` shows current tournaments.
+- `/event signup` posts a tournament signup message with a Join Tournament button and optional role mention.
+- `/event` creates, joins, starts, shows, reports, and cancels tournaments, including direct creator-seeded participants.
+- Tournament name autocomplete helps pick existing events in supported tournament options.
 - Daily reminders ping a configured channel for unplayed tournament matches.
 
 ## Discord Setup
@@ -47,19 +52,26 @@ SQLite data is stored in `./data/bot.sqlite` by default.
 
 Use a test Discord server and two Discord accounts if possible.
 
-1. Run `/stats` and confirm the bot responds with `0W - 0L`.
-2. Run `/duel @player result:win` from one account.
-3. Run `/approve` from the opponent account.
-4. Run `/stats` again and confirm the win/loss changed.
-5. Run `/rankings` and confirm approved records are shown.
-6. Run `/event create name:locals format:round_robin`.
-7. Have at least two players run `/event join name:locals`.
-8. Run `/event start name:locals`.
-9. Run `/event show name:locals` and confirm open matches are listed.
-10. Run `/event report name:locals @player result:win`.
-11. Have the opponent run `/approve`.
-12. Run `/event show name:locals` and confirm the match count changed.
-13. Run `/event cancel name:locals` if you want to clean up the test event.
+1. Run `npm run build`, then run `npm run commands:deploy` for guild testing or `docker compose run --rm bot npm run commands:deploy:prod` for production.
+2. Run `/help` and confirm the command summary appears.
+3. Run `/stats` and confirm the bot responds with `0W - 0L`.
+4. Run `/duel @player result:win` from one account.
+5. Run `/approve` from the opponent account.
+6. Run `/stats` again and confirm the win/loss changed.
+7. Run `/rankings` and confirm approved records are shown.
+8. Run `/event create name:locals format:round_robin player1:@player1 player2:@player2` and confirm direct seeded players are listed.
+9. Run `/event list` and confirm `locals` appears.
+10. Confirm autocomplete suggestions match the option context: `/event signup` and `/event start` suggest your pending events, `/event show` suggests server events, `/event report` suggests active events you are in, `/event cancel` suggests your pending or active events, and `/stats tournament` suggests active or completed events.
+11. Run `/event signup name:locals role:@role` and confirm the signup post mentions the role and includes a Join Tournament button.
+12. Click Join Tournament from another account and confirm the player is added and receives an ephemeral reply. Click again and confirm participants are not duplicated.
+13. Run `/event start name:locals`.
+14. Run `/stats player:@player1 tournament:locals` and confirm that player's stats for the tournament appear.
+15. Run `/stats player:@player1` with no tournament option and confirm active tournament stats appear when that player is in exactly one active tournament.
+16. Run `/event show name:locals` and confirm open matches are listed.
+17. Run `/event report name:locals @player result:win`.
+18. Have the opponent run `/approve`.
+19. Run `/event show name:locals` and confirm the match count changed.
+20. Run `/event cancel name:locals` if you want to clean up the test event.
 
 ## Quality Checks
 
