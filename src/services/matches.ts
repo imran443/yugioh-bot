@@ -311,6 +311,23 @@ export function createMatchService(db: Database.Database) {
       return row ? mapMatch(row) : undefined;
     },
 
+    latestPendingForOpponent(playerId: number): Match | undefined {
+      const row = db
+        .prepare(
+          `
+          select * from matches
+          where status = 'pending'
+            and reporter_id != ?
+            and (player_one_id = ? or player_two_id = ?)
+          order by id desc
+          limit 1
+        `,
+        )
+        .get(playerId, playerId, playerId);
+
+      return row ? mapMatch(row) : undefined;
+    },
+
     leaderboard(guildId: string): LeaderboardRow[] {
       return db
         .prepare(

@@ -43,6 +43,12 @@ docker compose up -d --build
 docker compose logs -f bot
 ```
 
+Register slash commands from the built container:
+
+```bash
+docker compose run --rm bot npm run commands:deploy:prod
+```
+
 ## Updating the Bot
 
 ```bash

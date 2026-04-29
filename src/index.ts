@@ -71,17 +71,21 @@ client.once("ready", () => {
   cron.schedule(
     reminderCron,
     async () => {
-      const reminder = formatTournamentReminder(selectTournamentReminderTargets(db));
+      const channel = await client.channels.fetch(reminderChannelId);
+
+      if (channel?.type !== ChannelType.GuildText) {
+        return;
+      }
+
+      const reminder = formatTournamentReminder(
+        selectTournamentReminderTargets(db, channel.guildId),
+      );
 
       if (!reminder) {
         return;
       }
 
-      const channel = await client.channels.fetch(reminderChannelId);
-
-      if (channel?.type === ChannelType.GuildText) {
-        await channel.send(reminder);
-      }
+      await channel.send(reminder);
     },
     { timezone: reminderTimezone },
   );

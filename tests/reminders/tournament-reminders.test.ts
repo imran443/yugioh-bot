@@ -55,6 +55,41 @@ describe("tournament reminders", () => {
     expect(selectTournamentReminderTargets(app.db)).toEqual([]);
   });
 
+  it("does not select matches waiting on approval", () => {
+    const app = setup();
+    const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+
+    app.tournaments.join(tournament.id, yugi.id);
+    app.tournaments.join(tournament.id, kaiba.id);
+    app.tournaments.start(tournament.id);
+    app.tournaments.report(tournament.id, yugi.id, kaiba.id, yugi.id);
+
+    expect(selectTournamentReminderTargets(app.db)).toEqual([]);
+  });
+
+  it("can filter reminders to one guild", () => {
+    const app = setup();
+    const guildOneTournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+    const guildTwoTournament = app.tournaments.create("guild-2", "regionals", "round_robin", "user-3");
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const joey = app.players.upsert("guild-2", "user-3", "Joey");
+    const mai = app.players.upsert("guild-2", "user-4", "Mai");
+
+    app.tournaments.join(guildOneTournament.id, yugi.id);
+    app.tournaments.join(guildOneTournament.id, kaiba.id);
+    app.tournaments.start(guildOneTournament.id);
+    app.tournaments.join(guildTwoTournament.id, joey.id);
+    app.tournaments.join(guildTwoTournament.id, mai.id);
+    app.tournaments.start(guildTwoTournament.id);
+
+    expect(selectTournamentReminderTargets(app.db, "guild-2")).toEqual([
+      expect.objectContaining({ guildId: "guild-2", tournamentName: "regionals" }),
+    ]);
+  });
+
   it("selects only active single elimination matches", () => {
     const app = setup();
     const tournament = app.tournaments.create("guild-1", "finals", "single_elim", "user-1");

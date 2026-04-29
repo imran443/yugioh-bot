@@ -81,6 +81,12 @@ function requireTournament(deps: CommandDependencies, guildId: string, name: str
   return tournament;
 }
 
+function requireEventCreator(tournament: { createdByUserId: string }, userId: string): void {
+  if (tournament.createdByUserId !== userId) {
+    throw new Error("Only the event creator can do that");
+  }
+}
+
 async function handleDuel(
   interaction: CommandInteractionLike,
   deps: CommandDependencies,
@@ -110,7 +116,7 @@ async function handleApprove(
 ): Promise<void> {
   const guildId = requireGuildId(interaction);
   const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-  const match = deps.matches.latestPendingForPlayer(player.id);
+  const match = deps.matches.latestPendingForOpponent(player.id);
 
   if (!match) {
     await interaction.reply("You have no pending duel reports to approve.");
@@ -127,7 +133,7 @@ async function handleDeny(
 ): Promise<void> {
   const guildId = requireGuildId(interaction);
   const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-  const match = deps.matches.latestPendingForPlayer(player.id);
+  const match = deps.matches.latestPendingForOpponent(player.id);
 
   if (!match) {
     await interaction.reply("You have no pending duel reports to deny.");
@@ -184,6 +190,7 @@ async function handleEvent(
     }
     case "start": {
       const tournament = requireTournament(deps, guildId, name);
+      requireEventCreator(tournament, interaction.user.id);
       deps.tournaments.start(tournament.id);
       await interaction.reply(`Started event: ${tournament.name}.`);
       return;
@@ -209,6 +216,7 @@ async function handleEvent(
     }
     case "cancel": {
       const tournament = requireTournament(deps, guildId, name);
+      requireEventCreator(tournament, interaction.user.id);
       deps.tournaments.cancel(tournament.id);
       await interaction.reply(`Cancelled event: ${tournament.name}.`);
       return;

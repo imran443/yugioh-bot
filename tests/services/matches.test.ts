@@ -90,6 +90,29 @@ describe("match service", () => {
     expect(app.matches.latestPendingForPlayer(kaiba.id)?.id).toBe(match.id);
   });
 
+  it("finds the latest pending match where the player is the opponent", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+
+    const needsKaibaApproval = app.matches.report({
+      guildId: "guild-1",
+      reporterId: yugi.id,
+      opponentId: kaiba.id,
+      winnerId: yugi.id,
+      source: "casual",
+    });
+    app.matches.report({
+      guildId: "guild-1",
+      reporterId: kaiba.id,
+      opponentId: yugi.id,
+      winnerId: kaiba.id,
+      source: "casual",
+    });
+
+    expect(app.matches.latestPendingForOpponent(kaiba.id)?.id).toBe(needsKaibaApproval.id);
+  });
+
   it("builds a leaderboard from approved matches only", () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-1", "Yugi");

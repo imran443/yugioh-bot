@@ -132,4 +132,36 @@ describe("command handlers", () => {
 
     expect(app.tournaments.findByName("guild-1", "locals")?.status).toBe("cancelled");
   });
+
+  it("prevents non-creators from starting or cancelling events", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+
+    await expect(
+      handleCommand(
+        fakeInteraction({ commandName: "event", subcommand: "start", user: kaiba, strings: { name: "locals" } })
+          .interaction,
+        app,
+      ),
+    ).rejects.toThrow("Only the event creator can do that");
+
+    await expect(
+      handleCommand(
+        fakeInteraction({ commandName: "event", subcommand: "cancel", user: kaiba, strings: { name: "locals" } })
+          .interaction,
+        app,
+      ),
+    ).rejects.toThrow("Only the event creator can do that");
+  });
 });

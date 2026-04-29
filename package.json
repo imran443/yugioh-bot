@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "commands:deploy": "tsx src/deploy-commands.ts"
+    "commands:deploy": "tsx src/deploy-commands.ts",
+    "commands:deploy:prod": "node dist/deploy-commands.js"
   },
   "dependencies": {
     "better-sqlite3": "latest",

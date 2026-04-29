@@ -15,7 +15,7 @@
 
 - Run `docker compose up -d --build`.
 - Run `docker compose logs -f bot` and confirm the bot logs in.
-- Run `npm run commands:deploy` before or during first deploy.
+- Run `npm run commands:deploy` locally, or `docker compose run --rm bot npm run commands:deploy:prod` on the VM, before first deploy.
 - In Discord, run `/stats` and confirm the bot responds.
 - Run a test `/duel`, `/approve`, and `/rankings` flow.
 - Create a test `/event`, join, start, and show it.

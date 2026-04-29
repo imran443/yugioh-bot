@@ -10,6 +10,7 @@ export type TournamentReminderTarget = {
 
 export function selectTournamentReminderTargets(
   db: Database.Database,
+  guildId?: string,
 ): TournamentReminderTarget[] {
   return db
     .prepare(
@@ -25,12 +26,13 @@ export function selectTournamentReminderTargets(
       join players p1 on p1.id = tm.player_one_id
       join players p2 on p2.id = tm.player_two_id
       where t.status = 'active'
-        and tm.status in ('open', 'pending_approval')
+        and tm.status = 'open'
         and tm.player_two_id is not null
+        and (? is null or t.guild_id = ?)
       order by t.name asc, tm.round_number asc, tm.id asc
     `,
     )
-    .all()
+    .all(guildId ?? null, guildId ?? null)
     .map((row: any) => ({
       guildId: row.guild_id,
       tournamentName: row.tournament_name,
