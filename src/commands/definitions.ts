@@ -1,5 +1,8 @@
 import { SlashCommandBuilder } from "discord.js";
 
+const maxTournamentNameLength = 100;
+const playerSeedOptions = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
+
 export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName("duel")
@@ -23,6 +26,14 @@ export const commandDefinitions = [
     .setDescription("Show player stats")
     .addUserOption((option) =>
       option.setName("player").setDescription("The player to show").setRequired(false),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("tournament")
+        .setDescription("Tournament to show stats for")
+        .setRequired(false)
+        .setMaxLength(maxTournamentNameLength)
+        .setAutocomplete(true),
     ),
   new SlashCommandBuilder().setName("rankings").setDescription("Show server rankings"),
   new SlashCommandBuilder()
@@ -33,7 +44,11 @@ export const commandDefinitions = [
         .setName("create")
         .setDescription("Create a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength),
         )
         .addStringOption((option) =>
           option
@@ -44,6 +59,30 @@ export const commandDefinitions = [
               { name: "round robin", value: "round_robin" },
               { name: "single elimination", value: "single_elim" },
             ),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[0]).setDescription("Seeded player 1").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[1]).setDescription("Seeded player 2").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[2]).setDescription("Seeded player 3").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[3]).setDescription("Seeded player 4").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[4]).setDescription("Seeded player 5").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[5]).setDescription("Seeded player 6").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[6]).setDescription("Seeded player 7").setRequired(false),
+        )
+        .addUserOption((option) =>
+          option.setName(playerSeedOptions[7]).setDescription("Seeded player 8").setRequired(false),
         ),
     )
     .addSubcommand((subcommand) =>
@@ -51,7 +90,28 @@ export const commandDefinitions = [
         .setName("join")
         .setDescription("Join a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength),
+        ),
+    )
+    .addSubcommand((subcommand) => subcommand.setName("list").setDescription("List events"))
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("signup")
+        .setDescription("Post tournament signup")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+        )
+        .addRoleOption((option) =>
+          option.setName("role").setDescription("Role to notify").setRequired(false),
         ),
     )
     .addSubcommand((subcommand) =>
@@ -59,7 +119,12 @@ export const commandDefinitions = [
         .setName("start")
         .setDescription("Start a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
         ),
     )
     .addSubcommand((subcommand) =>
@@ -67,7 +132,12 @@ export const commandDefinitions = [
         .setName("show")
         .setDescription("Show a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
         ),
     )
     .addSubcommand((subcommand) =>
@@ -75,7 +145,12 @@ export const commandDefinitions = [
         .setName("report")
         .setDescription("Report a tournament match")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
         )
         .addUserOption((option) =>
           option.setName("player").setDescription("The player you dueled").setRequired(true),
@@ -93,7 +168,13 @@ export const commandDefinitions = [
         .setName("cancel")
         .setDescription("Cancel a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
-        ),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+      ),
     ),
+  new SlashCommandBuilder().setName("help").setDescription("Show available commands"),
 ].map((command) => command.toJSON());

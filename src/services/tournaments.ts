@@ -31,6 +31,14 @@ export type TournamentMatch = {
   metadata: Record<string, unknown>;
 };
 
+type AutocompleteInput = {
+  guildId: string;
+  query: string;
+  statuses?: TournamentStatus[];
+  createdByUserId?: string;
+  participantPlayerId?: number;
+};
+
 function mapTournament(row: any): Tournament {
   return {
     id: row.id,
@@ -159,6 +167,77 @@ export function createTournamentService(db: Database.Database) {
       return row ? mapTournament(row) : undefined;
     },
 
+    listByStatus(guildId: string, statuses: TournamentStatus[]): Tournament[] {
+      if (statuses.length === 0) {
+        return [];
+      }
+
+      return db
+        .prepare(
+          `
+          select * from tournaments
+          where guild_id = ?
+            and status in (${statuses.map(() => "?").join(", ")})
+          order by created_at asc, id asc
+        `,
+        )
+        .all(guildId, ...statuses)
+        .map(mapTournament);
+    },
+
+    activeForPlayer(guildId: string, playerId: number): Tournament[] {
+      return db
+        .prepare(
+          `
+          select t.* from tournaments t
+          inner join tournament_participants tp on tp.tournament_id = t.id
+          where t.guild_id = ?
+            and t.status = 'active'
+            and tp.player_id = ?
+          order by t.created_at asc, t.id asc
+        `,
+        )
+        .all(guildId, playerId)
+        .map(mapTournament);
+    },
+
+    autocomplete(input: AutocompleteInput): Tournament[] {
+      const conditions = ["t.guild_id = ?", "lower(t.name) like lower(?)"];
+      const params: Array<string | number> = [input.guildId, `%${input.query}%`];
+
+      if (input.statuses && input.statuses.length > 0) {
+        conditions.push(`t.status in (${input.statuses.map(() => "?").join(", ")})`);
+        params.push(...input.statuses);
+      }
+
+      if (input.createdByUserId) {
+        conditions.push("t.created_by_user_id = ?");
+        params.push(input.createdByUserId);
+      }
+
+      if (input.participantPlayerId !== undefined) {
+        conditions.push(
+          `exists (
+            select 1 from tournament_participants tp
+            where tp.tournament_id = t.id and tp.player_id = ?
+          )`,
+        );
+        params.push(input.participantPlayerId);
+      }
+
+      return db
+        .prepare(
+          `
+          select t.* from tournaments t
+          where ${conditions.join(" and ")}
+          order by t.created_at asc, t.id asc
+          limit 25
+        `,
+        )
+        .all(...params)
+        .map(mapTournament);
+    },
+
     join(tournamentId: number, playerId: number): void {
       const tournament = findById(tournamentId);
 
@@ -249,6 +328,34 @@ export function createTournamentService(db: Database.Database) {
         )
         .all(tournamentId)
         .map(mapTournamentMatch);
+    },
+
+    stats(tournamentId: number, playerId: number): { wins: number; losses: number } {
+      const wins = db
+        .prepare(
+          `
+          select count(*) as count
+          from matches
+          where tournament_id = ?
+            and status = 'approved'
+            and winner_id = ?
+        `,
+        )
+        .get(tournamentId, playerId) as { count: number };
+      const losses = db
+        .prepare(
+          `
+          select count(*) as count
+          from matches
+          where tournament_id = ?
+            and status = 'approved'
+            and winner_id != ?
+            and (player_one_id = ? or player_two_id = ?)
+        `,
+        )
+        .get(tournamentId, playerId, playerId, playerId) as { count: number };
+
+      return { wins: wins.count, losses: losses.count };
     },
 
     report(tournamentId: number, reporterId: number, opponentId: number, winnerId: number): Match {

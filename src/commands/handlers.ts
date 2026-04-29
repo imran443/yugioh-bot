@@ -1,3 +1,4 @@
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type InteractionReplyOptions } from "discord.js";
 import { formatLeaderboard, formatStats } from "../formatters/stats.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { MatchService } from "../services/matches.js";
@@ -9,6 +10,17 @@ export type DiscordUserLike = {
   displayName?: string;
 };
 
+export type DiscordRoleLike = {
+  id: string;
+  name: string;
+};
+
+type CommandReplyLike = {
+  content: string;
+  ephemeral?: boolean;
+  components?: InteractionReplyOptions["components"];
+};
+
 export type CommandInteractionLike = {
   commandName: string;
   guildId: string | null;
@@ -16,9 +28,10 @@ export type CommandInteractionLike = {
   options: {
     getSubcommand(): string;
     getString(name: string, required?: boolean): string | null;
+    getRole(name: string, required?: boolean): DiscordRoleLike | null;
     getUser(name: string, required?: boolean): DiscordUserLike | null;
   };
-  reply(message: string | { content: string; ephemeral?: boolean }): Promise<void> | void;
+  reply(message: string | CommandReplyLike): Promise<void> | void;
 };
 
 type CommandDependencies = {
@@ -26,6 +39,14 @@ type CommandDependencies = {
   matches: MatchService;
   tournaments: TournamentService;
 };
+
+const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
+const tournamentListSectionLimit = 5;
+
+const helpMessage = [
+  "Duel commands: /duel, /approve, /deny, /stats, /rankings",
+  "Tournament commands: /event create, /event signup, /event join, /event list, /event start, /event show, /event report, /event cancel",
+].join("\n");
 
 function displayName(user: DiscordUserLike): string {
   return user.displayName ?? user.username;
@@ -85,6 +106,50 @@ function requireEventCreator(tournament: { createdByUserId: string }, userId: st
   if (tournament.createdByUserId !== userId) {
     throw new Error("Only the event creator can do that");
   }
+}
+
+function assertPendingTournament(tournament: { status: string }): void {
+  if (tournament.status !== "pending") {
+    throw new Error("Tournament has already started");
+  }
+}
+
+function formatTournamentList(
+  active: ReturnType<TournamentService["listByStatus"]>,
+  pending: ReturnType<TournamentService["listByStatus"]>,
+  deps: CommandDependencies,
+): string {
+  const activeLines = active.slice(0, tournamentListSectionLimit).map(
+    (tournament) =>
+      `- ${tournament.name} (${tournament.format}): ${deps.tournaments.openMatches(tournament.id).filter((match) => match.status === "open").length} open match(es)`,
+  );
+  const pendingLines = pending.slice(0, tournamentListSectionLimit).map(
+    (tournament) =>
+      `- ${tournament.name} (${tournament.format}): ${deps.tournaments.participants(tournament.id).length} participant(s)`,
+  );
+  const extraActiveCount = active.length - activeLines.length;
+  const extraPendingCount = pending.length - pendingLines.length;
+
+  if (activeLines.length === 0 && pendingLines.length === 0) {
+    return "No active or pending events.";
+  }
+
+  return [
+    ...(activeLines.length > 0
+      ? [
+          "Active events:",
+          ...activeLines,
+          ...(extraActiveCount > 0 ? [`...and ${extraActiveCount} more active event(s).`] : []),
+        ]
+      : []),
+    ...(pendingLines.length > 0
+      ? [
+          "Pending events:",
+          ...pendingLines,
+          ...(extraPendingCount > 0 ? [`...and ${extraPendingCount} more pending event(s).`] : []),
+        ]
+      : []),
+  ].join("\n");
 }
 
 async function handleDuel(
@@ -151,6 +216,33 @@ async function handleStats(
   const guildId = requireGuildId(interaction);
   const targetUser = interaction.options.getUser("player") ?? interaction.user;
   const player = deps.players.upsert(guildId, targetUser.id, displayName(targetUser));
+  const tournamentName = interaction.options.getString("tournament");
+
+  if (tournamentName) {
+    const tournament = requireTournament(deps, guildId, tournamentName);
+    const stats = deps.tournaments.stats(tournament.id, player.id);
+
+    await interaction.reply(formatStats(`${player.displayName} in ${tournament.name}`, stats));
+    return;
+  }
+
+  const activeTournaments = deps.tournaments.activeForPlayer(guildId, player.id);
+
+  if (activeTournaments.length === 1) {
+    const tournament = activeTournaments[0];
+    const stats = deps.tournaments.stats(tournament.id, player.id);
+
+    await interaction.reply(formatStats(`${player.displayName} in ${tournament.name}`, stats));
+    return;
+  }
+
+  if (activeTournaments.length > 1) {
+    await interaction.reply(
+      `${player.displayName} is in multiple active tournaments. Specify one with tournament: ${activeTournaments.map((tournament) => tournament.name).join(", ")}`,
+    );
+    return;
+  }
+
   const stats = deps.matches.stats(player.id);
 
   await interaction.reply(formatStats(player.displayName, stats));
@@ -166,29 +258,79 @@ async function handleRankings(
   await interaction.reply(formatLeaderboard(rows));
 }
 
+async function handleHelp(interaction: CommandInteractionLike): Promise<void> {
+  await interaction.reply(helpMessage);
+}
+
 async function handleEvent(
   interaction: CommandInteractionLike,
   deps: CommandDependencies,
 ): Promise<void> {
   const guildId = requireGuildId(interaction);
   const subcommand = interaction.options.getSubcommand();
-  const name = requireStringOption(interaction, "name");
 
   switch (subcommand) {
     case "create": {
+      const name = requireStringOption(interaction, "name");
       const format = requireStringOption(interaction, "format") as TournamentFormat;
       const tournament = deps.tournaments.create(guildId, name, format, interaction.user.id);
-      await interaction.reply(`Event created: ${tournament.name} (${tournament.format}).`);
+      const seededUserIds = new Set<string>();
+
+      for (const optionName of playerSeedOptionNames) {
+        const user = interaction.options.getUser(optionName);
+
+        if (!user || seededUserIds.has(user.id)) {
+          continue;
+        }
+
+        seededUserIds.add(user.id);
+        const player = deps.players.upsert(guildId, user.id, displayName(user));
+        deps.tournaments.join(tournament.id, player.id);
+      }
+
+      const seededCount = seededUserIds.size;
+      const seededText = seededCount > 0 ? ` Seeded ${seededCount} participant(s).` : "";
+
+      await interaction.reply(`Event created: ${tournament.name} (${tournament.format}).${seededText}`);
       return;
     }
     case "join": {
+      const name = requireStringOption(interaction, "name");
       const tournament = requireTournament(deps, guildId, name);
       const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
       deps.tournaments.join(tournament.id, player.id);
       await interaction.reply(`Joined event: ${tournament.name}.`);
       return;
     }
+    case "list": {
+      const active = deps.tournaments.listByStatus(guildId, ["active"]);
+      const pending = deps.tournaments.listByStatus(guildId, ["pending"]);
+      await interaction.reply(formatTournamentList(active, pending, deps));
+      return;
+    }
+    case "signup": {
+      const name = requireStringOption(interaction, "name");
+      const tournament = requireTournament(deps, guildId, name);
+      const role = interaction.options.getRole("role");
+      const roleMention = role ? `<@&${role.id}> ` : "";
+
+      requireEventCreator(tournament, interaction.user.id);
+      assertPendingTournament(tournament);
+      await interaction.reply({
+        content: `${roleMention}Signups are open for ${tournament.name} (${tournament.format}). Click Join Tournament to enter.`,
+        components: [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`join_tournament:${tournament.id}`)
+              .setLabel("Join Tournament")
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ],
+      });
+      return;
+    }
     case "start": {
+      const name = requireStringOption(interaction, "name");
       const tournament = requireTournament(deps, guildId, name);
       requireEventCreator(tournament, interaction.user.id);
       deps.tournaments.start(tournament.id);
@@ -196,12 +338,14 @@ async function handleEvent(
       return;
     }
     case "show": {
+      const name = requireStringOption(interaction, "name");
       const tournament = requireTournament(deps, guildId, name);
       const openMatches = deps.tournaments.openMatches(tournament.id);
       await interaction.reply(`${tournament.name}: ${openMatches.length} open match(es).`);
       return;
     }
     case "report": {
+      const name = requireStringOption(interaction, "name");
       const tournament = requireTournament(deps, guildId, name);
       const opponentUser = requireUserOption(interaction, "player");
       const result = requireStringOption(interaction, "result");
@@ -215,6 +359,7 @@ async function handleEvent(
       return;
     }
     case "cancel": {
+      const name = requireStringOption(interaction, "name");
       const tournament = requireTournament(deps, guildId, name);
       requireEventCreator(tournament, interaction.user.id);
       deps.tournaments.cancel(tournament.id);
@@ -248,6 +393,9 @@ export async function handleCommand(
       return;
     case "event":
       await handleEvent(interaction, deps);
+      return;
+    case "help":
+      await handleHelp(interaction);
       return;
     default:
       throw new Error(`Unsupported command: ${interaction.commandName}`);

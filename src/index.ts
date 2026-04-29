@@ -4,10 +4,17 @@ import {
   ChannelType,
   Client,
   GatewayIntentBits,
+  type AutocompleteInteraction,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { handleCommand, type CommandInteractionLike } from "./commands/handlers.js";
 import { openDatabase } from "./db/connection.js";
+import {
+  handleAutocomplete,
+  type AutocompleteInteractionLike,
+} from "./interactions/autocomplete.js";
+import { handleButton, type ButtonInteractionLike } from "./interactions/buttons.js";
 import { createPlayerRepository } from "./repositories/players.js";
 import {
   formatTournamentReminder,
@@ -44,6 +51,11 @@ function toCommandInteraction(
     options: {
       getSubcommand: () => interaction.options.getSubcommand(false) ?? "",
       getString: (name, required = false) => interaction.options.getString(name, required),
+      getRole: (name, required = false) => {
+        const role = interaction.options.getRole(name, required);
+
+        return role ? { id: role.id, name: role.name } : null;
+      },
       getUser: (name, required = false) => {
         const user = interaction.options.getUser(name, required);
 
@@ -52,6 +64,44 @@ function toCommandInteraction(
     },
     reply: async (message) => {
       await interaction.reply(message);
+    },
+  };
+}
+
+function toButtonInteraction(interaction: ButtonInteraction): ButtonInteractionLike {
+  return {
+    customId: interaction.customId,
+    guildId: interaction.guildId,
+    user: {
+      id: interaction.user.id,
+      username: interaction.user.username,
+      displayName: interaction.user.displayName,
+    },
+    reply: async (message) => {
+      await interaction.reply(message);
+    },
+  };
+}
+
+function toAutocompleteInteraction(
+  interaction: AutocompleteInteraction,
+): AutocompleteInteractionLike {
+  const focused = interaction.options.getFocused(true);
+
+  return {
+    commandName: interaction.commandName,
+    guildId: interaction.guildId,
+    user: {
+      id: interaction.user.id,
+      username: interaction.user.username,
+      displayName: interaction.user.displayName,
+    },
+    options: {
+      getSubcommand: () => interaction.options.getSubcommand(false) ?? "",
+      getFocused: () => ({ name: focused.name, value: String(focused.value) }),
+    },
+    respond: async (choices) => {
+      await interaction.respond(choices);
     },
   };
 }
@@ -92,14 +142,33 @@ client.once("ready", () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) {
-    return;
-  }
-
   try {
+    if (interaction.isButton()) {
+      await handleButton(toButtonInteraction(interaction), deps);
+      return;
+    }
+
+    if (interaction.isAutocomplete()) {
+      await handleAutocomplete(toAutocompleteInteraction(interaction), deps);
+      return;
+    }
+
+    if (!interaction.isChatInputCommand()) {
+      return;
+    }
+
     await handleCommand(toCommandInteraction(interaction), deps);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Something went wrong";
+
+    if (interaction.isAutocomplete()) {
+      await interaction.respond([]);
+      return;
+    }
+
+    if (!interaction.isRepliable()) {
+      return;
+    }
 
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content: message, ephemeral: true });
