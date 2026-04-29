@@ -316,9 +316,9 @@ export function createTournamentService(db: Database.Database) {
     cancel(tournamentId: number): Tournament {
       findById(tournamentId);
 
-      db.prepare("update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?").run(
-        tournamentId,
-      );
+      db.prepare(
+        "update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?",
+      ).run(tournamentId);
 
       return findById(tournamentId);
     },

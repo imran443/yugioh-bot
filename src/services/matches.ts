@@ -63,7 +63,8 @@ export function createMatchService(db: Database.Database) {
   };
 
   const ensureOpponentCanResolve = (match: Match, playerId: number) => {
-    const opponentId = match.reporterId === match.playerOneId ? match.playerTwoId : match.playerOneId;
+    const opponentId =
+      match.reporterId === match.playerOneId ? match.playerTwoId : match.playerOneId;
 
     if (match.status !== "pending") {
       throw new Error("Match is not pending");
@@ -145,9 +146,9 @@ export function createMatchService(db: Database.Database) {
       .filter((winnerId: unknown): winnerId is number => typeof winnerId === "number");
 
     if (winners.length <= 1) {
-      db.prepare("update tournaments set status = 'completed', ended_at = current_timestamp where id = ?").run(
-        match.tournamentId,
-      );
+      db.prepare(
+        "update tournaments set status = 'completed', ended_at = current_timestamp where id = ?",
+      ).run(match.tournamentId);
       return;
     }
 
@@ -166,7 +167,12 @@ export function createMatchService(db: Database.Database) {
         )
         values (?, ?, null, ?, 'completed', ?)
       `,
-      ).run(match.tournamentId, byePlayerId, nextRoundNumber, JSON.stringify({ bye: true, winnerId: byePlayerId }));
+      ).run(
+        match.tournamentId,
+        byePlayerId,
+        nextRoundNumber,
+        JSON.stringify({ bye: true, winnerId: byePlayerId }),
+      );
     }
 
     for (const pairing of generatedRound.pairings) {
@@ -270,7 +276,9 @@ export function createMatchService(db: Database.Database) {
 
     stats(playerId: number): MatchStats {
       const wins = db
-        .prepare("select count(*) as count from matches where status = 'approved' and winner_id = ?")
+        .prepare(
+          "select count(*) as count from matches where status = 'approved' and winner_id = ?",
+        )
         .get(playerId) as { count: number };
       const losses = db
         .prepare(
@@ -310,7 +318,10 @@ export function createMatchService(db: Database.Database) {
           select
             p.id as player_id,
             p.display_name,
-            coalesce(sum(case when m.status = 'approved' and m.winner_id = p.id then 1 else 0 end), 0) as wins,
+            coalesce(
+              sum(case when m.status = 'approved' and m.winner_id = p.id then 1 else 0 end),
+              0
+            ) as wins,
             coalesce(sum(case
               when m.status = 'approved'
                 and m.winner_id != p.id

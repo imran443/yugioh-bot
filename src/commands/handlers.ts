@@ -1,7 +1,7 @@
+import { formatLeaderboard, formatStats } from "../formatters/stats.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { MatchService } from "../services/matches.js";
 import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
-import { formatLeaderboard, formatStats } from "../formatters/stats.js";
 
 export type DiscordUserLike = {
   id: string;
@@ -27,11 +27,11 @@ type CommandDependencies = {
   tournaments: TournamentService;
 };
 
-function displayName(user: DiscordUserLike) {
+function displayName(user: DiscordUserLike): string {
   return user.displayName ?? user.username;
 }
 
-function requireGuildId(interaction: CommandInteractionLike) {
+function requireGuildId(interaction: CommandInteractionLike): string {
   if (!interaction.guildId) {
     throw new Error("This command can only be used in a server");
   }
@@ -39,7 +39,7 @@ function requireGuildId(interaction: CommandInteractionLike) {
   return interaction.guildId;
 }
 
-function requireUserOption(interaction: CommandInteractionLike, name: string) {
+function requireUserOption(interaction: CommandInteractionLike, name: string): DiscordUserLike {
   const user = interaction.options.getUser(name, true);
 
   if (!user) {
@@ -49,7 +49,7 @@ function requireUserOption(interaction: CommandInteractionLike, name: string) {
   return user;
 }
 
-function requireStringOption(interaction: CommandInteractionLike, name: string) {
+function requireStringOption(interaction: CommandInteractionLike, name: string): string {
   const value = interaction.options.getString(name, true);
 
   if (!value) {
@@ -59,7 +59,7 @@ function requireStringOption(interaction: CommandInteractionLike, name: string) 
   return value;
 }
 
-function winnerFromResult(result: string, reporterId: number, opponentId: number) {
+function winnerFromResult(result: string, reporterId: number, opponentId: number): number {
   if (result === "win") {
     return reporterId;
   }
@@ -81,7 +81,10 @@ function requireTournament(deps: CommandDependencies, guildId: string, name: str
   return tournament;
 }
 
-async function handleDuel(interaction: CommandInteractionLike, deps: CommandDependencies) {
+async function handleDuel(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
   const guildId = requireGuildId(interaction);
   const opponentUser = requireUserOption(interaction, "player");
   const result = requireStringOption(interaction, "result");
@@ -101,7 +104,10 @@ async function handleDuel(interaction: CommandInteractionLike, deps: CommandDepe
   );
 }
 
-async function handleApprove(interaction: CommandInteractionLike, deps: CommandDependencies) {
+async function handleApprove(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
   const guildId = requireGuildId(interaction);
   const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
   const match = deps.matches.latestPendingForPlayer(player.id);
@@ -115,7 +121,10 @@ async function handleApprove(interaction: CommandInteractionLike, deps: CommandD
   await interaction.reply(`Approved match #${match.id}.`);
 }
 
-async function handleDeny(interaction: CommandInteractionLike, deps: CommandDependencies) {
+async function handleDeny(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
   const guildId = requireGuildId(interaction);
   const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
   const match = deps.matches.latestPendingForPlayer(player.id);
@@ -129,7 +138,10 @@ async function handleDeny(interaction: CommandInteractionLike, deps: CommandDepe
   await interaction.reply(`Denied match #${match.id}.`);
 }
 
-async function handleStats(interaction: CommandInteractionLike, deps: CommandDependencies) {
+async function handleStats(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
   const guildId = requireGuildId(interaction);
   const targetUser = interaction.options.getUser("player") ?? interaction.user;
   const player = deps.players.upsert(guildId, targetUser.id, displayName(targetUser));
@@ -138,98 +150,98 @@ async function handleStats(interaction: CommandInteractionLike, deps: CommandDep
   await interaction.reply(formatStats(player.displayName, stats));
 }
 
-async function handleRankings(interaction: CommandInteractionLike, deps: CommandDependencies) {
+async function handleRankings(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
   const guildId = requireGuildId(interaction);
   const rows = deps.matches.leaderboard(guildId);
 
   await interaction.reply(formatLeaderboard(rows));
 }
 
-async function handleEvent(interaction: CommandInteractionLike, deps: CommandDependencies) {
+async function handleEvent(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
   const guildId = requireGuildId(interaction);
   const subcommand = interaction.options.getSubcommand();
   const name = requireStringOption(interaction, "name");
 
-  if (subcommand === "create") {
-    const format = requireStringOption(interaction, "format") as TournamentFormat;
-    const tournament = deps.tournaments.create(guildId, name, format, interaction.user.id);
-    await interaction.reply(`Event created: ${tournament.name} (${tournament.format}).`);
-    return;
+  switch (subcommand) {
+    case "create": {
+      const format = requireStringOption(interaction, "format") as TournamentFormat;
+      const tournament = deps.tournaments.create(guildId, name, format, interaction.user.id);
+      await interaction.reply(`Event created: ${tournament.name} (${tournament.format}).`);
+      return;
+    }
+    case "join": {
+      const tournament = requireTournament(deps, guildId, name);
+      const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+      deps.tournaments.join(tournament.id, player.id);
+      await interaction.reply(`Joined event: ${tournament.name}.`);
+      return;
+    }
+    case "start": {
+      const tournament = requireTournament(deps, guildId, name);
+      deps.tournaments.start(tournament.id);
+      await interaction.reply(`Started event: ${tournament.name}.`);
+      return;
+    }
+    case "show": {
+      const tournament = requireTournament(deps, guildId, name);
+      const openMatches = deps.tournaments.openMatches(tournament.id);
+      await interaction.reply(`${tournament.name}: ${openMatches.length} open match(es).`);
+      return;
+    }
+    case "report": {
+      const tournament = requireTournament(deps, guildId, name);
+      const opponentUser = requireUserOption(interaction, "player");
+      const result = requireStringOption(interaction, "result");
+      const reporter = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+      const opponent = deps.players.upsert(guildId, opponentUser.id, displayName(opponentUser));
+      const winnerId = winnerFromResult(result, reporter.id, opponent.id);
+      const match = deps.tournaments.report(tournament.id, reporter.id, opponent.id, winnerId);
+      await interaction.reply(
+        `Event match reported as ${result}. ${opponent.displayName} must /approve or /deny it. Match #${match.id}`,
+      );
+      return;
+    }
+    case "cancel": {
+      const tournament = requireTournament(deps, guildId, name);
+      deps.tournaments.cancel(tournament.id);
+      await interaction.reply(`Cancelled event: ${tournament.name}.`);
+      return;
+    }
+    default:
+      throw new Error(`Unsupported event subcommand: ${subcommand}`);
   }
-
-  const tournament = requireTournament(deps, guildId, name);
-
-  if (subcommand === "join") {
-    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-    deps.tournaments.join(tournament.id, player.id);
-    await interaction.reply(`Joined event: ${tournament.name}.`);
-    return;
-  }
-
-  if (subcommand === "start") {
-    deps.tournaments.start(tournament.id);
-    await interaction.reply(`Started event: ${tournament.name}.`);
-    return;
-  }
-
-  if (subcommand === "show") {
-    const openMatches = deps.tournaments.openMatches(tournament.id);
-    await interaction.reply(`${tournament.name}: ${openMatches.length} open match(es).`);
-    return;
-  }
-
-  if (subcommand === "report") {
-    const opponentUser = requireUserOption(interaction, "player");
-    const result = requireStringOption(interaction, "result");
-    const reporter = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-    const opponent = deps.players.upsert(guildId, opponentUser.id, displayName(opponentUser));
-    const winnerId = winnerFromResult(result, reporter.id, opponent.id);
-    const match = deps.tournaments.report(tournament.id, reporter.id, opponent.id, winnerId);
-    await interaction.reply(
-      `Event match reported as ${result}. ${opponent.displayName} must /approve or /deny it. Match #${match.id}`,
-    );
-    return;
-  }
-
-  if (subcommand === "cancel") {
-    deps.tournaments.cancel(tournament.id);
-    await interaction.reply(`Cancelled event: ${tournament.name}.`);
-    return;
-  }
-
-  throw new Error(`Unsupported event subcommand: ${subcommand}`);
 }
 
-export async function handleCommand(interaction: CommandInteractionLike, deps: CommandDependencies) {
-  if (interaction.commandName === "duel") {
-    await handleDuel(interaction, deps);
-    return;
+export async function handleCommand(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
+  switch (interaction.commandName) {
+    case "duel":
+      await handleDuel(interaction, deps);
+      return;
+    case "approve":
+      await handleApprove(interaction, deps);
+      return;
+    case "deny":
+      await handleDeny(interaction, deps);
+      return;
+    case "stats":
+      await handleStats(interaction, deps);
+      return;
+    case "rankings":
+      await handleRankings(interaction, deps);
+      return;
+    case "event":
+      await handleEvent(interaction, deps);
+      return;
+    default:
+      throw new Error(`Unsupported command: ${interaction.commandName}`);
   }
-
-  if (interaction.commandName === "approve") {
-    await handleApprove(interaction, deps);
-    return;
-  }
-
-  if (interaction.commandName === "deny") {
-    await handleDeny(interaction, deps);
-    return;
-  }
-
-  if (interaction.commandName === "stats") {
-    await handleStats(interaction, deps);
-    return;
-  }
-
-  if (interaction.commandName === "rankings") {
-    await handleRankings(interaction, deps);
-    return;
-  }
-
-  if (interaction.commandName === "event") {
-    await handleEvent(interaction, deps);
-    return;
-  }
-
-  throw new Error(`Unsupported command: ${interaction.commandName}`);
 }
