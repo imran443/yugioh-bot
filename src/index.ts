@@ -1,8 +1,13 @@
 import "dotenv/config";
-import { Client, GatewayIntentBits } from "discord.js";
+import cron from "node-cron";
+import { ChannelType, Client, GatewayIntentBits } from "discord.js";
 import { handleCommand, type CommandInteractionLike } from "./commands/handlers.js";
 import { openDatabase } from "./db/connection.js";
 import { createPlayerRepository } from "./repositories/players.js";
+import {
+  formatTournamentReminder,
+  selectTournamentReminderTargets,
+} from "./reminders/tournament-reminders.js";
 import { createMatchService } from "./services/matches.js";
 import { createTournamentService } from "./services/tournaments.js";
 
@@ -22,6 +27,33 @@ const deps = {
 
 client.once("ready", () => {
   console.log(`Logged in as ${client.user?.tag ?? "unknown bot"}`);
+
+  const reminderChannelId = process.env.DISCORD_REMINDER_CHANNEL_ID;
+  const reminderCron = process.env.REMINDER_CRON ?? "0 10 * * *";
+  const reminderTimezone = process.env.REMINDER_TIMEZONE ?? "UTC";
+
+  if (!reminderChannelId) {
+    console.log("DISCORD_REMINDER_CHANNEL_ID is not set; tournament reminders are disabled");
+    return;
+  }
+
+  cron.schedule(
+    reminderCron,
+    async () => {
+      const reminder = formatTournamentReminder(selectTournamentReminderTargets(db));
+
+      if (!reminder) {
+        return;
+      }
+
+      const channel = await client.channels.fetch(reminderChannelId);
+
+      if (channel?.type === ChannelType.GuildText) {
+        await channel.send(reminder);
+      }
+    },
+    { timezone: reminderTimezone },
+  );
 });
 
 client.on("interactionCreate", async (interaction) => {
