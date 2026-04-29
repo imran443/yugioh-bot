@@ -90,6 +90,7 @@ export async function handleAutocomplete(
       );
       return;
     case "show":
+    case "participants":
       await interaction.respond(
         tournamentChoices(
           deps.tournaments.autocomplete({

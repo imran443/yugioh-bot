@@ -108,6 +108,29 @@ describe("autocomplete interactions", () => {
     ]);
   });
 
+  it("suggests participants tournaments in any status for the current guild", async () => {
+    const app = setup();
+    app.tournaments.create("guild-1", "Pending Cup", "round_robin", "creator-1");
+    startTournament(app, "Active Cup");
+    const cancelled = app.tournaments.create("guild-1", "Cancelled Cup", "round_robin", "creator-1");
+    const completed = startTournament(app, "Completed Cup");
+    app.tournaments.create("guild-2", "Other Guild Cup", "round_robin", "creator-1");
+    app.tournaments.cancel(cancelled.id);
+    completeTournament(app, completed.id);
+    const { interaction, responses } = fakeAutocomplete({
+      options: { getSubcommand: () => "participants", getFocused: () => ({ name: "name", value: "cup" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([
+      { name: "Pending Cup", value: "Pending Cup" },
+      { name: "Active Cup", value: "Active Cup" },
+      { name: "Cancelled Cup", value: "Cancelled Cup" },
+      { name: "Completed Cup", value: "Completed Cup" },
+    ]);
+  });
+
   it("suggests active report tournaments where the user is a participant", async () => {
     const app = setup();
     startTournament(app, "Participant Cup");

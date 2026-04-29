@@ -142,6 +142,19 @@ export const commandDefinitions = [
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName("participants")
+        .setDescription("List tournament participants")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName("report")
         .setDescription("Report a tournament match")
         .addStringOption((option) =>

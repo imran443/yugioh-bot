@@ -89,11 +89,22 @@ describe("command definitions", () => {
     expect(roleOption.required).toBe(false);
   });
 
+  it("defines an event participants subcommand with tournament name autocomplete", () => {
+    const eventCommand = commandDefinitions.find((command) => command.name === "event")!;
+    const subcommands = eventCommand.options?.filter(isSubcommandOption) ?? [];
+    const participantsSubcommand = subcommands.find((option) => option.name === "participants")!;
+    const nameOption = stringOptionFor(participantsSubcommand, "name");
+
+    expect(nameOption.required).toBe(true);
+    expect(nameOption.max_length).toBe(100);
+    expect(nameOption.autocomplete).toBe(true);
+  });
+
   it("enables autocomplete on tournament name options", () => {
     const eventCommand = commandDefinitions.find((command) => command.name === "event")!;
     const subcommands = eventCommand.options?.filter(isSubcommandOption) ?? [];
 
-    for (const name of ["start", "signup", "show", "report", "cancel"]) {
+    for (const name of ["start", "signup", "show", "participants", "report", "cancel"]) {
       const subcommand = subcommands.find((option) => option.name === name)!;
       const nameOption = stringOptionFor(subcommand, "name");
 
@@ -106,7 +117,16 @@ describe("command definitions", () => {
     const eventCommand = commandDefinitions.find((command) => command.name === "event")!;
     const subcommands = eventCommand.options?.filter(isSubcommandOption) ?? [];
 
-    for (const subcommandName of ["create", "join", "start", "signup", "show", "report", "cancel"]) {
+    for (const subcommandName of [
+      "create",
+      "join",
+      "start",
+      "signup",
+      "show",
+      "participants",
+      "report",
+      "cancel",
+    ]) {
       const subcommand = subcommands.find((option) => option.name === subcommandName)!;
       const nameOption = stringOptionFor(subcommand, "name");
 
