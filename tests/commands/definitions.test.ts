@@ -102,6 +102,29 @@ describe("command definitions", () => {
     }
   });
 
+  it("caps tournament string options at Discord's choice value limit", () => {
+    const eventCommand = commandDefinitions.find((command) => command.name === "event")!;
+    const subcommands = eventCommand.options?.filter(isSubcommandOption) ?? [];
+
+    for (const subcommandName of ["create", "join", "start", "signup", "show", "report", "cancel"]) {
+      const subcommand = subcommands.find((option) => option.name === subcommandName)!;
+      const nameOption = stringOptionFor(subcommand, "name");
+
+      expect(nameOption.max_length).toBe(100);
+    }
+
+    const statsCommand = commandDefinitions.find((command) => command.name === "stats")!;
+    const tournamentOption = (statsCommand.options ?? []).find(
+      (option) => option.name === "tournament",
+    )!;
+
+    expect(isStringOption(tournamentOption)).toBe(true);
+    if (!isStringOption(tournamentOption)) {
+      throw new Error("stats tournament option must be a string option");
+    }
+    expect(tournamentOption.max_length).toBe(100);
+  });
+
   it("defines an optional stats tournament autocomplete option", () => {
     const statsCommand = commandDefinitions.find((command) => command.name === "stats")!;
     const tournamentOption = (statsCommand.options ?? []).find(

@@ -348,6 +348,107 @@ describe("command handlers", () => {
     );
   });
 
+  it("/event list limits active and pending sections with summary counts", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    for (let index = 1; index <= 11; index += 1) {
+      await handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "create",
+          user: yugi,
+          users: { player1: yugi, player2: kaiba },
+          strings: { name: `active ${index}`, format: "round_robin" },
+        }).interaction,
+        app,
+      );
+      await handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "start",
+          user: yugi,
+          strings: { name: `active ${index}` },
+        }).interaction,
+        app,
+      );
+      await handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "create",
+          user: yugi,
+          strings: { name: `pending ${index}`, format: "single_elim" },
+        }).interaction,
+        app,
+      );
+    }
+
+    const { interaction, replies } = fakeInteraction({ commandName: "event", subcommand: "list", user: yugi });
+
+    await handleCommand(interaction, app);
+
+    const reply = replies[0] as string;
+    expect(reply).toContain("- active 5 (round_robin): 1 open match(es)");
+    expect(reply).not.toContain("- active 6");
+    expect(reply).toContain("...and 6 more active event(s).");
+    expect(reply).toContain("- pending 5 (single_elim): 0 participant(s)");
+    expect(reply).not.toContain("- pending 6");
+    expect(reply).toContain("...and 6 more pending event(s).");
+    expect(reply.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("/event list stays below Discord's reply limit with max-length tournament names", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    for (let index = 1; index <= 6; index += 1) {
+      const activeName = `active-${String(index).padStart(2, "0")}-${"a".repeat(90)}`;
+      const pendingName = `pending-${String(index).padStart(2, "0")}-${"p".repeat(89)}`;
+
+      await handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "create",
+          user: yugi,
+          users: { player1: yugi, player2: kaiba },
+          strings: { name: activeName, format: "round_robin" },
+        }).interaction,
+        app,
+      );
+      await handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "start",
+          user: yugi,
+          strings: { name: activeName },
+        }).interaction,
+        app,
+      );
+      await handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "create",
+          user: yugi,
+          strings: { name: pendingName, format: "single_elim" },
+        }).interaction,
+        app,
+      );
+    }
+
+    const { interaction, replies } = fakeInteraction({ commandName: "event", subcommand: "list", user: yugi });
+
+    await handleCommand(interaction, app);
+
+    const reply = replies[0] as string;
+    expect(reply).toContain("...and 1 more active event(s).");
+    expect(reply).toContain("...and 1 more pending event(s).");
+    expect(reply).not.toContain("active-06");
+    expect(reply).not.toContain("pending-06");
+    expect(reply.length).toBeLessThan(2000);
+  });
+
   it("/event signup requires the creator and posts a join button", async () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };

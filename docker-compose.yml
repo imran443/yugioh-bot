@@ -4,5 +4,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    command: sh -c "npm run commands:deploy:prod && npm start"
     volumes:
       - ./data:/app/data

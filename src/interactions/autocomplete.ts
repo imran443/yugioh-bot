@@ -23,10 +23,16 @@ type AutocompleteDependencies = {
   tournaments: TournamentService;
 };
 
+const maxAutocompleteChoiceLength = 100;
+
 function tournamentChoices(
   tournaments: ReturnType<TournamentService["autocomplete"]>,
 ): AutocompleteChoice[] {
-  return tournaments.map((tournament) => ({ name: tournament.name, value: tournament.name }));
+  return tournaments.map((tournament) => {
+    const name = tournament.name.slice(0, maxAutocompleteChoiceLength);
+
+    return { name, value: name };
+  });
 }
 
 export async function handleAutocomplete(

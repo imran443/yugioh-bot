@@ -52,14 +52,14 @@ SQLite data is stored in `./data/bot.sqlite` by default.
 
 Use a test Discord server and two Discord accounts if possible.
 
-1. Run `npm run build`, then run `npm run commands:deploy` for guild testing or `docker compose run --rm bot npm run commands:deploy:prod` for production.
+1. Run `docker compose up -d --build`; the container deploys slash commands before starting the bot.
 2. Run `/help` and confirm the command summary appears.
 3. Run `/stats` and confirm the bot responds with `0W - 0L`.
 4. Run `/duel @player result:win` from one account.
 5. Run `/approve` from the opponent account.
 6. Run `/stats` again and confirm the win/loss changed.
 7. Run `/rankings` and confirm approved records are shown.
-8. Run `/event create name:locals format:round_robin player1:@player1 player2:@player2` and confirm direct seeded players are listed.
+8. Run `/event create name:locals format:round_robin player1:@player1 player2:@player2` and confirm the seeded participant count is shown.
 9. Run `/event list` and confirm `locals` appears.
 10. Confirm autocomplete suggestions match the option context: `/event signup` and `/event start` suggest your pending events, `/event show` suggests server events, `/event report` suggests active events you are in, `/event cancel` suggests your pending or active events, and `/stats tournament` suggests active or completed events.
 11. Run `/event signup name:locals role:@role` and confirm the signup post mentions the role and includes a Join Tournament button.
@@ -67,7 +67,7 @@ Use a test Discord server and two Discord accounts if possible.
 13. Run `/event start name:locals`.
 14. Run `/stats player:@player1 tournament:locals` and confirm that player's stats for the tournament appear.
 15. Run `/stats player:@player1` with no tournament option and confirm active tournament stats appear when that player is in exactly one active tournament.
-16. Run `/event show name:locals` and confirm open matches are listed.
+16. Run `/event show name:locals` and confirm the open match count is shown.
 17. Run `/event report name:locals @player result:win`.
 18. Have the opponent run `/approve`.
 19. Run `/event show name:locals` and confirm the match count changed.
@@ -89,6 +89,8 @@ Build and run locally:
 docker compose up -d --build
 docker compose logs -f bot
 ```
+
+The Compose startup command runs `npm run commands:deploy:prod` before `npm start`, so slash command changes propagate whenever the container is rebuilt and restarted.
 
 SQLite is stored in `./data/bot.sqlite`. Keep this directory backed up.
 

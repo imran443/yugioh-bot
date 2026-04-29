@@ -178,6 +178,19 @@ describe("autocomplete interactions", () => {
     ]);
   });
 
+  it("keeps tournament autocomplete choices within Discord's 100 character limit", async () => {
+    const app = setup();
+    const longName = "a".repeat(120);
+    app.tournaments.create("guild-1", longName, "round_robin", "creator-1");
+    const { interaction, responses } = fakeAutocomplete({
+      options: { getSubcommand: () => "show", getFocused: () => ({ name: "name", value: "a" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "a".repeat(100), value: "a".repeat(100) }]);
+  });
+
   it("returns no choices for unsupported command autocomplete contexts", async () => {
     const app = setup();
     app.tournaments.create("guild-1", "Creator Cup", "round_robin", "creator-1");

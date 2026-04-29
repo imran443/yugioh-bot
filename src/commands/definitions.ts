@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 
+const maxTournamentNameLength = 100;
 const playerSeedOptions = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
 
 export const commandDefinitions = [
@@ -31,6 +32,7 @@ export const commandDefinitions = [
         .setName("tournament")
         .setDescription("Tournament to show stats for")
         .setRequired(false)
+        .setMaxLength(maxTournamentNameLength)
         .setAutocomplete(true),
     ),
   new SlashCommandBuilder().setName("rankings").setDescription("Show server rankings"),
@@ -42,7 +44,11 @@ export const commandDefinitions = [
         .setName("create")
         .setDescription("Create a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength),
         )
         .addStringOption((option) =>
           option
@@ -84,7 +90,11 @@ export const commandDefinitions = [
         .setName("join")
         .setDescription("Join a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength),
         ),
     )
     .addSubcommand((subcommand) => subcommand.setName("list").setDescription("List events"))
@@ -97,6 +107,7 @@ export const commandDefinitions = [
             .setName("name")
             .setDescription("Tournament name")
             .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
             .setAutocomplete(true),
         )
         .addRoleOption((option) =>
@@ -112,6 +123,7 @@ export const commandDefinitions = [
             .setName("name")
             .setDescription("Tournament name")
             .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
             .setAutocomplete(true),
         ),
     )
@@ -124,6 +136,7 @@ export const commandDefinitions = [
             .setName("name")
             .setDescription("Tournament name")
             .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
             .setAutocomplete(true),
         ),
     )
@@ -136,6 +149,7 @@ export const commandDefinitions = [
             .setName("name")
             .setDescription("Tournament name")
             .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
             .setAutocomplete(true),
         )
         .addUserOption((option) =>
@@ -158,6 +172,7 @@ export const commandDefinitions = [
             .setName("name")
             .setDescription("Tournament name")
             .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
             .setAutocomplete(true),
       ),
     ),

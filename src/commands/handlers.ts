@@ -41,6 +41,7 @@ type CommandDependencies = {
 };
 
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
+const tournamentListSectionLimit = 5;
 
 const helpMessage = [
   "Duel commands: /duel, /approve, /deny, /stats, /rankings",
@@ -118,22 +119,36 @@ function formatTournamentList(
   pending: ReturnType<TournamentService["listByStatus"]>,
   deps: CommandDependencies,
 ): string {
-  const activeLines = active.map(
+  const activeLines = active.slice(0, tournamentListSectionLimit).map(
     (tournament) =>
       `- ${tournament.name} (${tournament.format}): ${deps.tournaments.openMatches(tournament.id).filter((match) => match.status === "open").length} open match(es)`,
   );
-  const pendingLines = pending.map(
+  const pendingLines = pending.slice(0, tournamentListSectionLimit).map(
     (tournament) =>
       `- ${tournament.name} (${tournament.format}): ${deps.tournaments.participants(tournament.id).length} participant(s)`,
   );
+  const extraActiveCount = active.length - activeLines.length;
+  const extraPendingCount = pending.length - pendingLines.length;
 
   if (activeLines.length === 0 && pendingLines.length === 0) {
     return "No active or pending events.";
   }
 
   return [
-    ...(activeLines.length > 0 ? ["Active events:", ...activeLines] : []),
-    ...(pendingLines.length > 0 ? ["Pending events:", ...pendingLines] : []),
+    ...(activeLines.length > 0
+      ? [
+          "Active events:",
+          ...activeLines,
+          ...(extraActiveCount > 0 ? [`...and ${extraActiveCount} more active event(s).`] : []),
+        ]
+      : []),
+    ...(pendingLines.length > 0
+      ? [
+          "Pending events:",
+          ...pendingLines,
+          ...(extraPendingCount > 0 ? [`...and ${extraPendingCount} more pending event(s).`] : []),
+        ]
+      : []),
   ].join("\n");
 }
 
