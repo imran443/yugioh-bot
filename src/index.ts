@@ -86,6 +86,8 @@ function toButtonInteraction(interaction: ButtonInteraction): ButtonInteractionL
 function toAutocompleteInteraction(
   interaction: AutocompleteInteraction,
 ): AutocompleteInteractionLike {
+  const focused = interaction.options.getFocused(true);
+
   return {
     commandName: interaction.commandName,
     guildId: interaction.guildId,
@@ -96,7 +98,7 @@ function toAutocompleteInteraction(
     },
     options: {
       getSubcommand: () => interaction.options.getSubcommand(false) ?? "",
-      getFocused: () => String(interaction.options.getFocused()),
+      getFocused: () => ({ name: focused.name, value: String(focused.value) }),
     },
     respond: async (choices) => {
       await interaction.respond(choices);

@@ -14,6 +14,22 @@ function isStringOption(option: APIApplicationCommandOption) {
   return option.type === ApplicationCommandOptionType.String;
 }
 
+function stringOptionFor(
+  subcommand: Extract<
+    APIApplicationCommandOption,
+    { type: ApplicationCommandOptionType.Subcommand }
+  >,
+  name: string,
+) {
+  const option = (subcommand.options ?? []).find((candidate) => candidate.name === name)!;
+
+  if (!isStringOption(option)) {
+    throw new Error(`${subcommand.name} ${name} option must be a string option`);
+  }
+
+  return option;
+}
+
 function isRoleOption(option: APIApplicationCommandOption) {
   return option.type === ApplicationCommandOptionType.Role;
 }
@@ -70,5 +86,32 @@ describe("command definitions", () => {
     expect(nameOption.autocomplete).toBe(true);
     expect(isRoleOption(roleOption)).toBe(true);
     expect(roleOption.required).toBe(false);
+  });
+
+  it("enables autocomplete on tournament name options", () => {
+    const eventCommand = commandDefinitions.find((command) => command.name === "event")!;
+    const subcommands = eventCommand.options?.filter(isSubcommandOption) ?? [];
+
+    for (const name of ["start", "signup", "show", "report", "cancel"]) {
+      const subcommand = subcommands.find((option) => option.name === name)!;
+      const nameOption = stringOptionFor(subcommand, "name");
+
+      expect(nameOption.required).toBe(true);
+      expect(nameOption.autocomplete).toBe(true);
+    }
+  });
+
+  it("defines an optional stats tournament autocomplete option", () => {
+    const statsCommand = commandDefinitions.find((command) => command.name === "stats")!;
+    const tournamentOption = (statsCommand.options ?? []).find(
+      (option) => option.name === "tournament",
+    )!;
+
+    expect(isStringOption(tournamentOption)).toBe(true);
+    if (!isStringOption(tournamentOption)) {
+      throw new Error("stats tournament option must be a string option");
+    }
+    expect(tournamentOption.required).toBe(false);
+    expect(tournamentOption.autocomplete).toBe(true);
   });
 });

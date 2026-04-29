@@ -25,6 +25,13 @@ export const commandDefinitions = [
     .setDescription("Show player stats")
     .addUserOption((option) =>
       option.setName("player").setDescription("The player to show").setRequired(false),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("tournament")
+        .setDescription("Tournament to show stats for")
+        .setRequired(false)
+        .setAutocomplete(true),
     ),
   new SlashCommandBuilder().setName("rankings").setDescription("Show server rankings"),
   new SlashCommandBuilder()
@@ -101,7 +108,11 @@ export const commandDefinitions = [
         .setName("start")
         .setDescription("Start a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setAutocomplete(true),
         ),
     )
     .addSubcommand((subcommand) =>
@@ -109,7 +120,11 @@ export const commandDefinitions = [
         .setName("show")
         .setDescription("Show a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setAutocomplete(true),
         ),
     )
     .addSubcommand((subcommand) =>
@@ -117,7 +132,11 @@ export const commandDefinitions = [
         .setName("report")
         .setDescription("Report a tournament match")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setAutocomplete(true),
         )
         .addUserOption((option) =>
           option.setName("player").setDescription("The player you dueled").setRequired(true),
@@ -135,7 +154,11 @@ export const commandDefinitions = [
         .setName("cancel")
         .setDescription("Cancel a tournament")
         .addStringOption((option) =>
-          option.setName("name").setDescription("Tournament name").setRequired(true),
+          option
+            .setName("name")
+            .setDescription("Tournament name")
+            .setRequired(true)
+            .setAutocomplete(true),
         ),
     ),
 ].map((command) => command.toJSON());

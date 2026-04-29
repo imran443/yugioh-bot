@@ -196,6 +196,33 @@ async function handleStats(
   const guildId = requireGuildId(interaction);
   const targetUser = interaction.options.getUser("player") ?? interaction.user;
   const player = deps.players.upsert(guildId, targetUser.id, displayName(targetUser));
+  const tournamentName = interaction.options.getString("tournament");
+
+  if (tournamentName) {
+    const tournament = requireTournament(deps, guildId, tournamentName);
+    const stats = deps.tournaments.stats(tournament.id, player.id);
+
+    await interaction.reply(formatStats(`${player.displayName} in ${tournament.name}`, stats));
+    return;
+  }
+
+  const activeTournaments = deps.tournaments.activeForPlayer(guildId, player.id);
+
+  if (activeTournaments.length === 1) {
+    const tournament = activeTournaments[0];
+    const stats = deps.tournaments.stats(tournament.id, player.id);
+
+    await interaction.reply(formatStats(`${player.displayName} in ${tournament.name}`, stats));
+    return;
+  }
+
+  if (activeTournaments.length > 1) {
+    await interaction.reply(
+      `${player.displayName} is in multiple active tournaments. Specify one with tournament: ${activeTournaments.map((tournament) => tournament.name).join(", ")}`,
+    );
+    return;
+  }
+
   const stats = deps.matches.stats(player.id);
 
   await interaction.reply(formatStats(player.displayName, stats));

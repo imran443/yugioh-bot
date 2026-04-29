@@ -81,6 +81,199 @@ describe("command handlers", () => {
     expect(replies[0]).toContain("Yugi: 0W - 0L");
   });
 
+  it("/stats with a tournament replies with tournament-only approved stats", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    await handleCommand(
+      fakeInteraction({ commandName: "duel", user: yugi, users: { player: kaiba }, strings: { result: "loss" } })
+        .interaction,
+      app,
+    );
+    await handleCommand(fakeInteraction({ commandName: "approve", user: kaiba }).interaction, app);
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        users: { player1: yugi, player2: kaiba },
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({ commandName: "event", subcommand: "start", user: yugi, strings: { name: "locals" } })
+        .interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "report",
+        user: yugi,
+        users: { player: kaiba },
+        strings: { name: "locals", result: "win" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(fakeInteraction({ commandName: "approve", user: kaiba }).interaction, app);
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "stats",
+      user: yugi,
+      strings: { tournament: "locals" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe("Yugi in locals: 1W - 0L (100% win rate)");
+  });
+
+  it("/stats without a tournament uses the only active tournament for the target player", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    await handleCommand(
+      fakeInteraction({ commandName: "duel", user: yugi, users: { player: kaiba }, strings: { result: "loss" } })
+        .interaction,
+      app,
+    );
+    await handleCommand(fakeInteraction({ commandName: "approve", user: kaiba }).interaction, app);
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        users: { player1: yugi, player2: kaiba },
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({ commandName: "event", subcommand: "start", user: yugi, strings: { name: "locals" } })
+        .interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "report",
+        user: yugi,
+        users: { player: kaiba },
+        strings: { name: "locals", result: "win" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(fakeInteraction({ commandName: "approve", user: kaiba }).interaction, app);
+
+    const { interaction, replies } = fakeInteraction({ commandName: "stats", user: yugi });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe("Yugi in locals: 1W - 0L (100% win rate)");
+  });
+
+  it("/stats player applies active tournament context to the target player", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "create",
+        user: yugi,
+        users: { player1: yugi, player2: kaiba },
+        strings: { name: "locals", format: "round_robin" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({ commandName: "event", subcommand: "start", user: yugi, strings: { name: "locals" } })
+        .interaction,
+      app,
+    );
+    await handleCommand(
+      fakeInteraction({
+        commandName: "event",
+        subcommand: "report",
+        user: yugi,
+        users: { player: kaiba },
+        strings: { name: "locals", result: "win" },
+      }).interaction,
+      app,
+    );
+    await handleCommand(fakeInteraction({ commandName: "approve", user: kaiba }).interaction, app);
+
+    const { interaction, replies } = fakeInteraction({ commandName: "stats", user: yugi, users: { player: kaiba } });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe("Kaiba in locals: 0W - 1L (0% win rate)");
+  });
+
+  it("/stats without a tournament falls back to lifetime stats when the player has no active tournaments", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    await handleCommand(
+      fakeInteraction({ commandName: "duel", user: yugi, users: { player: kaiba }, strings: { result: "win" } })
+        .interaction,
+      app,
+    );
+    await handleCommand(fakeInteraction({ commandName: "approve", user: kaiba }).interaction, app);
+
+    const { interaction, replies } = fakeInteraction({ commandName: "stats", user: yugi });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe("Yugi: 1W - 0L (100% win rate)");
+  });
+
+  it("/stats without a tournament asks for scope when the player has multiple active tournaments", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const kaiba = { id: "user-2", username: "Kaiba" };
+
+    for (const name of ["locals", "regionals"]) {
+      await handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "create",
+          user: yugi,
+          users: { player1: yugi, player2: kaiba },
+          strings: { name, format: "round_robin" },
+        }).interaction,
+        app,
+      );
+      await handleCommand(
+        fakeInteraction({ commandName: "event", subcommand: "start", user: yugi, strings: { name } }).interaction,
+        app,
+      );
+    }
+
+    const { interaction, replies } = fakeInteraction({ commandName: "stats", user: yugi });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe("Yugi is in multiple active tournaments. Specify one with tournament: locals, regionals");
+  });
+
+  it("/stats with an unknown tournament rejects the name", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+
+    await expect(
+      handleCommand(
+        fakeInteraction({ commandName: "stats", user: yugi, strings: { tournament: "missing" } }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("Tournament not found: missing");
+  });
+
   it("/event list shows active tournaments before pending tournaments", async () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };
