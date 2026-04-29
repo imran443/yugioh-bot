@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 
 export function migrate(db: Database.Database) {
+  db.exec("drop table if exists tournaments_without_name_unique");
+
   db.exec(`
     create table if not exists players (
       id integer primary key autoincrement,
@@ -62,45 +64,59 @@ export function migrate(db: Database.Database) {
     .get() as { sql: string } | undefined;
 
   if (tournamentSchema?.sql.includes("unique (guild_id, name)")) {
-    db.exec(`
-      create table tournaments_without_name_unique (
-        id integer primary key autoincrement,
-        guild_id text not null,
-        name text not null,
-        format text not null,
-        status text not null,
-        created_by_user_id text not null,
-        created_at text not null default current_timestamp,
-        started_at text,
-        ended_at text
-      );
+    const foreignKeys = db.pragma("foreign_keys", { simple: true }) as number;
 
-      insert into tournaments_without_name_unique (
-        id,
-        guild_id,
-        name,
-        format,
-        status,
-        created_by_user_id,
-        created_at,
-        started_at,
-        ended_at
-      )
-      select
-        id,
-        guild_id,
-        name,
-        format,
-        status,
-        created_by_user_id,
-        created_at,
-        started_at,
-        ended_at
-      from tournaments;
+    try {
+      db.pragma("foreign_keys = off");
+      db.exec(`
+        begin;
 
-      drop table tournaments;
-      alter table tournaments_without_name_unique rename to tournaments;
-    `);
+        create table tournaments_without_name_unique (
+          id integer primary key autoincrement,
+          guild_id text not null,
+          name text not null,
+          format text not null,
+          status text not null,
+          created_by_user_id text not null,
+          created_at text not null default current_timestamp,
+          started_at text,
+          ended_at text
+        );
+
+        insert into tournaments_without_name_unique (
+          id,
+          guild_id,
+          name,
+          format,
+          status,
+          created_by_user_id,
+          created_at,
+          started_at,
+          ended_at
+        )
+        select
+          id,
+          guild_id,
+          name,
+          format,
+          status,
+          created_by_user_id,
+          created_at,
+          started_at,
+          ended_at
+        from tournaments;
+
+        drop table tournaments;
+        alter table tournaments_without_name_unique rename to tournaments;
+
+        commit;
+      `);
+    } catch (error) {
+      db.exec("rollback;");
+      throw error;
+    } finally {
+      db.pragma(`foreign_keys = ${foreignKeys ? "on" : "off"}`);
+    }
   }
 
   db.exec(`
