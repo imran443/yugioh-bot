@@ -22,6 +22,11 @@ export type MatchStats = {
   losses: number;
 };
 
+export type LeaderboardRow = MatchStats & {
+  playerId: number;
+  displayName: string;
+};
+
 type ReportMatchInput = {
   guildId: string;
   reporterId: number;
@@ -297,5 +302,38 @@ export function createMatchService(db: Database.Database) {
 
       return row ? mapMatch(row) : undefined;
     },
+
+    leaderboard(guildId: string): LeaderboardRow[] {
+      return db
+        .prepare(
+          `
+          select
+            p.id as player_id,
+            p.display_name,
+            coalesce(sum(case when m.status = 'approved' and m.winner_id = p.id then 1 else 0 end), 0) as wins,
+            coalesce(sum(case
+              when m.status = 'approved'
+                and m.winner_id != p.id
+                and (m.player_one_id = p.id or m.player_two_id = p.id)
+              then 1 else 0 end), 0) as losses
+          from players p
+          left join matches m
+            on m.guild_id = p.guild_id
+            and (m.player_one_id = p.id or m.player_two_id = p.id)
+          where p.guild_id = ?
+          group by p.id
+          order by wins desc, losses asc, p.display_name asc
+        `,
+        )
+        .all(guildId)
+        .map((row: any) => ({
+          playerId: row.player_id,
+          displayName: row.display_name,
+          wins: row.wins,
+          losses: row.losses,
+        }));
+    },
   };
 }
+
+export type MatchService = ReturnType<typeof createMatchService>;

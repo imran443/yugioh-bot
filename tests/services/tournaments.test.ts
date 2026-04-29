@@ -62,4 +62,11 @@ describe("tournament service", () => {
       "Tournament has already started",
     );
   });
+
+  it("cancels a tournament", () => {
+    const app = setup();
+    const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+
+    expect(app.tournaments.cancel(tournament.id).status).toBe("cancelled");
+  });
 });

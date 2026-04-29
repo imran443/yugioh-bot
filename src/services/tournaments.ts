@@ -312,5 +312,17 @@ export function createTournamentService(db: Database.Database) {
 
       return mapMatch(db.prepare("select * from matches where id = ?").get(matchId));
     },
+
+    cancel(tournamentId: number): Tournament {
+      findById(tournamentId);
+
+      db.prepare("update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?").run(
+        tournamentId,
+      );
+
+      return findById(tournamentId);
+    },
   };
 }
+
+export type TournamentService = ReturnType<typeof createTournamentService>;

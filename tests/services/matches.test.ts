@@ -89,4 +89,33 @@ describe("match service", () => {
 
     expect(app.matches.latestPendingForPlayer(kaiba.id)?.id).toBe(match.id);
   });
+
+  it("builds a leaderboard from approved matches only", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const joey = app.players.upsert("guild-1", "user-3", "Joey");
+
+    const approved = app.matches.report({
+      guildId: "guild-1",
+      reporterId: yugi.id,
+      opponentId: kaiba.id,
+      winnerId: yugi.id,
+      source: "casual",
+    });
+    app.matches.approve(approved.id, kaiba.id);
+    app.matches.report({
+      guildId: "guild-1",
+      reporterId: joey.id,
+      opponentId: kaiba.id,
+      winnerId: joey.id,
+      source: "casual",
+    });
+
+    expect(app.matches.leaderboard("guild-1")).toEqual([
+      { playerId: yugi.id, displayName: "Yugi", wins: 1, losses: 0 },
+      { playerId: joey.id, displayName: "Joey", wins: 0, losses: 0 },
+      { playerId: kaiba.id, displayName: "Kaiba", wins: 0, losses: 1 },
+    ]);
+  });
 });

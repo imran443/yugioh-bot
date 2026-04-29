@@ -52,3 +52,5 @@ export function createPlayerRepository(db: Database.Database) {
     },
   };
 }
+
+export type PlayerRepository = ReturnType<typeof createPlayerRepository>;
