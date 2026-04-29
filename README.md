@@ -69,6 +69,19 @@ npm run typecheck
 npm run build
 ```
 
+## Docker
+
+Build and run locally:
+
+```bash
+docker compose up -d --build
+docker compose logs -f bot
+```
+
+SQLite is stored in `./data/bot.sqlite`. Keep this directory backed up.
+
+This Dockerfile uses `node:22-bookworm-slim` instead of Alpine to reduce native dependency issues with `better-sqlite3`.
+
 ## Deployment
 
 For cheap/free hosting, see `docs/deployment/free-cheap-hosting.md`.
