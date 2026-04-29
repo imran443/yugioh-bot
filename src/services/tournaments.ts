@@ -150,6 +150,22 @@ export function createTournamentService(db: Database.Database) {
     ): Tournament {
       assertFormat(format);
 
+      const existingCurrent = db
+        .prepare(
+          `
+          select id from tournaments
+          where guild_id = ?
+            and name = ?
+            and status in ('pending', 'active')
+          limit 1
+        `,
+        )
+        .get(guildId, name);
+
+      if (existingCurrent) {
+        throw new Error("An active or pending tournament already uses that name");
+      }
+
       const result = db
         .prepare(
           `
@@ -166,7 +182,16 @@ export function createTournamentService(db: Database.Database) {
 
     findByName(guildId: string, name: string): Tournament | undefined {
       const row = db
-        .prepare("select * from tournaments where guild_id = ? and name = ?")
+        .prepare(
+          `
+          select * from tournaments
+          where guild_id = ? and name = ?
+          order by
+            case status when 'active' then 0 when 'pending' then 1 else 2 end,
+            id desc
+          limit 1
+        `,
+        )
         .get(guildId, name);
 
       return row ? mapTournament(row) : undefined;

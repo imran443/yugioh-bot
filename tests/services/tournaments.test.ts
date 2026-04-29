@@ -97,6 +97,29 @@ describe("tournament service", () => {
     expect(app.tournaments.cancel(tournament.id).status).toBe("cancelled");
   });
 
+  it("allows reusing a tournament name after cancellation", () => {
+    const app = setup();
+    const cancelled = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+
+    app.tournaments.cancel(cancelled.id);
+    const replacement = app.tournaments.create("guild-1", "locals", "single_elim", "user-1");
+
+    expect(replacement.id).not.toBe(cancelled.id);
+    expect(replacement.name).toBe("locals");
+    expect(replacement.status).toBe("pending");
+    expect(app.tournaments.findByName("guild-1", "locals")?.id).toBe(replacement.id);
+  });
+
+  it("prevents duplicate pending tournament names", () => {
+    const app = setup();
+
+    app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+
+    expect(() => app.tournaments.create("guild-1", "locals", "single_elim", "user-1")).toThrow(
+      "An active or pending tournament already uses that name",
+    );
+  });
+
   it("lists tournaments by status within a guild", () => {
     const app = setup();
     const pending = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");

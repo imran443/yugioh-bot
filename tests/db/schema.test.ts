@@ -23,4 +23,43 @@ describe("database schema", () => {
       "tournaments",
     ]);
   });
+
+  it("migrates old tournament name uniqueness to current-event uniqueness", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      create table tournaments (
+        id integer primary key autoincrement,
+        guild_id text not null,
+        name text not null,
+        format text not null,
+        status text not null,
+        created_by_user_id text not null,
+        created_at text not null default current_timestamp,
+        started_at text,
+        ended_at text,
+        unique (guild_id, name)
+      );
+
+      insert into tournaments (guild_id, name, format, status, created_by_user_id)
+      values ('guild-1', 'locals', 'round_robin', 'cancelled', 'user-1');
+    `);
+
+    migrate(db);
+
+    db.prepare(
+      `
+      insert into tournaments (guild_id, name, format, status, created_by_user_id)
+      values ('guild-1', 'locals', 'single_elim', 'pending', 'user-1')
+    `,
+    ).run();
+
+    expect(() =>
+      db.prepare(
+        `
+        insert into tournaments (guild_id, name, format, status, created_by_user_id)
+        values ('guild-1', 'locals', 'round_robin', 'active', 'user-1')
+      `,
+      ).run(),
+    ).toThrow(/UNIQUE constraint failed/);
+  });
 });

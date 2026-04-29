@@ -20,8 +20,7 @@ export function migrate(db: Database.Database) {
       created_by_user_id text not null,
       created_at text not null default current_timestamp,
       started_at text,
-      ended_at text,
-      unique (guild_id, name)
+      ended_at text
     );
 
     create table if not exists tournament_participants (
@@ -56,5 +55,57 @@ export function migrate(db: Database.Database) {
       status text not null,
       metadata_json text not null default '{}'
     );
+  `);
+
+  const tournamentSchema = db
+    .prepare("select sql from sqlite_master where type = 'table' and name = 'tournaments'")
+    .get() as { sql: string } | undefined;
+
+  if (tournamentSchema?.sql.includes("unique (guild_id, name)")) {
+    db.exec(`
+      create table tournaments_without_name_unique (
+        id integer primary key autoincrement,
+        guild_id text not null,
+        name text not null,
+        format text not null,
+        status text not null,
+        created_by_user_id text not null,
+        created_at text not null default current_timestamp,
+        started_at text,
+        ended_at text
+      );
+
+      insert into tournaments_without_name_unique (
+        id,
+        guild_id,
+        name,
+        format,
+        status,
+        created_by_user_id,
+        created_at,
+        started_at,
+        ended_at
+      )
+      select
+        id,
+        guild_id,
+        name,
+        format,
+        status,
+        created_by_user_id,
+        created_at,
+        started_at,
+        ended_at
+      from tournaments;
+
+      drop table tournaments;
+      alter table tournaments_without_name_unique rename to tournaments;
+    `);
+  }
+
+  db.exec(`
+    create unique index if not exists tournaments_current_name_unique
+    on tournaments (guild_id, name)
+    where status in ('pending', 'active');
   `);
 }
