@@ -1,6 +1,7 @@
 import type { PlayerRepository } from "../repositories/players.js";
 import type { MatchService } from "../services/matches.js";
 import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
+import { formatLeaderboard, formatStats } from "../formatters/stats.js";
 
 export type DiscordUserLike = {
   id: string;
@@ -133,26 +134,15 @@ async function handleStats(interaction: CommandInteractionLike, deps: CommandDep
   const targetUser = interaction.options.getUser("player") ?? interaction.user;
   const player = deps.players.upsert(guildId, targetUser.id, displayName(targetUser));
   const stats = deps.matches.stats(player.id);
-  const total = stats.wins + stats.losses;
-  const winRate = total === 0 ? 0 : Math.round((stats.wins / total) * 100);
 
-  await interaction.reply(`${player.displayName}: ${stats.wins}W - ${stats.losses}L (${winRate}% win rate)`);
+  await interaction.reply(formatStats(player.displayName, stats));
 }
 
 async function handleRankings(interaction: CommandInteractionLike, deps: CommandDependencies) {
   const guildId = requireGuildId(interaction);
   const rows = deps.matches.leaderboard(guildId);
 
-  if (rows.length === 0) {
-    await interaction.reply("No players have been tracked yet.");
-    return;
-  }
-
-  await interaction.reply(
-    rows
-      .map((row, index) => `${index + 1}. ${row.displayName}: ${row.wins}W - ${row.losses}L`)
-      .join("\n"),
-  );
+  await interaction.reply(formatLeaderboard(rows));
 }
 
 async function handleEvent(interaction: CommandInteractionLike, deps: CommandDependencies) {
