@@ -43,6 +43,7 @@ describe("command definitions", () => {
       "stats",
       "rankings",
       "event",
+      "help",
     ]);
   });
 

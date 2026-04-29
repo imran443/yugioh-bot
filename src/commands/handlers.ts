@@ -42,6 +42,11 @@ type CommandDependencies = {
 
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
 
+const helpMessage = [
+  "Duel commands: /duel, /approve, /deny, /stats, /rankings",
+  "Tournament commands: /event create, /event signup, /event join, /event list, /event start, /event show, /event report, /event cancel",
+].join("\n");
+
 function displayName(user: DiscordUserLike): string {
   return user.displayName ?? user.username;
 }
@@ -238,6 +243,10 @@ async function handleRankings(
   await interaction.reply(formatLeaderboard(rows));
 }
 
+async function handleHelp(interaction: CommandInteractionLike): Promise<void> {
+  await interaction.reply(helpMessage);
+}
+
 async function handleEvent(
   interaction: CommandInteractionLike,
   deps: CommandDependencies,
@@ -369,6 +378,9 @@ export async function handleCommand(
       return;
     case "event":
       await handleEvent(interaction, deps);
+      return;
+    case "help":
+      await handleHelp(interaction);
       return;
     default:
       throw new Error(`Unsupported command: ${interaction.commandName}`);

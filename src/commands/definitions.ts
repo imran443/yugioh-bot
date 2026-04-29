@@ -159,6 +159,7 @@ export const commandDefinitions = [
             .setDescription("Tournament name")
             .setRequired(true)
             .setAutocomplete(true),
-        ),
+      ),
     ),
+  new SlashCommandBuilder().setName("help").setDescription("Show available commands"),
 ].map((command) => command.toJSON());

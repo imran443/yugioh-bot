@@ -47,6 +47,30 @@ function fakeInteraction(input: {
 }
 
 describe("command handlers", () => {
+  it("/help lists duel and tournament commands", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction, replies } = fakeInteraction({ commandName: "help", user: yugi });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toEqual(expect.stringContaining("Duel commands"));
+    expect(replies[0]).toEqual(expect.stringContaining("/duel"));
+    expect(replies[0]).toEqual(expect.stringContaining("/approve"));
+    expect(replies[0]).toEqual(expect.stringContaining("/deny"));
+    expect(replies[0]).toEqual(expect.stringContaining("/stats"));
+    expect(replies[0]).toEqual(expect.stringContaining("/rankings"));
+    expect(replies[0]).toEqual(expect.stringContaining("Tournament commands"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event create"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event signup"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event join"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event list"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event start"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event show"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event report"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event cancel"));
+  });
+
   it("/duel creates a pending match and /approve finalizes it", async () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };
