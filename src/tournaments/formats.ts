@@ -1,6 +1,6 @@
 export type TournamentPairing = {
   playerOneId: number;
-  playerTwoId: number;
+  playerTwoId: number | null;
   roundNumber: number;
 };
 

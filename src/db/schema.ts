@@ -47,12 +47,14 @@ export function migrate(db: Database.Database) {
     );
 
     create table if not exists tournament_matches (
+      id integer primary key autoincrement,
       tournament_id integer not null references tournaments(id),
-      match_id integer not null references matches(id),
+      match_id integer references matches(id),
+      player_one_id integer not null references players(id),
+      player_two_id integer references players(id),
       round_number integer not null,
       status text not null,
-      metadata_json text not null default '{}',
-      primary key (tournament_id, match_id)
+      metadata_json text not null default '{}'
     );
   `);
 }

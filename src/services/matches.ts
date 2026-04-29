@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { generateSingleElimFirstRound } from "../tournaments/formats.js";
 
 export type MatchSource = "casual" | "tournament";
 export type MatchStatus = "pending" | "approved" | "denied";
@@ -68,6 +69,118 @@ export function createMatchService(db: Database.Database) {
     }
   };
 
+  const completeTournamentMatch = (match: Match) => {
+    if (match.tournamentId === null || match.winnerId === null) {
+      return;
+    }
+
+    const tournamentMatch = db
+      .prepare("select * from tournament_matches where match_id = ?")
+      .get(match.id) as any;
+
+    if (!tournamentMatch) {
+      return;
+    }
+
+    db.prepare("update tournament_matches set status = 'completed' where id = ?").run(
+      tournamentMatch.id,
+    );
+
+    const tournament = db
+      .prepare("select * from tournaments where id = ?")
+      .get(match.tournamentId) as any;
+
+    if (!tournament || tournament.format !== "single_elim") {
+      return;
+    }
+
+    const incomplete = db
+      .prepare(
+        `
+        select count(*) as count
+        from tournament_matches
+        where tournament_id = ?
+          and round_number = ?
+          and status != 'completed'
+      `,
+      )
+      .get(match.tournamentId, tournamentMatch.round_number) as { count: number };
+
+    if (incomplete.count > 0) {
+      return;
+    }
+
+    const nextRoundNumber = tournamentMatch.round_number + 1;
+    const nextRound = db
+      .prepare(
+        `
+        select count(*) as count
+        from tournament_matches
+        where tournament_id = ? and round_number = ?
+      `,
+      )
+      .get(match.tournamentId, nextRoundNumber) as { count: number };
+
+    if (nextRound.count > 0) {
+      return;
+    }
+
+    const winners = db
+      .prepare(
+        `
+        select tm.metadata_json, m.winner_id
+        from tournament_matches tm
+        left join matches m on m.id = tm.match_id
+        where tm.tournament_id = ? and tm.round_number = ?
+        order by tm.id asc
+      `,
+      )
+      .all(match.tournamentId, tournamentMatch.round_number)
+      .map((row: any) => row.winner_id ?? JSON.parse(row.metadata_json).winnerId)
+      .filter((winnerId: unknown): winnerId is number => typeof winnerId === "number");
+
+    if (winners.length <= 1) {
+      db.prepare("update tournaments set status = 'completed', ended_at = current_timestamp where id = ?").run(
+        match.tournamentId,
+      );
+      return;
+    }
+
+    const generatedRound = generateSingleElimFirstRound(winners);
+
+    for (const byePlayerId of generatedRound.byes) {
+      db.prepare(
+        `
+        insert into tournament_matches (
+          tournament_id,
+          player_one_id,
+          player_two_id,
+          round_number,
+          status,
+          metadata_json
+        )
+        values (?, ?, null, ?, 'completed', ?)
+      `,
+      ).run(match.tournamentId, byePlayerId, nextRoundNumber, JSON.stringify({ bye: true, winnerId: byePlayerId }));
+    }
+
+    for (const pairing of generatedRound.pairings) {
+      db.prepare(
+        `
+        insert into tournament_matches (
+          tournament_id,
+          player_one_id,
+          player_two_id,
+          round_number,
+          status,
+          metadata_json
+        )
+        values (?, ?, ?, ?, 'open', '{}')
+      `,
+      ).run(match.tournamentId, pairing.playerOneId, pairing.playerTwoId, nextRoundNumber);
+    }
+  };
+
   return {
     report(input: ReportMatchInput): Match {
       if (input.reporterId === input.opponentId) {
@@ -119,6 +232,9 @@ export function createMatchService(db: Database.Database) {
       `,
       ).run(approverId, matchId);
 
+      const approvedMatch = findById(matchId);
+      completeTournamentMatch(approvedMatch);
+
       return findById(matchId);
     },
 
@@ -133,6 +249,16 @@ export function createMatchService(db: Database.Database) {
         where id = ?
       `,
       ).run(denierId, matchId);
+
+      if (match.tournamentId !== null) {
+        db.prepare(
+          `
+          update tournament_matches
+          set status = 'open', match_id = null
+          where match_id = ?
+        `,
+        ).run(matchId);
+      }
 
       return findById(matchId);
     },
