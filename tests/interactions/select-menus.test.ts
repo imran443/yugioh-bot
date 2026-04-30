@@ -5,7 +5,18 @@ import {
   handleSelectMenu,
   type SelectMenuInteractionLike,
 } from "../../src/interactions/select-menus.js";
+import { createCardCatalogService } from "../../src/services/card-catalog.js";
+import { createDraftImageService } from "../../src/services/draft-images.js";
+import { createDraftService } from "../../src/services/drafts.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
+
+type SelectMenuDependencies = Parameters<typeof handleSelectMenu>[1];
+type _DraftSelectMenuDependencyChecks = [
+  SelectMenuDependencies["drafts"],
+  SelectMenuDependencies["cards"],
+  SelectMenuDependencies["draftImages"],
+  SelectMenuDependencies["notifier"],
+];
 
 function setup() {
   const db = new Database(":memory:");
@@ -13,6 +24,12 @@ function setup() {
 
   return {
     tournaments: createTournamentService(db),
+    drafts: createDraftService(db),
+    cards: createCardCatalogService(db),
+    draftImages: createDraftImageService({ cacheDir: "./data/test-card-images" }),
+    notifier: {
+      sendPickPrompt: async () => {},
+    },
   };
 }
 
@@ -20,6 +37,7 @@ function fakeSelectMenu(input: Partial<SelectMenuInteractionLike> = {}) {
   const modals: unknown[] = [];
   const interaction: SelectMenuInteractionLike = {
     customId: "dashboard_create_event_format",
+    channelId: "channel-1",
     guildId: "guild-1",
     user: { id: "user-1", username: "Yugi" },
     values: ["round_robin"],

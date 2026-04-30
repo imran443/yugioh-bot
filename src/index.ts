@@ -1,6 +1,9 @@
 import "dotenv/config";
 import cron from "node-cron";
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ChannelType,
   Client,
   GatewayIntentBits,
@@ -10,8 +13,15 @@ import {
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
 } from "discord.js";
-import { handleCommand, type CommandInteractionLike } from "./commands/handlers.js";
+import {
+  handleCommand,
+  type CommandInteractionLike,
+  type DraftNotifier,
+} from "./commands/handlers.js";
 import { openDatabase } from "./db/connection.js";
+import { createCardCatalogService } from "./services/card-catalog.js";
+import { createDraftImageService } from "./services/draft-images.js";
+import { createDraftService } from "./services/drafts.js";
 import {
   handleAutocomplete,
   type AutocompleteInteractionLike,
@@ -38,10 +48,35 @@ if (!token) {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const db = openDatabase();
+const cardImageCacheDir = process.env.CARD_IMAGE_CACHE_DIR ?? "./data/card-images";
 const deps = {
   matches: createMatchService(db),
   players: createPlayerRepository(db),
   tournaments: createTournamentService(db),
+  drafts: createDraftService(db),
+  cards: createCardCatalogService(db),
+  draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
+  notifier: {
+    async sendPickPrompt(input: Parameters<DraftNotifier["sendPickPrompt"]>[0]) {
+      const channel = await client.channels.fetch(input.channelId);
+
+      if (channel?.type !== ChannelType.GuildText) {
+        return;
+      }
+
+      await channel.send({
+        content: `<@${input.userId}> ${input.draftName} is ready for your next pick.`,
+        components: [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`draft_pick:${input.draftId}`)
+              .setLabel("Pick Card")
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ],
+      });
+    },
+  },
 };
 
 function toCommandInteraction(
@@ -49,6 +84,7 @@ function toCommandInteraction(
 ): CommandInteractionLike {
   return {
     commandName: interaction.commandName,
+    channelId: interaction.channelId,
     guildId: interaction.guildId,
     user: {
       id: interaction.user.id,
@@ -78,11 +114,15 @@ function toCommandInteraction(
 function toButtonInteraction(interaction: ButtonInteraction): ButtonInteractionLike {
   return {
     customId: interaction.customId,
+    channelId: interaction.channelId,
     guildId: interaction.guildId,
     user: {
       id: interaction.user.id,
       username: interaction.user.username,
       displayName: interaction.user.displayName,
+    },
+    showModal: async (modal) => {
+      await interaction.showModal(modal);
     },
     reply: async (message) => {
       await interaction.reply(message);
@@ -93,6 +133,7 @@ function toButtonInteraction(interaction: ButtonInteraction): ButtonInteractionL
 function toSelectMenuInteraction(interaction: StringSelectMenuInteraction): SelectMenuInteractionLike {
   return {
     customId: interaction.customId,
+    channelId: interaction.channelId,
     guildId: interaction.guildId,
     user: {
       id: interaction.user.id,
@@ -109,6 +150,7 @@ function toSelectMenuInteraction(interaction: StringSelectMenuInteraction): Sele
 function toModalInteraction(interaction: ModalSubmitInteraction): ModalInteractionLike {
   return {
     customId: interaction.customId,
+    channelId: interaction.channelId,
     guildId: interaction.guildId,
     user: {
       id: interaction.user.id,

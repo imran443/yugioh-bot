@@ -50,6 +50,12 @@ export function createPlayerRepository(db: Database.Database) {
 
       return row ? mapPlayer(row) : undefined;
     },
+
+    findById(playerId: number): Player | undefined {
+      const row = db.prepare("select * from players where id = ?").get(playerId);
+
+      return row ? mapPlayer(row) : undefined;
+    },
   };
 }
 

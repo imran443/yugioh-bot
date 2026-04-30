@@ -180,3 +180,5 @@ export function createCardCatalogService(
     findByIds,
   };
 }
+
+export type CardCatalogService = ReturnType<typeof createCardCatalogService>;

@@ -3,33 +3,90 @@ import { describe, expect, it } from "vitest";
 import { handleButton, type ButtonInteractionLike } from "../../src/interactions/buttons.js";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
+import { createCardCatalogService } from "../../src/services/card-catalog.js";
+import { createDraftImageService } from "../../src/services/draft-images.js";
+import { createDraftService } from "../../src/services/drafts.js";
 import { createMatchService } from "../../src/services/matches.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
+
+type ButtonDependencies = Parameters<typeof handleButton>[1];
+type _DraftButtonDependencyChecks = [
+  ButtonDependencies["drafts"],
+  ButtonDependencies["cards"],
+  ButtonDependencies["draftImages"],
+  ButtonDependencies["notifier"],
+];
+
+function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
+  const insertCard = app.db.prepare(
+    `
+      insert into card_catalog (
+        ygoprodeck_id,
+        name,
+        type,
+        frame_type,
+        image_url,
+        image_url_small,
+        card_sets_json,
+        cached_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  );
+
+  for (let id = 1; id <= count; id += 1) {
+    insertCard.run(
+      id,
+      `Card ${id}`,
+      "Spellcaster / Normal Monster",
+      "normal",
+      `https://img/full/${id}`,
+      `https://img/small/${id}`,
+      JSON.stringify([{ set_name: "Metal Raiders" }]),
+      "2026-01-01T00:00:00Z",
+    );
+  }
+}
 
 function setup() {
   const db = new Database(":memory:");
   migrate(db);
+  const notifierCalls: Array<{ channelId: string; userId: string; draftId: number; draftName: string }> = [];
 
   return {
+    db,
     matches: createMatchService(db),
     players: createPlayerRepository(db),
     tournaments: createTournamentService(db),
+    drafts: createDraftService(db),
+    cards: createCardCatalogService(db),
+    draftImages: createDraftImageService({ cacheDir: "./data/test-card-images" }),
+    notifier: {
+      sendPickPrompt: async (input: { channelId: string; userId: string; draftId: number; draftName: string }) => {
+        notifierCalls.push(input);
+      },
+    },
+    notifierCalls,
   };
 }
 
 function fakeButton(input: Partial<ButtonInteractionLike> = {}) {
   const replies: Array<{ content: string; ephemeral?: boolean; components?: readonly unknown[] }> = [];
+  const modals: unknown[] = [];
   const interaction: ButtonInteractionLike = {
     customId: "join_tournament:1",
+    channelId: "channel-1",
     guildId: "guild-1",
     user: { id: "user-1", username: "Yugi" },
     reply: (message) => {
       replies.push(message);
     },
+    showModal: (modal) => {
+      modals.push(modal);
+    },
     ...input,
   };
 
-  return { interaction, replies };
+  return { interaction, replies, modals };
 }
 
 describe("button interactions", () => {
@@ -77,6 +134,81 @@ describe("button interactions", () => {
     expect(JSON.stringify(replies[0])).toContain("dashboard_create_event_format");
     expect(JSON.stringify(replies[0])).toContain("round_robin");
     expect(JSON.stringify(replies[0])).toContain("single_elim");
+  });
+
+  it("opens a create draft modal from the dashboard", async () => {
+    const app = setup();
+    const { interaction, modals } = fakeButton({ customId: "draft_create" });
+
+    await handleButton(interaction, app);
+
+    expect(JSON.stringify(modals[0])).toContain("draft_create_modal");
+    expect(JSON.stringify(modals[0])).toContain("name");
+    expect(JSON.stringify(modals[0])).toContain("sets");
+    expect(JSON.stringify(modals[0])).toContain("includes");
+    expect(JSON.stringify(modals[0])).toContain("excludes");
+    expect(JSON.stringify(modals[0])).toContain("Create Draft");
+  });
+
+  it("joins a pending draft from the public signup button and replies ephemerally", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    const { interaction, replies } = fakeButton({
+      customId: `join_draft:${draft.id}`,
+      user: { id: "user-9", username: "Kaiba" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(app.drafts.players(draft.id)).toEqual([
+      { playerId: yugi.id, displayName: "Yugi" },
+      { playerId: expect.any(Number), displayName: "Kaiba" },
+    ]);
+    expect(replies[0]).toEqual({ content: "Joined draft: cube night.", ephemeral: true });
+  });
+
+  it("starts a draft from the dashboard and sends pick prompts to all joined players", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    const { interaction, replies } = fakeButton({
+      customId: `draft_start:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(app.drafts.findById(draft.id)).toMatchObject({
+      status: "active",
+      currentWaveNumber: 1,
+      currentPickStep: 1,
+    });
+    expect(replies[0]).toEqual({ content: "Started draft: cube night.", ephemeral: true });
+    expect(app.notifierCalls).toEqual([
+      { channelId: "channel-1", userId: "user-7", draftId: draft.id, draftName: "cube night" },
+      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
+    ]);
+  });
+
+  it("rejects non-creators starting drafts from the dashboard", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    seedDraftCatalog(app, 8);
+
+    await expect(
+      handleButton(
+        fakeButton({
+          customId: `draft_start:${draft.id}`,
+          user: { id: "user-9", username: "Kaiba" },
+        }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("Only the draft creator can do that");
   });
 
   it("lists open events with join buttons", async () => {

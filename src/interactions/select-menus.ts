@@ -4,11 +4,15 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
-import type { DiscordUserLike } from "../commands/handlers.js";
+import type { DiscordUserLike, DraftNotifier } from "../commands/handlers.js";
+import type { CardCatalogService } from "../services/card-catalog.js";
+import type { DraftImageService } from "../services/draft-images.js";
+import type { DraftService } from "../services/drafts.js";
 import type { TournamentService } from "../services/tournaments.js";
 
 export type SelectMenuInteractionLike = {
   customId: string;
+  channelId: string | null;
   guildId: string | null;
   user: DiscordUserLike;
   values: string[];
@@ -17,6 +21,10 @@ export type SelectMenuInteractionLike = {
 
 type SelectMenuDependencies = {
   tournaments: TournamentService;
+  drafts: DraftService;
+  cards: CardCatalogService;
+  draftImages: DraftImageService;
+  notifier: DraftNotifier;
 };
 
 function requireFormat(value: string): "round_robin" | "single_elim" {
