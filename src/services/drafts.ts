@@ -25,6 +25,20 @@ export type DraftPlayer = {
   displayName: string;
 };
 
+export type DraftCard = {
+  id: number;
+  draftId: number;
+  waveNumber: number;
+  catalogCardId: number;
+  pickedByPlayerId: number | null;
+};
+
+type CatalogRow = {
+  ygoprodeck_id: number;
+  name: string;
+  card_sets_json: string;
+};
+
 function mapDraft(row: any): Draft {
   return {
     id: row.id,
@@ -37,6 +51,20 @@ function mapDraft(row: any): Draft {
     currentWaveNumber: row.current_wave_number,
     currentPickStep: row.current_pick_step,
   };
+}
+
+function mapDraftCard(row: any): DraftCard {
+  return {
+    id: row.id,
+    draftId: row.draft_id,
+    waveNumber: row.wave_number,
+    catalogCardId: row.catalog_card_id,
+    pickedByPlayerId: row.picked_by_player_id,
+  };
+}
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase();
 }
 
 export function createDraftService(db: Database.Database) {
@@ -81,6 +109,101 @@ export function createDraftService(db: Database.Database) {
     },
   );
 
+  const assertPlayerGuild = (playerId: number, guildId: string) => {
+    const row = db.prepare("select 1 from players where id = ? and guild_id = ?").get(playerId, guildId);
+
+    if (!row) {
+      throw new Error("Player must belong to the same guild as the draft");
+    }
+  };
+
+  const catalogCardIdsForDraft = (config: DraftConfig): number[] => {
+    const setNames = new Set((config.setNames ?? []).map((name) => name.trim()));
+    const includeNames = new Set((config.includeNames ?? []).map(normalizeName));
+    const excludeNames = new Set((config.excludeNames ?? []).map(normalizeName));
+    const hasExplicitPool = setNames.size > 0 || includeNames.size > 0;
+
+    return db
+      .prepare("select ygoprodeck_id, name, card_sets_json from card_catalog")
+      .all()
+      .map((row: any) => row as CatalogRow)
+      .filter((row) => {
+        const normalizedName = normalizeName(row.name);
+
+        if (excludeNames.has(normalizedName)) {
+          return false;
+        }
+
+        if (!hasExplicitPool) {
+          return true;
+        }
+
+        if (includeNames.has(normalizedName)) {
+          return true;
+        }
+
+        const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
+        return cardSets.some((cardSet) => setNames.has(cardSet.set_name));
+      })
+      .map((row) => row.ygoprodeck_id);
+  };
+
+  const startDraft = db.transaction((draftId: number) => {
+    const draft = findById(draftId);
+
+    if (draft.status !== "pending") {
+      throw new Error("Draft must be pending to start");
+    }
+
+    const playerIds = db
+      .prepare(
+        `
+          select player_id from draft_players
+          where draft_id = ?
+          order by joined_at asc, rowid asc
+        `,
+      )
+      .all(draftId)
+      .map((row: any) => row.player_id);
+
+    if (playerIds.length < 2) {
+      throw new Error("Draft requires at least two players to start");
+    }
+
+    const catalogCardIds = catalogCardIdsForDraft(draft.config);
+
+    if (catalogCardIds.length === 0) {
+      throw new Error("Draft pool is empty");
+    }
+
+    const insertDraftCard = db.prepare(
+      `
+        insert into draft_cards (draft_id, wave_number, catalog_card_id)
+        values (?, ?, ?)
+      `,
+    );
+
+    for (const _playerId of playerIds) {
+      for (let index = 0; index < 8; index += 1) {
+        const catalogCardId = catalogCardIds[Math.floor(Math.random() * catalogCardIds.length)];
+        insertDraftCard.run(draftId, 1, catalogCardId);
+      }
+    }
+
+    db.prepare(
+      `
+        update drafts
+        set status = 'active',
+            started_at = current_timestamp,
+            current_wave_number = 1,
+            current_pick_step = 1
+        where id = ?
+      `,
+    ).run(draftId);
+
+    return findById(draftId);
+  });
+
   return {
     create(
       guildId: string,
@@ -105,6 +228,8 @@ export function createDraftService(db: Database.Database) {
       if (existingCurrent) {
         throw new Error("An active or pending draft already uses that name");
       }
+
+      assertPlayerGuild(creatorPlayerId, guildId);
 
       return findById(createDraft(guildId, channelId, name, config, createdByUserId, creatorPlayerId));
     },
@@ -153,6 +278,8 @@ export function createDraftService(db: Database.Database) {
         throw new Error("Draft is no longer accepting players");
       }
 
+      assertPlayerGuild(playerId, draft.guildId);
+
       db.prepare(
         `
         insert or ignore into draft_players (draft_id, player_id)
@@ -174,6 +301,29 @@ export function createDraftService(db: Database.Database) {
         )
         .all(draftId)
         .map((row: any) => ({ playerId: row.player_id, displayName: row.display_name }));
+    },
+
+    start(draftId: number): Draft {
+      return startDraft(draftId);
+    },
+
+    currentWaveCards(draftId: number): DraftCard[] {
+      const draft = findById(draftId);
+
+      if (draft.currentWaveNumber === 0) {
+        return [];
+      }
+
+      return db
+        .prepare(
+          `
+            select * from draft_cards
+            where draft_id = ? and wave_number = ?
+            order by id asc
+          `,
+        )
+        .all(draftId, draft.currentWaveNumber)
+        .map(mapDraftCard);
     },
   };
 }

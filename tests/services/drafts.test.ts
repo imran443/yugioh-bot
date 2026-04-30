@@ -56,9 +56,10 @@ describe("draft service", () => {
   it("lists drafts by status within a guild", () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-2", "user-2", "Kaiba");
     const pending = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
     const active = app.drafts.create("guild-1", "channel-2", "side draft", {}, "user-1", yugi.id);
-    app.drafts.create("guild-2", "channel-3", "remote draft", {}, "user-1", yugi.id);
+    app.drafts.create("guild-2", "channel-3", "remote draft", {}, "user-2", kaiba.id);
 
     app.db.prepare("update drafts set status = 'active' where id = ?").run(active.id);
 
@@ -88,6 +89,22 @@ describe("draft service", () => {
     expect(() => app.drafts.join(draft.id, joey.id)).toThrow("Draft is no longer accepting players");
   });
 
+  it("rejects creating or joining a draft with players from another guild", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-2", "user-2", "Kaiba");
+
+    expect(() => app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", kaiba.id)).toThrow(
+      "Player must belong to the same guild as the draft",
+    );
+
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    expect(() => app.drafts.join(draft.id, kaiba.id)).toThrow(
+      "Player must belong to the same guild as the draft",
+    );
+  });
+
   it("rejects duplicate active or pending draft names in the same guild", () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
@@ -98,5 +115,98 @@ describe("draft service", () => {
     expect(() =>
       app.drafts.create("guild-1", "channel-2", "cube night", {}, "user-1", yugi.id),
     ).toThrow("An active or pending draft already uses that name");
+  });
+
+  it("starts a pending draft, opens the first 8-card wave for each player, and exposes current wave cards", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "cube night",
+      {
+        setNames: ["Metal Raiders"],
+        includeNames: ["Blue-Eyes White Dragon"],
+        excludeNames: ["Kuriboh"],
+      },
+      "user-1",
+      yugi.id,
+    );
+
+    app.drafts.join(draft.id, kaiba.id);
+
+    const cards = [
+      { id: 1, name: "Summoned Skull", sets: [{ set_name: "Metal Raiders" }] },
+      { id: 2, name: "Kuriboh", sets: [{ set_name: "Metal Raiders" }] },
+      { id: 3, name: "Blue-Eyes White Dragon", sets: [{ set_name: "Starter Deck: Kaiba" }] },
+      { id: 4, name: "Dark Magician", sets: [{ set_name: "Legend of Blue Eyes White Dragon" }] },
+    ];
+
+    for (const card of cards) {
+      app.db.prepare(
+        `
+          insert into card_catalog (
+            ygoprodeck_id,
+            name,
+            type,
+            frame_type,
+            image_url,
+            image_url_small,
+            card_sets_json,
+            cached_at
+          ) values (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      ).run(
+        card.id,
+        card.name,
+        "Spellcaster / Normal Monster",
+        "normal",
+        `https://img/full/${card.id}`,
+        `https://img/small/${card.id}`,
+        JSON.stringify(card.sets),
+        "2026-01-01T00:00:00Z",
+      );
+    }
+
+    const started = app.drafts.start(draft.id);
+    const waveCards = app.drafts.currentWaveCards(draft.id);
+
+    expect(started).toMatchObject({
+      id: draft.id,
+      status: "active",
+      currentWaveNumber: 1,
+      currentPickStep: 1,
+    });
+    expect(app.db.prepare("select started_at from drafts where id = ?").get(draft.id)).toEqual({
+      started_at: expect.any(String),
+    });
+    expect(waveCards).toHaveLength(16);
+    expect(waveCards.every((card) => card.waveNumber === 1)).toBe(true);
+    expect(waveCards.every((card) => card.pickedByPlayerId === null)).toBe(true);
+    expect(new Set(waveCards.map((card) => card.catalogCardId))).toEqual(new Set([1, 3]));
+    expect(app.db.prepare("select count(*) as count from draft_cards where draft_id = ?").get(draft.id)).toEqual({
+      count: 16,
+    });
+  });
+
+  it("requires a pending draft to start", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    app.db.prepare("update drafts set status = 'active' where id = ?").run(draft.id);
+
+    expect(() => app.drafts.start(draft.id)).toThrow("Draft must be pending to start");
+  });
+
+  it("requires at least two players to start", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    expect(() => app.drafts.start(draft.id)).toThrow("Draft requires at least two players to start");
   });
 });
