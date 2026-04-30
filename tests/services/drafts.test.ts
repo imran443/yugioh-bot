@@ -15,6 +15,47 @@ function setup() {
   };
 }
 
+function seedCatalogCards(db: Database.Database, count: number) {
+  const insertCard = db.prepare(
+    `
+      insert into card_catalog (
+        ygoprodeck_id,
+        name,
+        type,
+        frame_type,
+        image_url,
+        image_url_small,
+        card_sets_json,
+        cached_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  );
+
+  for (let id = 1; id <= count; id += 1) {
+    insertCard.run(
+      id,
+      `Card ${id}`,
+      "Spellcaster / Normal Monster",
+      "normal",
+      `https://img/full/${id}`,
+      `https://img/small/${id}`,
+      JSON.stringify([{ set_name: "Metal Raiders" }]),
+      "2026-01-01T00:00:00Z",
+    );
+  }
+}
+
+function insertDraftCard(db: Database.Database, draftId: number, waveNumber: number, catalogCardId: number) {
+  return Number(
+    db.prepare(
+      `
+        insert into draft_cards (draft_id, wave_number, catalog_card_id)
+        values (?, ?, ?)
+      `,
+    ).run(draftId, waveNumber, catalogCardId).lastInsertRowid,
+  );
+}
+
 describe("draft service", () => {
   it("creates a pending draft, stores config, and auto-joins the creator", () => {
     const app = setup();
@@ -365,5 +406,108 @@ describe("draft service", () => {
     expect(() => app.drafts.pickCard(draft.id, kaiba.id, secondOption.id)).toThrow(
       "Card is not in the current wave",
     );
+  });
+
+  it("opens the next wave after the current wave is fully picked when players still need cards", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 16);
+    app.drafts.start(draft.id);
+
+    app.db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
+    app.db.prepare("update drafts set current_wave_number = 1, current_pick_step = 8 where id = ?").run(draft.id);
+    app.db.prepare("update draft_players set pick_count = 7, finished_at = null where draft_id = ?").run(draft.id);
+
+    const yugiCardId = insertDraftCard(app.db, draft.id, 1, 1);
+    const kaibaCardId = insertDraftCard(app.db, draft.id, 1, 2);
+
+    app.drafts.pickCard(draft.id, yugi.id, yugiCardId);
+    app.drafts.pickCard(draft.id, kaiba.id, kaibaCardId);
+
+    expect(app.drafts.findById(draft.id)).toMatchObject({
+      status: "active",
+      currentWaveNumber: 2,
+      currentPickStep: 1,
+    });
+    expect(app.drafts.currentWaveCards(draft.id)).toHaveLength(16);
+    expect(app.drafts.currentWaveCards(draft.id).every((card) => card.waveNumber === 2)).toBe(true);
+  });
+
+  it("completes the draft as soon as every player reaches 40 picks even if wave cards remain", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 16);
+    app.drafts.start(draft.id);
+
+    app.db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
+    app.db.prepare("update drafts set current_wave_number = 5, current_pick_step = 1 where id = ?").run(draft.id);
+    app.db.prepare("update draft_players set pick_count = 39, finished_at = null where draft_id = ?").run(draft.id);
+
+    const yugiCardId = insertDraftCard(app.db, draft.id, 5, 1);
+    const kaibaCardId = insertDraftCard(app.db, draft.id, 5, 2);
+    insertDraftCard(app.db, draft.id, 5, 3);
+    insertDraftCard(app.db, draft.id, 5, 4);
+
+    app.drafts.pickCard(draft.id, yugi.id, yugiCardId);
+
+    expect(app.drafts.pickOptions(draft.id, yugi.id)).toEqual([]);
+    expect(app.drafts.findById(draft.id)).toMatchObject({
+      status: "active",
+      currentWaveNumber: 5,
+      currentPickStep: 1,
+    });
+    expect(
+      app.db.prepare("select pick_count, finished_at from draft_players where draft_id = ? and player_id = ?").get(draft.id, yugi.id),
+    ).toEqual({
+      pick_count: 40,
+      finished_at: expect.any(String),
+    });
+
+    app.drafts.pickCard(draft.id, kaiba.id, kaibaCardId);
+
+    expect(app.drafts.findById(draft.id)).toMatchObject({
+      status: "completed",
+      currentWaveNumber: 5,
+      currentPickStep: 1,
+    });
+    expect(app.db.prepare("select ended_at from drafts where id = ?").get(draft.id)).toEqual({
+      ended_at: expect.any(String),
+    });
+    expect(
+      app.db.prepare("select pick_count, finished_at from draft_players where draft_id = ? and player_id = ?").get(draft.id, kaiba.id),
+    ).toEqual({
+      pick_count: 40,
+      finished_at: expect.any(String),
+    });
+    expect(
+      app.db.prepare("select count(*) as count from draft_cards where draft_id = ? and wave_number = ? and picked_by_player_id is null").get(draft.id, 5),
+    ).toEqual({ count: 2 });
+  });
+
+  it("rejects pickCard calls from players who already finished at 40 cards", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 16);
+    app.drafts.start(draft.id);
+
+    app.db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
+    app.db.prepare("update drafts set current_wave_number = 5, current_pick_step = 1 where id = ?").run(draft.id);
+    app.db.prepare("update draft_players set pick_count = 40, finished_at = current_timestamp where draft_id = ? and player_id = ?").run(draft.id, yugi.id);
+
+    const yugiCardId = insertDraftCard(app.db, draft.id, 5, 1);
+
+    expect(() => app.drafts.pickCard(draft.id, yugi.id, yugiCardId)).toThrow("Player has already finished drafting");
   });
 });

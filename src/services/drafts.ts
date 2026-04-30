@@ -49,6 +49,12 @@ type CatalogRow = {
   card_sets_json: string;
 };
 
+type DraftPlayerProgressRow = {
+  player_id: number;
+  pick_count: number;
+  finished_at: string | null;
+};
+
 function mapDraft(row: any): Draft {
   return {
     id: row.id,
@@ -147,6 +153,16 @@ export function createDraftService(db: Database.Database) {
     }
   };
 
+  const playerProgress = (draftId: number, playerId: number): { pick_count: number; finished_at: string | null } =>
+    db
+      .prepare(
+        `
+          select pick_count, finished_at from draft_players
+          where draft_id = ? and player_id = ?
+        `,
+      )
+      .get(draftId, playerId) as { pick_count: number; finished_at: string | null };
+
   const assertActiveDraft = (draft: Draft) => {
     if (draft.status !== "active") {
       throw new Error("Draft must be active");
@@ -184,6 +200,41 @@ export function createDraftService(db: Database.Database) {
       .map((row) => row.ygoprodeck_id);
   };
 
+  const activePlayerRows = (draftId: number): DraftPlayerProgressRow[] =>
+    db
+      .prepare(
+        `
+          select player_id, pick_count, finished_at
+          from draft_players
+          where draft_id = ? and finished_at is null
+          order by joined_at asc, rowid asc
+        `,
+      )
+      .all(draftId)
+      .map((row: any) => row as DraftPlayerProgressRow);
+
+  const openWave = (draftId: number, waveNumber: number, playerCount: number, config: DraftConfig) => {
+    const catalogCardIds = catalogCardIdsForDraft(config);
+
+    if (catalogCardIds.length === 0) {
+      throw new Error("Draft pool is empty");
+    }
+
+    const insertDraftCard = db.prepare(
+      `
+        insert into draft_cards (draft_id, wave_number, catalog_card_id)
+        values (?, ?, ?)
+      `,
+    );
+
+    for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
+      for (let cardIndex = 0; cardIndex < 8; cardIndex += 1) {
+        const catalogCardId = catalogCardIds[Math.floor(Math.random() * catalogCardIds.length)];
+        insertDraftCard.run(draftId, waveNumber, catalogCardId);
+      }
+    }
+  };
+
   const startDraft = db.transaction((draftId: number) => {
     const draft = findById(draftId);
 
@@ -206,25 +257,7 @@ export function createDraftService(db: Database.Database) {
       throw new Error("Draft requires at least two players to start");
     }
 
-    const catalogCardIds = catalogCardIdsForDraft(draft.config);
-
-    if (catalogCardIds.length === 0) {
-      throw new Error("Draft pool is empty");
-    }
-
-    const insertDraftCard = db.prepare(
-      `
-        insert into draft_cards (draft_id, wave_number, catalog_card_id)
-        values (?, ?, ?)
-      `,
-    );
-
-    for (const _playerId of playerIds) {
-      for (let index = 0; index < 8; index += 1) {
-        const catalogCardId = catalogCardIds[Math.floor(Math.random() * catalogCardIds.length)];
-        insertDraftCard.run(draftId, 1, catalogCardId);
-      }
-    }
+    openWave(draftId, 1, playerIds.length, draft.config);
 
     db.prepare(
       `
@@ -244,6 +277,12 @@ export function createDraftService(db: Database.Database) {
     const draft = findById(draftId);
     assertActiveDraft(draft);
     assertJoinedPlayer(draftId, playerId);
+
+    const playerRow = playerProgress(draftId, playerId);
+
+    if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
+      throw new Error("Player has already finished drafting");
+    }
 
     const existingPick = db
       .prepare(
@@ -285,9 +324,15 @@ export function createDraftService(db: Database.Database) {
       )
       .run(draftId, playerId, draftCardId, draft.currentWaveNumber, draft.currentPickStep);
 
-    const activePlayerCountRow = db
-      .prepare("select count(*) as count from draft_players where draft_id = ? and finished_at is null")
-      .get(draftId) as { count: number };
+    db.prepare(
+      `
+        update draft_players
+        set pick_count = pick_count + 1,
+            finished_at = case when pick_count + 1 >= 40 then current_timestamp else finished_at end
+        where draft_id = ? and player_id = ?
+      `,
+    ).run(draftId, playerId);
+
     const currentStepPickCountRow = db
       .prepare(
         `
@@ -297,8 +342,52 @@ export function createDraftService(db: Database.Database) {
       )
       .get(draftId, draft.currentWaveNumber, draft.currentPickStep) as { count: number };
 
-    if (currentStepPickCountRow.count === activePlayerCountRow.count) {
-      db.prepare("update drafts set current_pick_step = current_pick_step + 1 where id = ?").run(draftId);
+    const remainingPlayers = activePlayerRows(draftId);
+
+    if (remainingPlayers.length === 0) {
+      db.prepare("update drafts set status = 'completed', ended_at = current_timestamp where id = ?").run(draftId);
+    } else {
+      const pendingCurrentStepPlayerCountRow = db
+        .prepare(
+          `
+            select count(*) as count
+            from draft_players dp
+            where dp.draft_id = ?
+              and dp.finished_at is null
+              and not exists (
+                select 1 from draft_picks picks
+                where picks.draft_id = dp.draft_id
+                  and picks.player_id = dp.player_id
+                  and picks.wave_number = ?
+                  and picks.pick_step = ?
+              )
+          `,
+        )
+        .get(draftId, draft.currentWaveNumber, draft.currentPickStep) as { count: number };
+
+      if (currentStepPickCountRow.count > 0 && pendingCurrentStepPlayerCountRow.count === 0) {
+        const unpickedWaveCardCountRow = db
+          .prepare(
+            `
+              select count(*) as count from draft_cards
+              where draft_id = ? and wave_number = ? and picked_by_player_id is null
+            `,
+          )
+          .get(draftId, draft.currentWaveNumber) as { count: number };
+
+        if (unpickedWaveCardCountRow.count === 0) {
+          openWave(draftId, draft.currentWaveNumber + 1, remainingPlayers.length, draft.config);
+          db.prepare(
+            `
+              update drafts
+              set current_wave_number = ?, current_pick_step = 1
+              where id = ?
+            `,
+          ).run(draft.currentWaveNumber + 1, draftId);
+        } else {
+          db.prepare("update drafts set current_pick_step = current_pick_step + 1 where id = ?").run(draftId);
+        }
+      }
     }
 
     const pickRow = db.prepare("select * from draft_picks where id = ?").get(Number(result.lastInsertRowid));
@@ -431,6 +520,12 @@ export function createDraftService(db: Database.Database) {
       const draft = findById(draftId);
       assertActiveDraft(draft);
       assertJoinedPlayer(draftId, playerId);
+
+      const playerRow = playerProgress(draftId, playerId);
+
+      if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
+        return [];
+      }
 
       return db
         .prepare(
