@@ -32,6 +32,67 @@ export function migrate(db: Database.Database) {
       primary key (tournament_id, player_id)
     );
 
+    create table if not exists card_catalog (
+      ygoprodeck_id integer primary key not null,
+      name text not null,
+      type text not null,
+      frame_type text not null,
+      image_url text not null,
+      image_url_small text not null,
+      card_sets_json text not null,
+      cached_at text not null
+    );
+
+    create table if not exists drafts (
+      id integer primary key autoincrement,
+      guild_id text not null,
+      channel_id text not null,
+      name text not null,
+      status text not null,
+      created_by_user_id text not null,
+      config_json text not null default '{}',
+      current_wave_number integer not null default 0,
+      current_pick_step integer not null default 0,
+      created_at text not null default current_timestamp,
+      started_at text,
+      ended_at text
+    );
+
+    create table if not exists draft_players (
+      draft_id integer not null references drafts(id),
+      player_id integer not null references players(id),
+      pick_count integer not null default 0,
+      finished_at text,
+      joined_at text not null default current_timestamp,
+      primary key (draft_id, player_id)
+    );
+
+    create table if not exists draft_cards (
+      id integer primary key autoincrement,
+      draft_id integer not null references drafts(id),
+      wave_number integer not null,
+      catalog_card_id integer not null references card_catalog(ygoprodeck_id),
+      picked_by_player_id integer,
+      picked_at text,
+      created_at text not null default current_timestamp,
+      foreign key (draft_id, picked_by_player_id) references draft_players(draft_id, player_id),
+      unique (id, draft_id, wave_number)
+    );
+
+    create table if not exists draft_picks (
+      id integer primary key autoincrement,
+      draft_id integer not null references drafts(id),
+      player_id integer not null,
+      draft_card_id integer not null references draft_cards(id),
+      wave_number integer not null,
+      pick_step integer not null,
+      picked_at text not null,
+      foreign key (draft_id, player_id) references draft_players(draft_id, player_id),
+      foreign key (draft_card_id, draft_id, wave_number) references draft_cards(id, draft_id, wave_number),
+      unique (draft_id, player_id, wave_number, pick_step),
+      unique (draft_card_id)
+    );
+
     create table if not exists matches (
       id integer primary key autoincrement,
       guild_id text not null,
@@ -123,5 +184,13 @@ export function migrate(db: Database.Database) {
     create unique index if not exists tournaments_current_name_unique
     on tournaments (guild_id, name)
     where status in ('pending', 'active');
+
+    create unique index if not exists drafts_current_name_unique
+    on drafts (guild_id, name)
+    where status in ('pending', 'active');
+
+    create index if not exists draft_cards_unpicked_by_draft_wave
+    on draft_cards (draft_id, wave_number)
+    where picked_by_player_id is null;
   `);
 }
