@@ -59,7 +59,7 @@ export function createDraftImageService({
       }
 
       const buffer = Buffer.from(await response.arrayBuffer());
-      const normalized = await sharp(buffer).resize(CARD_WIDTH, CARD_HEIGHT).png().toBuffer();
+      const normalized = await sharp(buffer).resize(CARD_WIDTH, CARD_HEIGHT, { fit: "cover", position: "center" }).png().toBuffer();
       await writeFile(cachePath, normalized);
       return normalized;
     }
