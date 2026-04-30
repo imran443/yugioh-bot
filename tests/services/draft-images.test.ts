@@ -18,14 +18,14 @@ describe("draft image service", () => {
       });
 
       const output = await images.renderNumberedGrid([
-        { ygoprodeckId: 1, imageUrl: "https://example.com/1.jpg", imageUrlSmall: null },
-        { ygoprodeckId: 2, imageUrl: "https://example.com/2.jpg", imageUrlSmall: null },
-        { ygoprodeckId: 3, imageUrl: "https://example.com/3.jpg", imageUrlSmall: null },
-        { ygoprodeckId: 4, imageUrl: "https://example.com/4.jpg", imageUrlSmall: null },
-        { ygoprodeckId: 5, imageUrl: "https://example.com/5.jpg", imageUrlSmall: null },
-        { ygoprodeckId: 6, imageUrl: "https://example.com/6.jpg", imageUrlSmall: null },
-        { ygoprodeckId: 7, imageUrl: "https://example.com/7.jpg", imageUrlSmall: null },
-        { ygoprodeckId: 8, imageUrl: "https://example.com/8.jpg", imageUrlSmall: null },
+        { ygoprodeckId: 1, imageUrl: "https://example.com/1.jpg", imageUrlSmall: undefined },
+        { ygoprodeckId: 2, imageUrl: "https://example.com/2.jpg", imageUrlSmall: undefined },
+        { ygoprodeckId: 3, imageUrl: "https://example.com/3.jpg", imageUrlSmall: undefined },
+        { ygoprodeckId: 4, imageUrl: "https://example.com/4.jpg", imageUrlSmall: undefined },
+        { ygoprodeckId: 5, imageUrl: "https://example.com/5.jpg", imageUrlSmall: undefined },
+        { ygoprodeckId: 6, imageUrl: "https://example.com/6.jpg", imageUrlSmall: undefined },
+        { ygoprodeckId: 7, imageUrl: "https://example.com/7.jpg", imageUrlSmall: undefined },
+        { ygoprodeckId: 8, imageUrl: "https://example.com/8.jpg", imageUrlSmall: undefined },
       ]);
 
       expect(output.filename).toBe("draft-picks.png");
@@ -68,7 +68,7 @@ describe("draft image service", () => {
       const cards = Array.from({ length: 8 }, (_, i) => ({
         ygoprodeckId: i + 1,
         imageUrl: `https://example.com/${i + 1}.jpg`,
-        imageUrlSmall: null,
+        imageUrlSmall: undefined,
       }));
 
       await images.renderNumberedGrid(cards);

@@ -71,7 +71,7 @@ function setup() {
 }
 
 function fakeSelectMenu(input: Partial<SelectMenuInteractionLike> = {}) {
-  const replies: Array<{ content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: unknown[] }> = [];
+  const replies: Array<{ content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: readonly unknown[] }> = [];
   const modals: unknown[] = [];
   const interaction: SelectMenuInteractionLike = {
     customId: "dashboard_create_event_format",

@@ -78,7 +78,7 @@ function setup() {
 }
 
 function fakeButton(input: Partial<ButtonInteractionLike> = {}) {
-  const replies: Array<{ content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: unknown[] }> = [];
+  const replies: Array<{ content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: readonly unknown[] }> = [];
   const modals: unknown[] = [];
   const interaction: ButtonInteractionLike = {
     customId: "join_tournament:1",
@@ -562,8 +562,9 @@ describe("button interactions", () => {
 
     await handleButton(interaction, app);
 
-    expect(replies[0].content).toContain("Exported cube night");
-    expect(replies[0].files).toBeDefined();
-    expect(replies[0].files![0].name).toBe("cube-night.ydk");
+    const reply = replies[0] as { content: string; files?: readonly unknown[] };
+    expect(reply.content).toContain("Exported cube night");
+    expect(reply.files).toBeDefined();
+    expect((reply.files![0] as { name: string }).name).toBe("cube-night.ydk");
   });
 });

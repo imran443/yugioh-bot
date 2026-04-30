@@ -597,6 +597,38 @@ export function createDraftService(db: Database.Database) {
     exportYdk(draftId: number, playerId: number): string {
       return exportYdk(draftId, playerId);
     },
+
+    autocomplete(input: {
+      guildId: string;
+      query: string;
+      statuses?: DraftStatus[];
+      createdByUserId?: string;
+    }): Draft[] {
+      const conditions = ["guild_id = ?", "lower(name) like lower(?)"];
+      const params: Array<string | number> = [input.guildId, `%${input.query}%`];
+
+      if (input.statuses && input.statuses.length > 0) {
+        conditions.push(`status in (${input.statuses.map(() => "?").join(", ")})`);
+        params.push(...input.statuses);
+      }
+
+      if (input.createdByUserId) {
+        conditions.push("created_by_user_id = ?");
+        params.push(input.createdByUserId);
+      }
+
+      return db
+        .prepare(
+          `
+            select * from drafts
+            where ${conditions.join(" and ")}
+            order by created_at desc, id desc
+            limit 25
+          `,
+        )
+        .all(...params)
+        .map(mapDraft);
+    },
   };
 }
 

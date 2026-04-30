@@ -77,7 +77,7 @@ function fakeInteraction(input: {
   users?: Record<string, FakeUser>;
   strings?: Record<string, string>;
 }) {
-  const replies: Array<string | { content: string; ephemeral?: boolean; components?: readonly unknown[] }> = [];
+  const replies: Array<string | { content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: readonly unknown[] }> = [];
   const interaction: CommandInteractionLike = {
     commandName: input.commandName,
     channelId: "channel-1",
@@ -257,9 +257,10 @@ describe("command handlers", () => {
 
     await handleCommand(interaction, app);
 
-    expect(replies[0].content).toContain("Exported cube night");
-    expect(replies[0].files).toBeDefined();
-    expect(replies[0].files![0].name).toBe("cube-night.ydk");
+    const reply = replies[0] as { content: string; files?: readonly unknown[] };
+    expect(reply.content).toContain("Exported cube night");
+    expect(reply.files).toBeDefined();
+    expect((reply.files![0] as { name: string }).name).toBe("cube-night.ydk");
   });
 
   it("/draft export rejects incomplete decks", async () => {

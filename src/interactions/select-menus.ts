@@ -6,10 +6,20 @@ import {
   type InteractionReplyOptions,
 } from "discord.js";
 import type { DiscordUserLike, DraftNotifier } from "../commands/handlers.js";
+import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
 import type { DraftService } from "../services/drafts.js";
 import type { TournamentService } from "../services/tournaments.js";
+
+type SelectMenuDependencies = {
+  players: PlayerRepository;
+  tournaments: TournamentService;
+  drafts: DraftService;
+  cards: CardCatalogService;
+  draftImages: DraftImageService;
+  notifier: DraftNotifier;
+};
 
 export type SelectMenuInteractionLike = {
   customId: string;
@@ -21,14 +31,6 @@ export type SelectMenuInteractionLike = {
   reply(
     message: { content: string; ephemeral: boolean; components?: InteractionReplyOptions["components"]; files?: InteractionReplyOptions["files"] },
   ): Promise<void> | void;
-};
-
-type SelectMenuDependencies = {
-  tournaments: TournamentService;
-  drafts: DraftService;
-  cards: CardCatalogService;
-  draftImages: DraftImageService;
-  notifier: DraftNotifier;
 };
 
 function requireGuildId(interaction: SelectMenuInteractionLike): string {

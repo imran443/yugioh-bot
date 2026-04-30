@@ -22,6 +22,7 @@ export type CommandReplyLike = {
   content: string;
   ephemeral?: boolean;
   components?: InteractionReplyOptions["components"];
+  files?: InteractionReplyOptions["files"];
 };
 
 export type CommandInteractionLike = {
