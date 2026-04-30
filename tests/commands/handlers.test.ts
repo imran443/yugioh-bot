@@ -88,6 +88,7 @@ describe("command handlers", () => {
       content: expect.stringContaining("Tournament Dashboard"),
       ephemeral: true,
     });
+    expect(JSON.stringify(replies[0])).toContain("dashboard_create_event");
     expect(JSON.stringify(replies[0])).toContain("dashboard_open_events");
     expect(JSON.stringify(replies[0])).toContain("dashboard_report_match");
     expect(JSON.stringify(replies[0])).toContain("dashboard_pending_approvals");
@@ -702,6 +703,28 @@ describe("command handlers", () => {
     expect(app.tournaments.findByName("guild-1", "locals")?.status).toBe("cancelled");
   });
 
+  it("/event create posts a public join button", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "create",
+      user: yugi,
+      strings: { name: "locals", format: "round_robin" },
+    });
+
+    await handleCommand(interaction, app);
+
+    const tournament = app.tournaments.findByName("guild-1", "locals")!;
+    expect(replies[0]).toMatchObject({
+      content: "Signups are open for locals (round_robin). Click Join Tournament to enter.",
+    });
+    expect(replies[0]).not.toHaveProperty("ephemeral", true);
+    expect(JSON.parse(JSON.stringify(replies[0])).components[0].components[0].custom_id).toBe(
+      `join_tournament:${tournament.id}`,
+    );
+  });
+
   it("/event create seeds unique provided players", async () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };
@@ -719,7 +742,10 @@ describe("command handlers", () => {
 
     const tournament = app.tournaments.findByName("guild-1", "locals")!;
     expect(app.tournaments.participants(tournament.id)).toHaveLength(3);
-    expect(replies[0]).toBe("Event created: locals (round_robin). Seeded 3 participant(s).");
+    expect(replies[0]).toMatchObject({
+      content:
+        "Signups are open for locals (round_robin). Seeded 3 participant(s). Click Join Tournament to enter.",
+    });
   });
 
   it("/event create without seeded players still works", async () => {
@@ -736,7 +762,9 @@ describe("command handlers", () => {
 
     const tournament = app.tournaments.findByName("guild-1", "locals")!;
     expect(app.tournaments.participants(tournament.id)).toHaveLength(0);
-    expect(replies[0]).toBe("Event created: locals (round_robin).");
+    expect(replies[0]).toMatchObject({
+      content: "Signups are open for locals (round_robin). Click Join Tournament to enter.",
+    });
   });
 
   it("prevents non-creators from starting or cancelling events", async () => {

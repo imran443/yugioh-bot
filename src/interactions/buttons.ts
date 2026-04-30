@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   type InteractionReplyOptions,
 } from "discord.js";
 import { formatStats } from "../formatters/stats.js";
@@ -291,6 +292,25 @@ export async function handleButton(
 
   if (joinMatch) {
     await handleJoinTournament(interaction, deps, Number(joinMatch[1]));
+    return;
+  }
+
+  if (interaction.customId === "dashboard_create_event") {
+    await interaction.reply({
+      content: "Choose a tournament format:",
+      ephemeral: true,
+      components: [
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId("dashboard_create_event_format")
+            .setPlaceholder("Select tournament format")
+            .addOptions(
+              { label: "Round Robin", value: "round_robin" },
+              { label: "Single Elimination", value: "single_elim" },
+            ),
+        ),
+      ],
+    });
     return;
   }
 

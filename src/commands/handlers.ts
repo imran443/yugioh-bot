@@ -15,7 +15,7 @@ export type DiscordRoleLike = {
   name: string;
 };
 
-type CommandReplyLike = {
+export type CommandReplyLike = {
   content: string;
   ephemeral?: boolean;
   components?: InteractionReplyOptions["components"];
@@ -58,6 +58,10 @@ function tournamentDashboardReply(): CommandReplyLike {
     ephemeral: true,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("dashboard_create_event")
+          .setLabel("Create Event")
+          .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId("dashboard_open_events")
           .setLabel("Open Events")
@@ -215,6 +219,31 @@ function formatTournamentParticipants(
   ].join("\n");
 }
 
+export function tournamentSignupPostReply(input: {
+  id: number;
+  name: string;
+  format: string;
+  prefix?: string;
+  seededCount?: number;
+}): CommandReplyLike {
+  const seededText = input.seededCount
+    ? ` Seeded ${input.seededCount} participant(s).`
+    : "";
+  const prefix = input.prefix ?? "";
+
+  return {
+    content: `${prefix}Signups are open for ${input.name} (${input.format}).${seededText} Click Join Tournament to enter.`,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`join_tournament:${input.id}`)
+          .setLabel("Join Tournament")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    ],
+  };
+}
+
 async function handleDuel(
   interaction: CommandInteractionLike,
   deps: CommandDependencies,
@@ -352,9 +381,8 @@ async function handleEvent(
       }
 
       const seededCount = seededUserIds.size;
-      const seededText = seededCount > 0 ? ` Seeded ${seededCount} participant(s).` : "";
 
-      await interaction.reply(`Event created: ${tournament.name} (${tournament.format}).${seededText}`);
+      await interaction.reply(tournamentSignupPostReply({ ...tournament, seededCount }));
       return;
     }
     case "join": {
@@ -383,17 +411,7 @@ async function handleEvent(
 
       requireEventCreator(tournament, interaction.user.id);
       assertPendingTournament(tournament);
-      await interaction.reply({
-        content: `${roleMention}Signups are open for ${tournament.name} (${tournament.format}). Click Join Tournament to enter.`,
-        components: [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`join_tournament:${tournament.id}`)
-              .setLabel("Join Tournament")
-              .setStyle(ButtonStyle.Primary),
-          ),
-        ],
-      });
+      await interaction.reply(tournamentSignupPostReply({ ...tournament, prefix: roleMention }));
       return;
     }
     case "start": {

@@ -7,6 +7,8 @@ import {
   type AutocompleteInteraction,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
+  type ModalSubmitInteraction,
+  type StringSelectMenuInteraction,
 } from "discord.js";
 import { handleCommand, type CommandInteractionLike } from "./commands/handlers.js";
 import { openDatabase } from "./db/connection.js";
@@ -15,6 +17,11 @@ import {
   type AutocompleteInteractionLike,
 } from "./interactions/autocomplete.js";
 import { handleButton, type ButtonInteractionLike } from "./interactions/buttons.js";
+import { handleModal, type ModalInteractionLike } from "./interactions/modals.js";
+import {
+  handleSelectMenu,
+  type SelectMenuInteractionLike,
+} from "./interactions/select-menus.js";
 import { createPlayerRepository } from "./repositories/players.js";
 import {
   formatTournamentReminder,
@@ -76,6 +83,40 @@ function toButtonInteraction(interaction: ButtonInteraction): ButtonInteractionL
       id: interaction.user.id,
       username: interaction.user.username,
       displayName: interaction.user.displayName,
+    },
+    reply: async (message) => {
+      await interaction.reply(message);
+    },
+  };
+}
+
+function toSelectMenuInteraction(interaction: StringSelectMenuInteraction): SelectMenuInteractionLike {
+  return {
+    customId: interaction.customId,
+    guildId: interaction.guildId,
+    user: {
+      id: interaction.user.id,
+      username: interaction.user.username,
+      displayName: interaction.user.displayName,
+    },
+    values: interaction.values,
+    showModal: async (modal) => {
+      await interaction.showModal(modal);
+    },
+  };
+}
+
+function toModalInteraction(interaction: ModalSubmitInteraction): ModalInteractionLike {
+  return {
+    customId: interaction.customId,
+    guildId: interaction.guildId,
+    user: {
+      id: interaction.user.id,
+      username: interaction.user.username,
+      displayName: interaction.user.displayName,
+    },
+    fields: {
+      getTextInputValue: (name) => interaction.fields.getTextInputValue(name),
     },
     reply: async (message) => {
       await interaction.reply(message);
@@ -145,6 +186,16 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isButton()) {
       await handleButton(toButtonInteraction(interaction), deps);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      await handleSelectMenu(toSelectMenuInteraction(interaction), deps);
+      return;
+    }
+
+    if (interaction.isModalSubmit()) {
+      await handleModal(toModalInteraction(interaction), deps);
       return;
     }
 

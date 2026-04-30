@@ -64,6 +64,21 @@ describe("button interactions", () => {
     });
   });
 
+  it("opens a create event modal from the dashboard", async () => {
+    const app = setup();
+    const { interaction, replies } = fakeButton({ customId: "dashboard_create_event" });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: "Choose a tournament format:",
+      ephemeral: true,
+    });
+    expect(JSON.stringify(replies[0])).toContain("dashboard_create_event_format");
+    expect(JSON.stringify(replies[0])).toContain("round_robin");
+    expect(JSON.stringify(replies[0])).toContain("single_elim");
+  });
+
   it("lists open events with join buttons", async () => {
     const app = setup();
     const locals = app.tournaments.create("guild-1", "locals", "round_robin", "creator-1");
