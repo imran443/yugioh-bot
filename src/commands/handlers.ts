@@ -1,6 +1,9 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type InteractionReplyOptions } from "discord.js";
 import { formatLeaderboard, formatStats } from "../formatters/stats.js";
 import type { PlayerRepository } from "../repositories/players.js";
+import type { CardCatalogService } from "../services/card-catalog.js";
+import type { DraftImageService } from "../services/draft-images.js";
+import type { DraftService } from "../services/drafts.js";
 import type { MatchService } from "../services/matches.js";
 import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
 
@@ -19,10 +22,12 @@ export type CommandReplyLike = {
   content: string;
   ephemeral?: boolean;
   components?: InteractionReplyOptions["components"];
+  files?: InteractionReplyOptions["files"];
 };
 
 export type CommandInteractionLike = {
   commandName: string;
+  channelId: string | null;
   guildId: string | null;
   user: DiscordUserLike;
   options: {
@@ -34,10 +39,23 @@ export type CommandInteractionLike = {
   reply(message: string | CommandReplyLike): Promise<void> | void;
 };
 
+export type DraftNotifier = {
+  sendPickPrompt(input: {
+    channelId: string;
+    userId: string;
+    draftId: number;
+    draftName: string;
+  }): Promise<void>;
+};
+
 type CommandDependencies = {
   players: PlayerRepository;
   matches: MatchService;
   tournaments: TournamentService;
+  drafts: DraftService;
+  cards: CardCatalogService;
+  draftImages: DraftImageService;
+  notifier: DraftNotifier;
 };
 
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
@@ -91,6 +109,32 @@ function tournamentDashboardReply(): CommandReplyLike {
         new ButtonBuilder()
           .setCustomId("dashboard_help")
           .setLabel("Help")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+}
+
+function draftDashboardReply(): CommandReplyLike {
+  return {
+    content: [
+      "Draft Dashboard",
+      "Use these buttons to create a draft, browse open drafts, and export completed decks.",
+    ].join("\n"),
+    ephemeral: true,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("draft_create")
+          .setLabel("Create Draft")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId("draft_open")
+          .setLabel("Open Drafts")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("draft_export")
+          .setLabel("Export Deck")
           .setStyle(ButtonStyle.Secondary),
       ),
     ],
@@ -151,9 +195,25 @@ function requireTournament(deps: CommandDependencies, guildId: string, name: str
   return tournament;
 }
 
+function requireDraft(deps: CommandDependencies, guildId: string, name: string) {
+  const draft = deps.drafts.findByName(guildId, name);
+
+  if (!draft) {
+    throw new Error(`Draft not found: ${name}`);
+  }
+
+  return draft;
+}
+
 function requireEventCreator(tournament: { createdByUserId: string }, userId: string): void {
   if (tournament.createdByUserId !== userId) {
     throw new Error("Only the event creator can do that");
+  }
+}
+
+function requireDraftCreator(draft: { createdByUserId: string }, userId: string): void {
+  if (draft.createdByUserId !== userId) {
+    throw new Error("Only the draft creator can do that");
   }
 }
 
@@ -238,6 +298,20 @@ export function tournamentSignupPostReply(input: {
         new ButtonBuilder()
           .setCustomId(`join_tournament:${input.id}`)
           .setLabel("Join Tournament")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    ],
+  };
+}
+
+export function draftSignupPostReply(input: { id: number; name: string }): CommandReplyLike {
+  return {
+    content: `Signups are open for ${input.name}. Click Join Draft to enter.`,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`join_draft:${input.id}`)
+          .setLabel("Join Draft")
           .setStyle(ButtonStyle.Primary),
       ),
     ],
@@ -463,6 +537,67 @@ async function handleEvent(
   }
 }
 
+async function handleDraft(
+  interaction: CommandInteractionLike,
+  deps: CommandDependencies,
+): Promise<void> {
+  const guildId = requireGuildId(interaction);
+
+  switch (interaction.options.getSubcommand()) {
+    case "dashboard":
+      await interaction.reply(draftDashboardReply());
+      return;
+    case "join": {
+      const name = requireStringOption(interaction, "name");
+      const draft = requireDraft(deps, guildId, name);
+      const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+      deps.drafts.join(draft.id, player.id);
+      await interaction.reply(`Joined draft: ${draft.name}.`);
+      return;
+    }
+    case "start": {
+      const name = requireStringOption(interaction, "name");
+      const draft = requireDraft(deps, guildId, name);
+      requireDraftCreator(draft, interaction.user.id);
+      const startedDraft = deps.drafts.start(draft.id);
+
+      for (const draftPlayer of deps.drafts.players(startedDraft.id)) {
+        const matchingPlayer = deps.players.findById(draftPlayer.playerId);
+
+        if (!matchingPlayer || matchingPlayer.guildId !== guildId) {
+          continue;
+        }
+
+        await deps.notifier.sendPickPrompt({
+          channelId: startedDraft.channelId,
+          userId: matchingPlayer.discordUserId,
+          draftId: startedDraft.id,
+          draftName: startedDraft.name,
+        });
+      }
+
+      await interaction.reply(`Started draft: ${startedDraft.name}.`);
+      return;
+    }
+    case "export": {
+      const name = requireStringOption(interaction, "name");
+      const draft = requireDraft(deps, guildId, name);
+      const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+      const ydk = deps.drafts.exportYdk(draft.id, player.id);
+      const safeName = draft.name.replace(/[^a-zA-Z0-9]/g, "-");
+
+      await interaction.reply({
+        content: `Exported ${draft.name}.`,
+        ephemeral: true,
+        files: [{ attachment: Buffer.from(ydk, "utf8"), name: `${safeName}.ydk` }],
+      });
+      return;
+    }
+    default:
+      throw new Error(`Unsupported draft subcommand: ${interaction.options.getSubcommand()}`);
+  }
+}
+
 export async function handleCommand(
   interaction: CommandInteractionLike,
   deps: CommandDependencies,
@@ -485,6 +620,9 @@ export async function handleCommand(
       return;
     case "event":
       await handleEvent(interaction, deps);
+      return;
+    case "draft":
+      await handleDraft(interaction, deps);
       return;
     case "help":
       await handleHelp(interaction);

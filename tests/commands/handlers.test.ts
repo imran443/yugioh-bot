@@ -3,11 +3,52 @@ import { describe, expect, it } from "vitest";
 import { handleCommand, type CommandInteractionLike } from "../../src/commands/handlers.js";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
+import { createCardCatalogService } from "../../src/services/card-catalog.js";
+import { createDraftImageService } from "../../src/services/draft-images.js";
+import { createDraftService } from "../../src/services/drafts.js";
 import { createMatchService } from "../../src/services/matches.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
 
+type CommandDependencies = Parameters<typeof handleCommand>[1];
+type _DraftCommandDependencyChecks = [
+  CommandDependencies["drafts"],
+  CommandDependencies["cards"],
+  CommandDependencies["draftImages"],
+  CommandDependencies["notifier"],
+];
+
 type FakeUser = { id: string; username: string };
 type FakeRole = { id: string; name: string };
+
+function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
+  const insertCard = app.db.prepare(
+    `
+      insert into card_catalog (
+        ygoprodeck_id,
+        name,
+        type,
+        frame_type,
+        image_url,
+        image_url_small,
+        card_sets_json,
+        cached_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  );
+
+  for (let id = 1; id <= count; id += 1) {
+    insertCard.run(
+      id,
+      `Card ${id}`,
+      "Spellcaster / Normal Monster",
+      "normal",
+      `https://img/full/${id}`,
+      `https://img/small/${id}`,
+      JSON.stringify([{ set_name: "Metal Raiders" }]),
+      "2026-01-01T00:00:00Z",
+    );
+  }
+}
 
 function setup() {
   const db = new Database(":memory:");
@@ -15,8 +56,17 @@ function setup() {
   const players = createPlayerRepository(db);
   const matches = createMatchService(db);
   const tournaments = createTournamentService(db);
+  const drafts = createDraftService(db);
+  const cards = createCardCatalogService(db);
+  const draftImages = createDraftImageService({ cacheDir: "./data/test-card-images" });
+  const notifierCalls: Array<{ channelId: string; userId: string; draftId: number; draftName: string }> = [];
+  const notifier = {
+    sendPickPrompt: async (input: { channelId: string; userId: string; draftId: number; draftName: string }) => {
+      notifierCalls.push(input);
+    },
+  };
 
-  return { matches, players, tournaments };
+  return { db, matches, players, tournaments, drafts, cards, draftImages, notifier, notifierCalls };
 }
 
 function fakeInteraction(input: {
@@ -27,9 +77,10 @@ function fakeInteraction(input: {
   users?: Record<string, FakeUser>;
   strings?: Record<string, string>;
 }) {
-  const replies: Array<string | { content: string; ephemeral?: boolean; components?: readonly unknown[] }> = [];
+  const replies: Array<string | { content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: readonly unknown[] }> = [];
   const interaction: CommandInteractionLike = {
     commandName: input.commandName,
+    channelId: "channel-1",
     guildId: "guild-1",
     user: input.user,
     options: {
@@ -92,6 +143,146 @@ describe("command handlers", () => {
     expect(JSON.stringify(replies[0])).toContain("dashboard_open_events");
     expect(JSON.stringify(replies[0])).toContain("dashboard_report_match");
     expect(JSON.stringify(replies[0])).toContain("dashboard_pending_approvals");
+  });
+
+  it("/draft dashboard replies privately with draft buttons", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "dashboard",
+      user: yugi,
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Draft Dashboard"),
+      ephemeral: true,
+    });
+    expect(JSON.stringify(replies[0])).toContain("draft_create");
+    expect(JSON.stringify(replies[0])).toContain("draft_open");
+    expect(JSON.stringify(replies[0])).toContain("draft_export");
+  });
+
+  it("/draft join joins a pending draft by name", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "join",
+      user: { id: "user-9", username: "Kaiba" },
+      strings: { name: "cube night" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(app.drafts.players(draft.id)).toEqual([
+      { playerId: yugi.id, displayName: "Yugi" },
+      { playerId: expect.any(Number), displayName: "Kaiba" },
+    ]);
+    expect(replies[0]).toBe("Joined draft: cube night.");
+  });
+
+  it("/draft start requires the creator and sends pick prompts to all joined players", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "start",
+      user: { id: "user-7", username: "Yugi" },
+      strings: { name: "cube night" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(app.drafts.findById(draft.id)).toMatchObject({
+      status: "active",
+      currentWaveNumber: 1,
+      currentPickStep: 1,
+    });
+    expect(replies[0]).toBe("Started draft: cube night.");
+    expect(app.notifierCalls).toEqual([
+      { channelId: "channel-1", userId: "user-7", draftId: draft.id, draftName: "cube night" },
+      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
+    ]);
+  });
+
+  it("/draft start rejects non-creators", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    app.players.upsert("guild-1", "user-9", "Kaiba");
+    app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+
+    await expect(
+      handleCommand(
+        fakeInteraction({
+          commandName: "draft",
+          subcommand: "start",
+          user: { id: "user-9", username: "Kaiba" },
+          strings: { name: "cube night" },
+        }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("Only the draft creator can do that");
+  });
+
+  it("/draft export returns a ydk attachment when deck is complete", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+
+    for (let step = 1; step <= 40; step += 1) {
+      const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
+      const kaibaOptions = app.drafts.pickOptions(draft.id, kaiba.id);
+      if (yugiOptions.length > 0) app.drafts.pickCard(draft.id, yugi.id, yugiOptions[0].id);
+      if (kaibaOptions.length > 0) app.drafts.pickCard(draft.id, kaiba.id, kaibaOptions[1]?.id ?? kaibaOptions[0].id);
+    }
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "export",
+      user: { id: "user-7", username: "Yugi" },
+      strings: { name: "cube night" },
+    });
+
+    await handleCommand(interaction, app);
+
+    const reply = replies[0] as { content: string; files?: readonly unknown[] };
+    expect(reply.content).toContain("Exported cube night");
+    expect(reply.files).toBeDefined();
+    expect((reply.files![0] as { name: string }).name).toBe("cube-night.ydk");
+  });
+
+  it("/draft export rejects incomplete decks", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+
+    await expect(
+      handleCommand(
+        fakeInteraction({
+          commandName: "draft",
+          subcommand: "export",
+          user: { id: "user-7", username: "Yugi" },
+          strings: { name: "cube night" },
+        }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("Deck is not complete yet");
   });
 
   it("/duel creates a pending match and /approve finalizes it", async () => {

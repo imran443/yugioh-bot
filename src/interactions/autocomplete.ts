@@ -1,5 +1,6 @@
 import type { DiscordUserLike } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
+import type { DraftService } from "../services/drafts.js";
 import type { TournamentService } from "../services/tournaments.js";
 
 type AutocompleteChoice = {
@@ -21,6 +22,7 @@ export type AutocompleteInteractionLike = {
 type AutocompleteDependencies = {
   players: PlayerRepository;
   tournaments: TournamentService;
+  drafts: DraftService;
 };
 
 const maxAutocompleteChoiceLength = 100;
@@ -30,6 +32,16 @@ function tournamentChoices(
 ): AutocompleteChoice[] {
   return tournaments.map((tournament) => {
     const name = tournament.name.slice(0, maxAutocompleteChoiceLength);
+
+    return { name, value: name };
+  });
+}
+
+function draftChoices(
+  drafts: ReturnType<DraftService["autocomplete"]>,
+): AutocompleteChoice[] {
+  return drafts.map((draft) => {
+    const name = draft.name.slice(0, maxAutocompleteChoiceLength);
 
     return { name, value: name };
   });
@@ -63,6 +75,53 @@ export async function handleAutocomplete(
       ),
     );
     return;
+  }
+
+  if (interaction.commandName === "draft") {
+    if (focused.name !== "name") {
+      await interaction.respond([]);
+      return;
+    }
+
+    switch (interaction.options.getSubcommand()) {
+      case "join":
+        await interaction.respond(
+          draftChoices(
+            deps.drafts.autocomplete({
+              guildId: interaction.guildId,
+              query,
+              statuses: ["pending"],
+            }),
+          ),
+        );
+        return;
+      case "start":
+        await interaction.respond(
+          draftChoices(
+            deps.drafts.autocomplete({
+              guildId: interaction.guildId,
+              query,
+              statuses: ["pending"],
+              createdByUserId: interaction.user.id,
+            }),
+          ),
+        );
+        return;
+      case "export":
+        await interaction.respond(
+          draftChoices(
+            deps.drafts.autocomplete({
+              guildId: interaction.guildId,
+              query,
+              statuses: ["completed"],
+            }),
+          ),
+        );
+        return;
+      default:
+        await interaction.respond([]);
+        return;
+    }
   }
 
   if (interaction.commandName !== "event") {

@@ -17,7 +17,8 @@
     "better-sqlite3": "latest",
     "discord.js": "latest",
     "dotenv": "latest",
-    "node-cron": "latest"
+    "node-cron": "latest",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "latest",

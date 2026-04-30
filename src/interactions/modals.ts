@@ -1,9 +1,14 @@
 import type { CommandReplyLike, DiscordUserLike } from "../commands/handlers.js";
-import { tournamentSignupPostReply } from "../commands/handlers.js";
+import { draftSignupPostReply, tournamentSignupPostReply } from "../commands/handlers.js";
+import type { PlayerRepository } from "../repositories/players.js";
+import type { CardCatalogService } from "../services/card-catalog.js";
+import type { DraftImageService } from "../services/draft-images.js";
+import type { DraftService } from "../services/drafts.js";
 import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
 
 export type ModalInteractionLike = {
   customId: string;
+  channelId: string | null;
   guildId: string | null;
   user: DiscordUserLike;
   fields: { getTextInputValue(name: string): string };
@@ -12,6 +17,10 @@ export type ModalInteractionLike = {
 
 type ModalDependencies = {
   tournaments: TournamentService;
+  drafts: DraftService;
+  cards: CardCatalogService;
+  draftImages: DraftImageService;
+  players: PlayerRepository;
 };
 
 function requireGuildId(interaction: ModalInteractionLike): string {
@@ -32,10 +41,53 @@ function parseFormat(customId: string): TournamentFormat | undefined {
   return undefined;
 }
 
+function requireChannelId(interaction: ModalInteractionLike): string {
+  if (!interaction.channelId) {
+    throw new Error("This interaction must come from a channel");
+  }
+
+  return interaction.channelId;
+}
+
+function parseList(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 export async function handleModal(
   interaction: ModalInteractionLike,
   deps: ModalDependencies,
 ): Promise<void> {
+  if (interaction.customId === "draft_create_modal") {
+    const guildId = requireGuildId(interaction);
+    const channelId = requireChannelId(interaction);
+    const name = interaction.fields.getTextInputValue("name").trim();
+
+    if (!name) {
+      await interaction.reply({ content: "Draft name is required.", ephemeral: true });
+      return;
+    }
+
+    const creator = deps.players.upsert(guildId, interaction.user.id, interaction.user.displayName ?? interaction.user.username);
+    const draft = deps.drafts.create(
+      guildId,
+      channelId,
+      name,
+      {
+        setNames: parseList(interaction.fields.getTextInputValue("sets")),
+        includeNames: parseList(interaction.fields.getTextInputValue("includes")),
+        excludeNames: parseList(interaction.fields.getTextInputValue("excludes")),
+      },
+      interaction.user.id,
+      creator.id,
+    );
+
+    await interaction.reply(draftSignupPostReply(draft));
+    return;
+  }
+
   if (!interaction.customId.startsWith("dashboard_create_event:")) {
     throw new Error("Unsupported modal interaction");
   }

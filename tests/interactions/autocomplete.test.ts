@@ -6,6 +6,7 @@ import {
 } from "../../src/interactions/autocomplete.js";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
+import { createDraftService } from "../../src/services/drafts.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
 
 function setup() {
@@ -16,6 +17,7 @@ function setup() {
     db,
     players: createPlayerRepository(db),
     tournaments: createTournamentService(db),
+    drafts: createDraftService(db),
   };
 }
 
@@ -269,5 +271,53 @@ describe("autocomplete interactions", () => {
     await handleAutocomplete(interaction, app);
 
     expect(responses[0]).toEqual([]);
+  });
+
+  it("suggests pending drafts for join", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "Retro", {}, "user-1", yugi.id);
+    app.drafts.create("guild-1", "channel-1", "Modern", {}, "user-1", yugi.id);
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      options: { getSubcommand: () => "join", getFocused: () => ({ name: "name", value: "re" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
+  });
+
+  it("suggests pending drafts created by the user for start", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "Retro", {}, "user-1", yugi.id);
+    app.drafts.create("guild-1", "channel-1", "Modern", {}, "user-2", yugi.id);
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      user: { id: "user-1", username: "Yugi" },
+      options: { getSubcommand: () => "start", getFocused: () => ({ name: "name", value: "re" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
+  });
+
+  it("suggests completed drafts for export", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "Retro", {}, "user-1", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    app.db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      options: { getSubcommand: () => "export", getFocused: () => ({ name: "name", value: "re" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
   });
 });

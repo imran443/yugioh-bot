@@ -3,7 +3,18 @@ import { describe, expect, it } from "vitest";
 import type { CommandReplyLike } from "../../src/commands/handlers.js";
 import { migrate } from "../../src/db/schema.js";
 import { handleModal, type ModalInteractionLike } from "../../src/interactions/modals.js";
+import { createCardCatalogService } from "../../src/services/card-catalog.js";
+import { createDraftImageService } from "../../src/services/draft-images.js";
+import { createDraftService } from "../../src/services/drafts.js";
+import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
+
+type ModalDependencies = Parameters<typeof handleModal>[1];
+type _DraftModalDependencyChecks = [
+  ModalDependencies["drafts"],
+  ModalDependencies["cards"],
+  ModalDependencies["draftImages"],
+];
 
 function setup() {
   const db = new Database(":memory:");
@@ -11,6 +22,10 @@ function setup() {
 
   return {
     tournaments: createTournamentService(db),
+    drafts: createDraftService(db),
+    cards: createCardCatalogService(db),
+    draftImages: createDraftImageService({ cacheDir: "./data/test-card-images" }),
+    players: createPlayerRepository(db),
   };
 }
 
@@ -24,6 +39,7 @@ function fakeModal(input: {
   const fields = input.fields ?? {};
   const interaction: ModalInteractionLike = {
     customId: input.customId ?? "dashboard_create_event",
+    channelId: "channel-1",
     guildId: input.guildId === undefined ? "guild-1" : input.guildId,
     user: input.user ?? { id: "user-1", username: "Yugi" },
     fields: {
@@ -83,5 +99,41 @@ describe("modal interactions", () => {
     await expect(handleModal(interaction, app)).rejects.toThrow(
       "An active or pending tournament already uses that name",
     );
+  });
+
+  it("creates a draft from the dashboard modal, auto-joins the creator, and replies with a join button", async () => {
+    const app = setup();
+    const creator = app.players.upsert("guild-1", "user-1", "Yugi");
+    const { interaction, replies } = fakeModal({
+      customId: "draft_create_modal",
+      fields: {
+        name: "cube night",
+        sets: "Metal Raiders, Pharaoh's Servant",
+        includes: "Dark Magician\nBlue-Eyes White Dragon",
+        excludes: "Pot of Greed",
+      },
+    });
+
+    await handleModal(interaction, app as Parameters<typeof handleModal>[1]);
+
+    const draft = app.drafts.findByName("guild-1", "cube night");
+
+    expect(draft).toMatchObject({
+      channelId: "channel-1",
+      name: "cube night",
+      status: "pending",
+      createdByUserId: "user-1",
+      config: {
+        setNames: ["Metal Raiders", "Pharaoh's Servant"],
+        includeNames: ["Dark Magician", "Blue-Eyes White Dragon"],
+        excludeNames: ["Pot of Greed"],
+      },
+    });
+    expect(app.drafts.players(draft!.id)).toEqual([{ playerId: creator.id, displayName: "Yugi" }]);
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Signups are open for cube night"),
+    });
+    expect(replies[0]).not.toHaveProperty("ephemeral", true);
+    expect(JSON.stringify(replies[0])).toContain("join_draft");
   });
 });

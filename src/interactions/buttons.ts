@@ -2,21 +2,29 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
   StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   type InteractionReplyOptions,
 } from "discord.js";
 import { formatStats } from "../formatters/stats.js";
-import type { DiscordUserLike } from "../commands/handlers.js";
+import type { DiscordUserLike, DraftNotifier } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
+import type { CardCatalogService } from "../services/card-catalog.js";
+import type { DraftImageService } from "../services/draft-images.js";
+import type { DraftService } from "../services/drafts.js";
 import type { MatchService } from "../services/matches.js";
 import type { Tournament, TournamentMatch, TournamentService } from "../services/tournaments.js";
 
 export type ButtonInteractionLike = {
   customId: string;
+  channelId: string | null;
   guildId: string | null;
   user: DiscordUserLike;
+  showModal?(modal: ModalBuilder): Promise<void> | void;
   reply(
-    message: { content: string; ephemeral: boolean; components?: InteractionReplyOptions["components"] },
+    message: { content: string; ephemeral: boolean; components?: InteractionReplyOptions["components"]; files?: InteractionReplyOptions["files"] },
   ): Promise<void> | void;
 };
 
@@ -24,6 +32,10 @@ type ButtonDependencies = {
   matches: MatchService;
   players: PlayerRepository;
   tournaments: TournamentService;
+  drafts: DraftService;
+  cards: CardCatalogService;
+  draftImages: DraftImageService;
+  notifier: DraftNotifier;
 };
 
 const dashboardEventListLimit = 10;
@@ -44,6 +56,12 @@ function displayName(user: DiscordUserLike): string {
 function requireEventCreator(tournament: { createdByUserId: string }, userId: string): void {
   if (tournament.createdByUserId !== userId) {
     throw new Error("Only the event creator can do that");
+  }
+}
+
+function requireDraftCreator(draft: { createdByUserId: string }, userId: string): void {
+  if (draft.createdByUserId !== userId) {
+    throw new Error("Only the draft creator can do that");
   }
 }
 
@@ -311,6 +329,98 @@ export async function handleButton(
         ),
       ],
     });
+    return;
+  }
+
+  if (interaction.customId === "draft_create") {
+    if (!interaction.showModal) {
+      throw new Error("This interaction cannot show modals");
+    }
+
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId("draft_create_modal")
+        .setTitle("Create Draft")
+        .addComponents(
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("name")
+              .setLabel("Draft name")
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(100)
+              .setRequired(true),
+          ),
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("sets")
+              .setLabel("Sets")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(false),
+          ),
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("includes")
+              .setLabel("Include cards")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(false),
+          ),
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("excludes")
+              .setLabel("Exclude cards")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(false),
+          ),
+        ),
+    );
+    return;
+  }
+
+  const joinDraft = /^join_draft:(\d+)$/.exec(interaction.customId);
+
+  if (joinDraft) {
+    const guildId = requireGuildId(interaction);
+    const draft = deps.drafts.findById(Number(joinDraft[1]));
+
+    if (draft.guildId !== guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    deps.drafts.join(draft.id, player.id);
+    await interaction.reply({ content: `Joined draft: ${draft.name}.`, ephemeral: true });
+    return;
+  }
+
+  const startDraft = /^draft_start:(\d+)$/.exec(interaction.customId);
+
+  if (startDraft) {
+    const guildId = requireGuildId(interaction);
+    const draft = deps.drafts.findById(Number(startDraft[1]));
+
+    if (draft.guildId !== guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    requireDraftCreator(draft, interaction.user.id);
+    const startedDraft = deps.drafts.start(draft.id);
+
+    for (const draftPlayer of deps.drafts.players(startedDraft.id)) {
+      const player = deps.players.findById(draftPlayer.playerId);
+
+      if (!player || player.guildId !== guildId) {
+        continue;
+      }
+
+      await deps.notifier.sendPickPrompt({
+        channelId: startedDraft.channelId,
+        userId: player.discordUserId,
+        draftId: startedDraft.id,
+        draftName: startedDraft.name,
+      });
+    }
+
+    await interaction.reply({ content: `Started draft: ${startedDraft.name}.`, ephemeral: true });
     return;
   }
 
@@ -589,6 +699,102 @@ export async function handleButton(
               ...participantRecords.slice(0, 25).map((participant, index) => `${index + 1}. ${participant.displayName}`),
             ].join("\n"),
       ephemeral: true,
+    });
+    return;
+  }
+
+  const draftPick = /^draft_pick:(\d+)$/.exec(interaction.customId);
+
+  if (draftPick) {
+    const guildId = requireGuildId(interaction);
+    const draftId = Number(draftPick[1]);
+    const draft = deps.drafts.findById(draftId);
+
+    if (draft.guildId !== guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    const options = deps.drafts.pickOptions(draftId, player.id);
+
+    if (options.length === 0) {
+      await interaction.reply({ content: "You have no cards to pick right now.", ephemeral: true });
+      return;
+    }
+
+    const catalogCards = deps.cards.findByIds(options.map((card) => card.catalogCardId));
+    const cardsById = new Map(catalogCards.map((card) => [card.ygoprodeckId, card]));
+
+    const imageCards = options.map((option) => {
+      const card = cardsById.get(option.catalogCardId);
+      return {
+        ygoprodeckId: option.catalogCardId,
+        imageUrl: card?.imageUrl ?? "",
+        imageUrlSmall: card?.imageUrlSmall,
+      };
+    });
+
+    let gridAttachment: { attachment: Buffer; name: string } | undefined;
+
+    try {
+      const grid = await deps.draftImages.renderNumberedGrid(imageCards);
+      gridAttachment = { attachment: grid.buffer, name: grid.filename };
+    } catch {
+      // fallback to text list
+    }
+
+    const cardList = options
+      .map((option, index) => {
+        const card = cardsById.get(option.catalogCardId);
+        return `${index + 1}. ${card?.name ?? "Unknown"}`;
+      })
+      .join("\n");
+
+    const content = gridAttachment ? "Pick a card from the grid below:" : ["Pick a card:", cardList].join("\n");
+
+    await interaction.reply({
+      content,
+      ephemeral: true,
+      files: gridAttachment ? [gridAttachment] : undefined,
+      components: [
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`draft_pick_card:${draftId}`)
+            .setPlaceholder("Select a card")
+            .addOptions(
+              ...options.map((option, index) => {
+                const card = cardsById.get(option.catalogCardId);
+                return {
+                  label: `${index + 1}. ${card?.name ?? "Unknown"}`.slice(0, 100),
+                  value: String(option.id),
+                };
+              }),
+            ),
+        ),
+      ],
+    });
+    return;
+  }
+
+  const draftExport = /^draft_export:(\d+)$/.exec(interaction.customId);
+
+  if (draftExport) {
+    const guildId = requireGuildId(interaction);
+    const draftId = Number(draftExport[1]);
+    const draft = deps.drafts.findById(draftId);
+
+    if (draft.guildId !== guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    const ydk = deps.drafts.exportYdk(draft.id, player.id);
+    const safeName = draft.name.replace(/[^a-zA-Z0-9]/g, "-");
+
+    await interaction.reply({
+      content: `Exported ${draft.name}.`,
+      ephemeral: true,
+      files: [{ attachment: Buffer.from(ydk, "utf8"), name: `${safeName}.ydk` }],
     });
     return;
   }
