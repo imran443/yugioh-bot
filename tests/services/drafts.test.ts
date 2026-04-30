@@ -209,4 +209,161 @@ describe("draft service", () => {
 
     expect(() => app.drafts.start(draft.id)).toThrow("Draft requires at least two players to start");
   });
+
+  it("returns pick options and records synchronized pick steps after all players pick", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+
+    for (let id = 1; id <= 16; id += 1) {
+      app.db.prepare(
+        `
+          insert into card_catalog (
+            ygoprodeck_id,
+            name,
+            type,
+            frame_type,
+            image_url,
+            image_url_small,
+            card_sets_json,
+            cached_at
+          ) values (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      ).run(
+        id,
+        `Card ${id}`,
+        "Spellcaster / Normal Monster",
+        "normal",
+        `https://img/full/${id}`,
+        `https://img/small/${id}`,
+        JSON.stringify([{ set_name: "Metal Raiders" }]),
+        "2026-01-01T00:00:00Z",
+      );
+    }
+
+    app.drafts.start(draft.id);
+
+    const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
+
+    expect(yugiOptions).toHaveLength(16);
+    expect(yugiOptions.every((card) => card.waveNumber === 1)).toBe(true);
+    expect(yugiOptions.every((card) => card.pickedByPlayerId === null)).toBe(true);
+
+    const yugiPick = app.drafts.pickCard(draft.id, yugi.id, yugiOptions[0].id);
+
+    expect(yugiPick).toMatchObject({
+      draftId: draft.id,
+      playerId: yugi.id,
+      draftCardId: yugiOptions[0].id,
+      waveNumber: 1,
+      pickStep: 1,
+    });
+    expect(app.drafts.findById(draft.id).currentPickStep).toBe(1);
+
+    const kaibaOptions = app.drafts.pickOptions(draft.id, kaiba.id);
+
+    expect(kaibaOptions).toHaveLength(15);
+    expect(kaibaOptions.map((card) => card.id)).not.toContain(yugiOptions[0].id);
+
+    const kaibaPick = app.drafts.pickCard(draft.id, kaiba.id, kaibaOptions[0].id);
+
+    expect(kaibaPick).toMatchObject({
+      draftId: draft.id,
+      playerId: kaiba.id,
+      draftCardId: kaibaOptions[0].id,
+      waveNumber: 1,
+      pickStep: 1,
+    });
+    expect(app.drafts.findById(draft.id).currentPickStep).toBe(2);
+    expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(14);
+    expect(
+      app.db
+        .prepare(
+          `
+            select player_id, draft_card_id, wave_number, pick_step
+            from draft_picks
+            where draft_id = ?
+            order by id asc
+          `,
+        )
+        .all(draft.id),
+    ).toEqual([
+      {
+        player_id: yugi.id,
+        draft_card_id: yugiOptions[0].id,
+        wave_number: 1,
+        pick_step: 1,
+      },
+      {
+        player_id: kaiba.id,
+        draft_card_id: kaibaOptions[0].id,
+        wave_number: 1,
+        pick_step: 1,
+      },
+    ]);
+  });
+
+  it("validates joined players, active wave cards, and one pick per player per step", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const joey = app.players.upsert("guild-1", "user-3", "Joey");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+
+    for (let id = 1; id <= 16; id += 1) {
+      app.db.prepare(
+        `
+          insert into card_catalog (
+            ygoprodeck_id,
+            name,
+            type,
+            frame_type,
+            image_url,
+            image_url_small,
+            card_sets_json,
+            cached_at
+          ) values (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      ).run(
+        id,
+        `Card ${id}`,
+        "Spellcaster / Normal Monster",
+        "normal",
+        `https://img/full/${id}`,
+        `https://img/small/${id}`,
+        JSON.stringify([{ set_name: "Metal Raiders" }]),
+        "2026-01-01T00:00:00Z",
+      );
+    }
+
+    app.drafts.start(draft.id);
+
+    const [firstOption, secondOption] = app.drafts.pickOptions(draft.id, yugi.id);
+
+    expect(() => app.drafts.pickOptions(draft.id, joey.id)).toThrow("Player has not joined this draft");
+    expect(() => app.drafts.pickCard(draft.id, joey.id, firstOption.id)).toThrow("Player has not joined this draft");
+
+    app.drafts.pickCard(draft.id, yugi.id, firstOption.id);
+
+    expect(() => app.drafts.pickCard(draft.id, yugi.id, secondOption.id)).toThrow(
+      "Player has already picked this step",
+    );
+    expect(() => app.drafts.pickCard(draft.id, kaiba.id, firstOption.id)).toThrow("Card has already been picked");
+
+    app.db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
+
+    expect(() => app.drafts.pickOptions(draft.id, yugi.id)).toThrow("Draft must be active");
+    expect(() => app.drafts.pickCard(draft.id, kaiba.id, secondOption.id)).toThrow("Draft must be active");
+
+    app.db.prepare("update drafts set status = 'active', current_wave_number = 2 where id = ?").run(draft.id);
+
+    expect(() => app.drafts.pickCard(draft.id, kaiba.id, secondOption.id)).toThrow(
+      "Card is not in the current wave",
+    );
+  });
 });

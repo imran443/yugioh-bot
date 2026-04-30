@@ -33,6 +33,16 @@ export type DraftCard = {
   pickedByPlayerId: number | null;
 };
 
+export type DraftPick = {
+  id: number;
+  draftId: number;
+  playerId: number;
+  draftCardId: number;
+  waveNumber: number;
+  pickStep: number;
+  pickedAt: string;
+};
+
 type CatalogRow = {
   ygoprodeck_id: number;
   name: string;
@@ -60,6 +70,18 @@ function mapDraftCard(row: any): DraftCard {
     waveNumber: row.wave_number,
     catalogCardId: row.catalog_card_id,
     pickedByPlayerId: row.picked_by_player_id,
+  };
+}
+
+function mapDraftPick(row: any): DraftPick {
+  return {
+    id: row.id,
+    draftId: row.draft_id,
+    playerId: row.player_id,
+    draftCardId: row.draft_card_id,
+    waveNumber: row.wave_number,
+    pickStep: row.pick_step,
+    pickedAt: row.picked_at,
   };
 }
 
@@ -114,6 +136,20 @@ export function createDraftService(db: Database.Database) {
 
     if (!row) {
       throw new Error("Player must belong to the same guild as the draft");
+    }
+  };
+
+  const assertJoinedPlayer = (draftId: number, playerId: number) => {
+    const row = db.prepare("select 1 from draft_players where draft_id = ? and player_id = ?").get(draftId, playerId);
+
+    if (!row) {
+      throw new Error("Player has not joined this draft");
+    }
+  };
+
+  const assertActiveDraft = (draft: Draft) => {
+    if (draft.status !== "active") {
+      throw new Error("Draft must be active");
     }
   };
 
@@ -202,6 +238,71 @@ export function createDraftService(db: Database.Database) {
     ).run(draftId);
 
     return findById(draftId);
+  });
+
+  const pickCard = db.transaction((draftId: number, playerId: number, draftCardId: number) => {
+    const draft = findById(draftId);
+    assertActiveDraft(draft);
+    assertJoinedPlayer(draftId, playerId);
+
+    const existingPick = db
+      .prepare(
+        `
+          select 1 from draft_picks
+          where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?
+        `,
+      )
+      .get(draftId, playerId, draft.currentWaveNumber, draft.currentPickStep);
+
+    if (existingPick) {
+      throw new Error("Player has already picked this step");
+    }
+
+    const cardRow = db.prepare("select * from draft_cards where id = ? and draft_id = ?").get(draftCardId, draftId);
+
+    if (!cardRow || cardRow.wave_number !== draft.currentWaveNumber) {
+      throw new Error("Card is not in the current wave");
+    }
+
+    if (cardRow.picked_by_player_id !== null) {
+      throw new Error("Card has already been picked");
+    }
+
+    db.prepare(
+      `
+        update draft_cards
+        set picked_by_player_id = ?, picked_at = current_timestamp
+        where id = ?
+      `,
+    ).run(playerId, draftCardId);
+
+    const result = db
+      .prepare(
+        `
+          insert into draft_picks (draft_id, player_id, draft_card_id, wave_number, pick_step, picked_at)
+          values (?, ?, ?, ?, ?, current_timestamp)
+        `,
+      )
+      .run(draftId, playerId, draftCardId, draft.currentWaveNumber, draft.currentPickStep);
+
+    const activePlayerCountRow = db
+      .prepare("select count(*) as count from draft_players where draft_id = ? and finished_at is null")
+      .get(draftId) as { count: number };
+    const currentStepPickCountRow = db
+      .prepare(
+        `
+          select count(*) as count from draft_picks
+          where draft_id = ? and wave_number = ? and pick_step = ?
+        `,
+      )
+      .get(draftId, draft.currentWaveNumber, draft.currentPickStep) as { count: number };
+
+    if (currentStepPickCountRow.count === activePlayerCountRow.count) {
+      db.prepare("update drafts set current_pick_step = current_pick_step + 1 where id = ?").run(draftId);
+    }
+
+    const pickRow = db.prepare("select * from draft_picks where id = ?").get(Number(result.lastInsertRowid));
+    return mapDraftPick(pickRow);
   });
 
   return {
@@ -324,6 +425,27 @@ export function createDraftService(db: Database.Database) {
         )
         .all(draftId, draft.currentWaveNumber)
         .map(mapDraftCard);
+    },
+
+    pickOptions(draftId: number, playerId: number): DraftCard[] {
+      const draft = findById(draftId);
+      assertActiveDraft(draft);
+      assertJoinedPlayer(draftId, playerId);
+
+      return db
+        .prepare(
+          `
+            select * from draft_cards
+            where draft_id = ? and wave_number = ? and picked_by_player_id is null
+            order by id asc
+          `,
+        )
+        .all(draftId, draft.currentWaveNumber)
+        .map(mapDraftCard);
+    },
+
+    pickCard(draftId: number, playerId: number, draftCardId: number): DraftPick {
+      return pickCard(draftId, playerId, draftCardId);
     },
   };
 }
