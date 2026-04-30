@@ -236,6 +236,58 @@ export const commandDefinitions = [
             .setMaxLength(maxTournamentNameLength)
             .setAutocomplete(true),
         ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("sets")
+        .setDescription("List available card sets")
+        .addStringOption((option) =>
+          option
+            .setName("query")
+            .setDescription("Search for a set")
+            .setRequired(false)
+            .setMaxLength(100)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommandGroup((group) =>
+      group
+        .setName("template")
+        .setDescription("Manage draft templates")
+        .addSubcommand((subcommand) =>
+          subcommand
+            .setName("save")
+            .setDescription("Save a draft config as a template")
+            .addStringOption((option) =>
+              option
+                .setName("name")
+                .setDescription("Template name")
+                .setRequired(true)
+                .setMaxLength(maxTournamentNameLength),
+            )
+            .addStringOption((option) =>
+              option
+                .setName("draft")
+                .setDescription("Draft to save from")
+                .setRequired(true)
+                .setMaxLength(maxTournamentNameLength)
+                .setAutocomplete(true),
+            ),
+        )
+        .addSubcommand((subcommand) => subcommand.setName("list").setDescription("List your draft templates"))
+        .addSubcommand((subcommand) =>
+          subcommand
+            .setName("delete")
+            .setDescription("Delete a draft template")
+            .addStringOption((option) =>
+              option
+                .setName("name")
+                .setDescription("Template name")
+                .setRequired(true)
+                .setMaxLength(maxTournamentNameLength)
+                .setAutocomplete(true),
+            ),
+        ),
     ),
   new SlashCommandBuilder().setName("help").setDescription("Show available commands"),
 ].map((command) => command.toJSON());

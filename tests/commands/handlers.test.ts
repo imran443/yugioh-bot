@@ -6,6 +6,7 @@ import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftImageService } from "../../src/services/draft-images.js";
 import { createDraftService } from "../../src/services/drafts.js";
+import { createDraftTemplateService } from "../../src/services/draft-templates.js";
 import { createMatchService } from "../../src/services/matches.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
 
@@ -13,6 +14,7 @@ type CommandDependencies = Parameters<typeof handleCommand>[1];
 type _DraftCommandDependencyChecks = [
   CommandDependencies["drafts"],
   CommandDependencies["cards"],
+  CommandDependencies["templates"],
   CommandDependencies["draftImages"],
   CommandDependencies["notifier"],
 ];
@@ -58,6 +60,7 @@ function setup() {
   const tournaments = createTournamentService(db);
   const drafts = createDraftService(db);
   const cards = createCardCatalogService(db);
+  const templates = createDraftTemplateService(db);
   const draftImages = createDraftImageService({ cacheDir: "./data/test-card-images" });
   const notifierCalls: Array<{ channelId: string; userId: string; draftId: number; draftName: string }> = [];
   const notifier = {
@@ -66,13 +69,14 @@ function setup() {
     },
   };
 
-  return { db, matches, players, tournaments, drafts, cards, draftImages, notifier, notifierCalls };
+  return { db, matches, players, tournaments, drafts, cards, templates, draftImages, notifier, notifierCalls };
 }
 
 function fakeInteraction(input: {
   commandName: string;
   user: FakeUser;
   subcommand?: string;
+  subcommandGroup?: string | null;
   roles?: Record<string, FakeRole>;
   users?: Record<string, FakeUser>;
   strings?: Record<string, string>;
@@ -85,6 +89,7 @@ function fakeInteraction(input: {
     user: input.user,
     options: {
       getSubcommand: () => input.subcommand ?? "",
+      getSubcommandGroup: () => input.subcommandGroup ?? null,
       getString: (name) => input.strings?.[name] ?? null,
       getRole: (name) => input.roles?.[name] ?? null,
       getUser: (name) => input.users?.[name] ?? null,

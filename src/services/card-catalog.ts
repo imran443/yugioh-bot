@@ -177,6 +177,29 @@ export function createCardCatalogService(
       return findByIds(cardsToCache.map((card) => card.id));
     },
 
+    listSets(query?: string): string[] {
+      const hasQuery = query && query.trim().length > 0;
+
+      const sql = hasQuery
+        ? `
+          select distinct json_extract(json_each.value, '$.set_name') as set_name
+          from card_catalog, json_each(card_catalog.card_sets_json)
+          where lower(json_extract(json_each.value, '$.set_name')) like lower(?)
+          order by set_name
+          limit 25
+        `
+        : `
+          select distinct json_extract(json_each.value, '$.set_name') as set_name
+          from card_catalog, json_each(card_catalog.card_sets_json)
+          order by set_name
+          limit 25
+        `;
+
+      const rows = hasQuery ? db.prepare(sql).all(`%${query.trim()}%`) : db.prepare(sql).all();
+
+      return (rows as Array<{ set_name: string }>).map((row) => row.set_name);
+    },
+
     findByIds,
   };
 }

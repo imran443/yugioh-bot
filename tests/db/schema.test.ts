@@ -28,6 +28,7 @@ describe("database schema", () => {
       "draft_cards",
       "draft_picks",
       "draft_players",
+      "draft_templates",
       "drafts",
       "matches",
       "players",

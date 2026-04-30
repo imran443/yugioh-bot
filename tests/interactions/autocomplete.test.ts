@@ -6,7 +6,9 @@ import {
 } from "../../src/interactions/autocomplete.js";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
+import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftService } from "../../src/services/drafts.js";
+import { createDraftTemplateService } from "../../src/services/draft-templates.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
 
 function setup() {
@@ -18,6 +20,8 @@ function setup() {
     players: createPlayerRepository(db),
     tournaments: createTournamentService(db),
     drafts: createDraftService(db),
+    cards: createCardCatalogService(db),
+    templates: createDraftTemplateService(db),
   };
 }
 
@@ -29,6 +33,7 @@ function fakeAutocomplete(input: Partial<AutocompleteInteractionLike> = {}) {
     user: { id: "creator-1", username: "Yugi" },
     options: {
       getSubcommand: () => "signup",
+      getSubcommandGroup: () => null,
       getFocused: () => ({ name: "name", value: "cup" }),
     },
     respond: (choices) => {
@@ -79,7 +84,7 @@ describe("autocomplete interactions", () => {
     app.tournaments.create("guild-1", "Other Cup", "round_robin", "other-user");
     startTournament(app, "Active Cup");
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "start", getFocused: () => ({ name: "name", value: "cup" }) },
+      options: { getSubcommand: () => "start", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -97,7 +102,7 @@ describe("autocomplete interactions", () => {
     app.tournaments.cancel(cancelled.id);
     completeTournament(app, completed.id);
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "show", getFocused: () => ({ name: "name", value: "cup" }) },
+      options: { getSubcommand: () => "show", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -120,7 +125,7 @@ describe("autocomplete interactions", () => {
     app.tournaments.cancel(cancelled.id);
     completeTournament(app, completed.id);
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "participants", getFocused: () => ({ name: "name", value: "cup" }) },
+      options: { getSubcommand: () => "participants", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -143,7 +148,7 @@ describe("autocomplete interactions", () => {
     app.tournaments.join(nonParticipant.id, joey.id);
     app.tournaments.start(nonParticipant.id);
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "report", getFocused: () => ({ name: "name", value: "cup" }) },
+      options: { getSubcommand: () => "report", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -156,7 +161,7 @@ describe("autocomplete interactions", () => {
     startTournament(app, "Participant Cup");
     const { interaction, responses } = fakeAutocomplete({
       user: { id: "missing-user", username: "Missing" },
-      options: { getSubcommand: () => "report", getFocused: () => ({ name: "name", value: "cup" }) },
+      options: { getSubcommand: () => "report", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -173,7 +178,7 @@ describe("autocomplete interactions", () => {
     const completed = startTournament(app, "Completed Cup");
     completeTournament(app, completed.id);
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "cancel", getFocused: () => ({ name: "name", value: "cup" }) },
+      options: { getSubcommand: () => "cancel", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -192,7 +197,7 @@ describe("autocomplete interactions", () => {
     completeTournament(app, completed.id);
     const { interaction, responses } = fakeAutocomplete({
       commandName: "stats",
-      options: { getSubcommand: () => "", getFocused: () => ({ name: "tournament", value: "cup" }) },
+      options: { getSubcommand: () => "", getSubcommandGroup: () => null, getFocused: () => ({ name: "tournament", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -208,7 +213,7 @@ describe("autocomplete interactions", () => {
     const longName = "a".repeat(120);
     app.tournaments.create("guild-1", longName, "round_robin", "creator-1");
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "show", getFocused: () => ({ name: "name", value: "a" }) },
+      options: { getSubcommand: () => "show", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "a" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -230,7 +235,7 @@ describe("autocomplete interactions", () => {
     const app = setup();
     app.tournaments.create("guild-1", "Creator Cup", "round_robin", "creator-1");
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "unknown", getFocused: () => ({ name: "name", value: "cup" }) },
+      options: { getSubcommand: () => "unknown", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -252,7 +257,7 @@ describe("autocomplete interactions", () => {
     const app = setup();
     app.tournaments.create("guild-1", "Creator Cup", "round_robin", "creator-1");
     const { interaction, responses } = fakeAutocomplete({
-      options: { getSubcommand: () => "signup", getFocused: () => ({ name: "role", value: "cup" }) },
+      options: { getSubcommand: () => "signup", getSubcommandGroup: () => null, getFocused: () => ({ name: "role", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -265,7 +270,7 @@ describe("autocomplete interactions", () => {
     startTournament(app, "Active Cup");
     const { interaction, responses } = fakeAutocomplete({
       commandName: "stats",
-      options: { getSubcommand: () => "", getFocused: () => ({ name: "player", value: "cup" }) },
+      options: { getSubcommand: () => "", getSubcommandGroup: () => null, getFocused: () => ({ name: "player", value: "cup" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -280,7 +285,7 @@ describe("autocomplete interactions", () => {
     app.drafts.create("guild-1", "channel-1", "Modern", {}, "user-1", yugi.id);
     const { interaction, responses } = fakeAutocomplete({
       commandName: "draft",
-      options: { getSubcommand: () => "join", getFocused: () => ({ name: "name", value: "re" }) },
+      options: { getSubcommand: () => "join", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "re" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -296,7 +301,7 @@ describe("autocomplete interactions", () => {
     const { interaction, responses } = fakeAutocomplete({
       commandName: "draft",
       user: { id: "user-1", username: "Yugi" },
-      options: { getSubcommand: () => "start", getFocused: () => ({ name: "name", value: "re" }) },
+      options: { getSubcommand: () => "start", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "re" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -313,7 +318,73 @@ describe("autocomplete interactions", () => {
     app.db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
     const { interaction, responses } = fakeAutocomplete({
       commandName: "draft",
-      options: { getSubcommand: () => "export", getFocused: () => ({ name: "name", value: "re" }) },
+      options: { getSubcommand: () => "export", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "re" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
+  });
+
+  it("suggests set names for draft sets query", async () => {
+    const app = setup();
+    app.db.prepare(
+      `
+        insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(1, "Card 1", "Spell", "spell", "", "", JSON.stringify([{ set_name: "Metal Raiders" }, { set_name: "Legend of Blue Eyes White Dragon" }]), "2026-01-01");
+    app.db.prepare(
+      `
+        insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(2, "Card 2", "Spell", "spell", "", "", JSON.stringify([{ set_name: "Pharaoh's Servant" }]), "2026-01-01");
+
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      options: { getSubcommand: () => "sets", getSubcommandGroup: () => null, getFocused: () => ({ name: "query", value: "metal" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Metal Raiders", value: "Metal Raiders" }]);
+  });
+
+  it("suggests template names for draft template delete", async () => {
+    const app = setup();
+    app.templates.save("guild-1", "Classic", { setNames: ["Metal Raiders"] }, "user-1");
+    app.templates.save("guild-1", "Modern", { setNames: ["Duelist Nexus"] }, "user-1");
+
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      user: { id: "user-1", username: "Yugi" },
+      options: {
+        getSubcommand: () => "delete",
+        getSubcommandGroup: () => "template",
+        getFocused: () => ({ name: "name", value: "cla" }),
+      },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Classic", value: "Classic" }]);
+  });
+
+  it("suggests user drafts for draft template save", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "Retro", {}, "user-1", yugi.id);
+    app.drafts.create("guild-1", "channel-1", "Modern", {}, "user-2", yugi.id);
+
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      user: { id: "user-1", username: "Yugi" },
+      options: {
+        getSubcommand: () => "save",
+        getSubcommandGroup: () => "template",
+        getFocused: () => ({ name: "draft", value: "re" }),
+      },
     });
 
     await handleAutocomplete(interaction, app);

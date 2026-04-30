@@ -22,6 +22,7 @@ import { openDatabase } from "./db/connection.js";
 import { createCardCatalogService } from "./services/card-catalog.js";
 import { createDraftImageService } from "./services/draft-images.js";
 import { createDraftService } from "./services/drafts.js";
+import { createDraftTemplateService } from "./services/draft-templates.js";
 import {
   handleAutocomplete,
   type AutocompleteInteractionLike,
@@ -55,6 +56,7 @@ const deps = {
   tournaments: createTournamentService(db),
   drafts: createDraftService(db),
   cards: createCardCatalogService(db),
+  templates: createDraftTemplateService(db),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
   notifier: {
     async sendPickPrompt(input: Parameters<DraftNotifier["sendPickPrompt"]>[0]) {
@@ -93,6 +95,7 @@ function toCommandInteraction(
     },
     options: {
       getSubcommand: () => interaction.options.getSubcommand(false) ?? "",
+      getSubcommandGroup: () => interaction.options.getSubcommandGroup(false) ?? null,
       getString: (name, required = false) => interaction.options.getString(name, required),
       getRole: (name, required = false) => {
         const role = interaction.options.getRole(name, required);
@@ -184,6 +187,7 @@ function toAutocompleteInteraction(
     },
     options: {
       getSubcommand: () => interaction.options.getSubcommand(false) ?? "",
+      getSubcommandGroup: () => interaction.options.getSubcommandGroup(false) ?? null,
       getFocused: () => ({ name: focused.name, value: String(focused.value) }),
     },
     respond: async (choices) => {

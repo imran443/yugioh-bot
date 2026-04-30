@@ -1,5 +1,7 @@
 import type { DiscordUserLike } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
+import type { CardCatalogService } from "../services/card-catalog.js";
+import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { DraftService } from "../services/drafts.js";
 import type { TournamentService } from "../services/tournaments.js";
 
@@ -14,6 +16,7 @@ export type AutocompleteInteractionLike = {
   user: DiscordUserLike;
   options: {
     getSubcommand(): string;
+    getSubcommandGroup(): string | null;
     getFocused(): { name: string; value: string };
   };
   respond(choices: AutocompleteChoice[]): Promise<void> | void;
@@ -23,6 +26,8 @@ type AutocompleteDependencies = {
   players: PlayerRepository;
   tournaments: TournamentService;
   drafts: DraftService;
+  cards: CardCatalogService;
+  templates: DraftTemplateService;
 };
 
 const maxAutocompleteChoiceLength = 100;
@@ -78,12 +83,76 @@ export async function handleAutocomplete(
   }
 
   if (interaction.commandName === "draft") {
+    const subcommand = interaction.options.getSubcommand();
+    const subcommandGroup = interaction.options.getSubcommandGroup();
+
+    if (subcommandGroup === "template") {
+      switch (subcommand) {
+        case "save": {
+          if (focused.name !== "draft") {
+            await interaction.respond([]);
+            return;
+          }
+
+          await interaction.respond(
+            draftChoices(
+              deps.drafts.autocomplete({
+                guildId: interaction.guildId,
+                query,
+                statuses: ["pending", "active", "completed"],
+                createdByUserId: interaction.user.id,
+              }),
+            ),
+          );
+          return;
+        }
+        case "delete": {
+          if (focused.name !== "name") {
+            await interaction.respond([]);
+            return;
+          }
+
+          const templates = deps.templates
+            .list(interaction.guildId)
+            .filter((template) => template.name.toLowerCase().includes(query.toLowerCase()));
+
+          await interaction.respond(
+            templates.map((template) => ({
+              name: template.name.slice(0, maxAutocompleteChoiceLength),
+              value: template.name,
+            })),
+          );
+          return;
+        }
+        default:
+          await interaction.respond([]);
+          return;
+      }
+    }
+
+    if (subcommand === "sets") {
+      if (focused.name !== "query") {
+        await interaction.respond([]);
+        return;
+      }
+
+      const sets = deps.cards.listSets(query);
+
+      await interaction.respond(
+        sets.map((set) => ({
+          name: set.slice(0, maxAutocompleteChoiceLength),
+          value: set,
+        })),
+      );
+      return;
+    }
+
     if (focused.name !== "name") {
       await interaction.respond([]);
       return;
     }
 
-    switch (interaction.options.getSubcommand()) {
+    switch (subcommand) {
       case "join":
         await interaction.respond(
           draftChoices(

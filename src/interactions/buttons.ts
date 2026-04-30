@@ -352,8 +352,18 @@ export async function handleButton(
           ),
           new ActionRowBuilder<TextInputBuilder>().addComponents(
             new TextInputBuilder()
+              .setCustomId("template")
+              .setLabel("Template (optional)")
+              .setPlaceholder("Enter a template name to load its config")
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(100)
+              .setRequired(false),
+          ),
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
               .setCustomId("sets")
               .setLabel("Sets")
+              .setPlaceholder("Leave empty if using a template")
               .setStyle(TextInputStyle.Paragraph)
               .setRequired(false),
           ),
@@ -361,6 +371,7 @@ export async function handleButton(
             new TextInputBuilder()
               .setCustomId("includes")
               .setLabel("Include cards")
+              .setPlaceholder("Leave empty if using a template")
               .setStyle(TextInputStyle.Paragraph)
               .setRequired(false),
           ),
@@ -368,6 +379,7 @@ export async function handleButton(
             new TextInputBuilder()
               .setCustomId("excludes")
               .setLabel("Exclude cards")
+              .setPlaceholder("Leave empty if using a template")
               .setStyle(TextInputStyle.Paragraph)
               .setRequired(false),
           ),

@@ -7,12 +7,14 @@ import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftImageService } from "../../src/services/draft-images.js";
 import { createDraftService } from "../../src/services/drafts.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
+import { createDraftTemplateService } from "../../src/services/draft-templates.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
 
 type ModalDependencies = Parameters<typeof handleModal>[1];
 type _DraftModalDependencyChecks = [
   ModalDependencies["drafts"],
   ModalDependencies["cards"],
+  ModalDependencies["templates"],
   ModalDependencies["draftImages"],
 ];
 
@@ -24,6 +26,7 @@ function setup() {
     tournaments: createTournamentService(db),
     drafts: createDraftService(db),
     cards: createCardCatalogService(db),
+    templates: createDraftTemplateService(db),
     draftImages: createDraftImageService({ cacheDir: "./data/test-card-images" }),
     players: createPlayerRepository(db),
   };
@@ -135,5 +138,62 @@ describe("modal interactions", () => {
     });
     expect(replies[0]).not.toHaveProperty("ephemeral", true);
     expect(JSON.stringify(replies[0])).toContain("join_draft");
+  });
+
+  it("creates a draft from a template when template field is provided", async () => {
+    const app = setup();
+    const creator = app.players.upsert("guild-1", "user-1", "Yugi");
+    app.templates.save("guild-1", "Classic", { setNames: ["Metal Raiders"], includeNames: ["Dark Magician"], excludeNames: ["Pot of Greed"] }, "user-1");
+
+    const { interaction, replies } = fakeModal({
+      customId: "draft_create_modal",
+      fields: {
+        name: "cube night",
+        template: "Classic",
+        sets: "",
+        includes: "",
+        excludes: "",
+      },
+    });
+
+    await handleModal(interaction, app as Parameters<typeof handleModal>[1]);
+
+    const draft = app.drafts.findByName("guild-1", "cube night");
+
+    expect(draft).toMatchObject({
+      name: "cube night",
+      config: {
+        setNames: ["Metal Raiders"],
+        includeNames: ["Dark Magician"],
+        excludeNames: ["Pot of Greed"],
+      },
+    });
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Signups are open for cube night"),
+    });
+  });
+
+  it("rejects draft creation when template is not found", async () => {
+    const app = setup();
+    app.players.upsert("guild-1", "user-1", "Yugi");
+
+    const { interaction, replies } = fakeModal({
+      customId: "draft_create_modal",
+      fields: {
+        name: "cube night",
+        template: "Missing",
+        sets: "",
+        includes: "",
+        excludes: "",
+      },
+    });
+
+    await handleModal(interaction, app as Parameters<typeof handleModal>[1]);
+
+    expect(app.drafts.findByName("guild-1", "cube night")).toBeUndefined();
+    expect(replies[0]).toEqual({
+      content: "Template not found: Missing.",
+      ephemeral: true,
+    });
   });
 });

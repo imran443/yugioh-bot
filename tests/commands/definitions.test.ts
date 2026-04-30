@@ -166,7 +166,7 @@ describe("command definitions", () => {
     const draftCommand = commandDefinitions.find((command) => command.name === "draft")!;
     const subcommands = draftCommand.options?.filter(isSubcommandOption) ?? [];
 
-    expect(subcommands.map((s) => s.name)).toEqual(["dashboard", "join", "start", "export"]);
+    expect(subcommands.map((s) => s.name)).toEqual(["dashboard", "join", "start", "export", "sets"]);
 
     for (const subcommandName of ["join", "start", "export"]) {
       const subcommand = subcommands.find((option) => option.name === subcommandName)!;
@@ -176,5 +176,33 @@ describe("command definitions", () => {
       expect(nameOption.max_length).toBe(100);
       expect(nameOption.autocomplete).toBe(true);
     }
+  });
+
+  it("defines draft template subcommand group with save, list, and delete", () => {
+    const draftCommand = commandDefinitions.find((command) => command.name === "draft")!;
+    const templateGroup = draftCommand.options?.find((option) => option.type === ApplicationCommandOptionType.SubcommandGroup && option.name === "template")!;
+
+    expect(templateGroup).toBeDefined();
+
+    const templateSubcommands = templateGroup.options?.filter(isSubcommandOption) ?? [];
+
+    expect(templateSubcommands.map((s) => s.name)).toEqual(["save", "list", "delete"]);
+
+    const saveSubcommand = templateSubcommands.find((s) => s.name === "save")!;
+    const saveNameOption = stringOptionFor(saveSubcommand, "name");
+
+    expect(saveNameOption.required).toBe(true);
+    expect(saveNameOption.max_length).toBe(100);
+
+    const saveDraftOption = stringOptionFor(saveSubcommand, "draft");
+
+    expect(saveDraftOption.required).toBe(true);
+    expect(saveDraftOption.autocomplete).toBe(true);
+
+    const deleteSubcommand = templateSubcommands.find((s) => s.name === "delete")!;
+    const deleteNameOption = stringOptionFor(deleteSubcommand, "name");
+
+    expect(deleteNameOption.required).toBe(true);
+    expect(deleteNameOption.autocomplete).toBe(true);
   });
 });

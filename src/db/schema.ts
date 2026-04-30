@@ -189,6 +189,16 @@ export function migrate(db: Database.Database) {
     on drafts (guild_id, name)
     where status in ('pending', 'active');
 
+    create table if not exists draft_templates (
+      id integer primary key autoincrement,
+      guild_id text not null,
+      name text not null,
+      config_json text not null default '{}',
+      created_by_user_id text not null,
+      created_at text not null default current_timestamp,
+      unique (guild_id, name)
+    );
+
     create index if not exists draft_cards_unpicked_by_draft_wave
     on draft_cards (draft_id, wave_number)
     where picked_by_player_id is null;

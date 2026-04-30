@@ -3,6 +3,7 @@ import { draftSignupPostReply, tournamentSignupPostReply } from "../commands/han
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
+import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { DraftService } from "../services/drafts.js";
 import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
 
@@ -19,6 +20,7 @@ type ModalDependencies = {
   tournaments: TournamentService;
   drafts: DraftService;
   cards: CardCatalogService;
+  templates: DraftTemplateService;
   draftImages: DraftImageService;
   players: PlayerRepository;
 };
@@ -70,19 +72,32 @@ export async function handleModal(
       return;
     }
 
-    const creator = deps.players.upsert(guildId, interaction.user.id, interaction.user.displayName ?? interaction.user.username);
-    const draft = deps.drafts.create(
-      guildId,
-      channelId,
-      name,
-      {
+    const templateName = interaction.fields.getTextInputValue("template").trim();
+    let config: { setNames: string[]; includeNames: string[]; excludeNames: string[] };
+
+    if (templateName) {
+      const template = deps.templates.findByName(guildId, templateName);
+
+      if (!template) {
+        await interaction.reply({ content: `Template not found: ${templateName}.`, ephemeral: true });
+        return;
+      }
+
+      config = {
+        setNames: template.config.setNames ?? [],
+        includeNames: template.config.includeNames ?? [],
+        excludeNames: template.config.excludeNames ?? [],
+      };
+    } else {
+      config = {
         setNames: parseList(interaction.fields.getTextInputValue("sets")),
         includeNames: parseList(interaction.fields.getTextInputValue("includes")),
         excludeNames: parseList(interaction.fields.getTextInputValue("excludes")),
-      },
-      interaction.user.id,
-      creator.id,
-    );
+      };
+    }
+
+    const creator = deps.players.upsert(guildId, interaction.user.id, interaction.user.displayName ?? interaction.user.username);
+    const draft = deps.drafts.create(guildId, channelId, name, config, interaction.user.id, creator.id);
 
     await interaction.reply(draftSignupPostReply(draft));
     return;

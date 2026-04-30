@@ -3,6 +3,7 @@ import { formatLeaderboard, formatStats } from "../formatters/stats.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
+import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { DraftService } from "../services/drafts.js";
 import type { MatchService } from "../services/matches.js";
 import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
@@ -32,6 +33,7 @@ export type CommandInteractionLike = {
   user: DiscordUserLike;
   options: {
     getSubcommand(): string;
+    getSubcommandGroup(): string | null;
     getString(name: string, required?: boolean): string | null;
     getRole(name: string, required?: boolean): DiscordRoleLike | null;
     getUser(name: string, required?: boolean): DiscordUserLike | null;
@@ -54,6 +56,7 @@ type CommandDependencies = {
   tournaments: TournamentService;
   drafts: DraftService;
   cards: CardCatalogService;
+  templates: DraftTemplateService;
   draftImages: DraftImageService;
   notifier: DraftNotifier;
 };
@@ -65,6 +68,7 @@ const tournamentParticipantListLimit = 25;
 const helpMessage = [
   "Duel commands: /duel, /approve, /deny, /stats, /rankings",
   "Tournament commands: /event dashboard, /event create, /event signup, /event join, /event list, /event start, /event show, /event participants, /event report, /event cancel",
+  "Draft commands: /draft dashboard, /draft join, /draft start, /draft export, /draft sets, /draft template save, /draft template list, /draft template delete",
 ].join("\n");
 
 function tournamentDashboardReply(): CommandReplyLike {
@@ -542,8 +546,61 @@ async function handleDraft(
   deps: CommandDependencies,
 ): Promise<void> {
   const guildId = requireGuildId(interaction);
+  const subcommandGroup = interaction.options.getSubcommandGroup();
+  const subcommand = interaction.options.getSubcommand();
 
-  switch (interaction.options.getSubcommand()) {
+  if (subcommandGroup === "template") {
+    switch (subcommand) {
+      case "save": {
+        const templateName = requireStringOption(interaction, "name");
+        const draftName = requireStringOption(interaction, "draft");
+        const draft = requireDraft(deps, guildId, draftName);
+        requireDraftCreator(draft, interaction.user.id);
+        deps.templates.save(guildId, templateName, draft.config, interaction.user.id);
+        await interaction.reply(`Saved template: ${templateName}.`);
+        return;
+      }
+      case "list": {
+        const templates = deps.templates.list(guildId);
+
+        if (templates.length === 0) {
+          await interaction.reply("No templates saved yet.");
+          return;
+        }
+
+        await interaction.reply(
+          [
+            "Draft templates:",
+            ...templates.map((template) => {
+              const sets = template.config.setNames?.length ? `Sets: ${template.config.setNames.join(", ")}` : "All cards";
+              return `- ${template.name} (${sets})`;
+            }),
+          ].join("\n"),
+        );
+        return;
+      }
+      case "delete": {
+        const templateName = requireStringOption(interaction, "name");
+        const template = deps.templates.findByName(guildId, templateName);
+
+        if (!template) {
+          throw new Error(`Template not found: ${templateName}`);
+        }
+
+        if (template.createdByUserId !== interaction.user.id) {
+          throw new Error("Only the template creator can delete it");
+        }
+
+        deps.templates.delete(guildId, templateName);
+        await interaction.reply(`Deleted template: ${templateName}.`);
+        return;
+      }
+      default:
+        throw new Error(`Unsupported draft template subcommand: ${subcommand}`);
+    }
+  }
+
+  switch (subcommand) {
     case "dashboard":
       await interaction.reply(draftDashboardReply());
       return;
@@ -593,8 +650,28 @@ async function handleDraft(
       });
       return;
     }
+    case "sets": {
+      const query = interaction.options.getString("query") ?? "";
+      const sets = deps.cards.listSets(query);
+
+      if (sets.length === 0) {
+        await interaction.reply(query ? `No sets found matching "${query}".` : "No sets available yet. Sync some cards first with /draft create.");
+        return;
+      }
+
+      await interaction.reply(
+        [
+          query ? `Sets matching "${query}":` : "Available sets:",
+          ...sets.map((set) => `- ${set}`),
+          sets.length >= 25 ? "...and more. Type more characters to narrow your search." : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      return;
+    }
     default:
-      throw new Error(`Unsupported draft subcommand: ${interaction.options.getSubcommand()}`);
+      throw new Error(`Unsupported draft subcommand: ${subcommand}`);
   }
 }
 
