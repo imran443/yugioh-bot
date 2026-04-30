@@ -144,6 +144,9 @@ function toSelectMenuInteraction(interaction: StringSelectMenuInteraction): Sele
     showModal: async (modal) => {
       await interaction.showModal(modal);
     },
+    reply: async (message) => {
+      await interaction.reply(message);
+    },
   };
 }
 

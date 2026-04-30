@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleButton, type ButtonInteractionLike } from "../../src/interactions/buttons.js";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
@@ -16,6 +16,14 @@ type _DraftButtonDependencyChecks = [
   ButtonDependencies["draftImages"],
   ButtonDependencies["notifier"],
 ];
+
+function createFakeDraftImageService() {
+  return {
+    async renderNumberedGrid(_cards: { ygoprodeckId: number; imageUrl: string; imageUrlSmall?: string }[]) {
+      return { filename: "draft-picks.png", buffer: Buffer.from("fake-png-buffer") };
+    },
+  };
+}
 
 function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
   const insertCard = app.db.prepare(
@@ -70,7 +78,7 @@ function setup() {
 }
 
 function fakeButton(input: Partial<ButtonInteractionLike> = {}) {
-  const replies: Array<{ content: string; ephemeral?: boolean; components?: readonly unknown[] }> = [];
+  const replies: Array<{ content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: unknown[] }> = [];
   const modals: unknown[] = [];
   const interaction: ButtonInteractionLike = {
     customId: "join_tournament:1",
@@ -90,6 +98,18 @@ function fakeButton(input: Partial<ButtonInteractionLike> = {}) {
 }
 
 describe("button interactions", () => {
+  beforeEach(() => {
+    let counter = 0;
+    vi.spyOn(Math, "random").mockImplementation(() => {
+      const result = counter / 16;
+      counter = (counter + 1) % 16;
+      return result;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   it("joins a pending tournament and replies ephemerally", async () => {
     const app = setup();
     const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "creator-1");
@@ -209,6 +229,52 @@ describe("button interactions", () => {
         app,
       ),
     ).rejects.toThrow("Only the draft creator can do that");
+  });
+
+  it("shows a draft pick grid with image attachment when image service succeeds", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pick:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, { ...app, draftImages: createFakeDraftImageService() });
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].files).toBeDefined();
+    expect(replies[0].files!.length).toBe(1);
+    expect(replies[0].content).toContain("Pick a card");
+    expect(JSON.stringify(replies[0])).toContain("draft_pick_card");
+    expect(JSON.stringify(replies[0])).toContain("Card 1");
+    expect(JSON.stringify(replies[0])).toContain("Card 8");
+  });
+
+  it("falls back to text list when image service throws", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pick:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].files).toBeUndefined();
+    expect(replies[0].content).toContain("Card 1");
+    expect(replies[0].content).toContain("Card 8");
+    expect(JSON.stringify(replies[0])).toContain("draft_pick_card");
   });
 
   it("lists open events with join buttons", async () => {

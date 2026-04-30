@@ -24,7 +24,7 @@ export type ButtonInteractionLike = {
   user: DiscordUserLike;
   showModal?(modal: ModalBuilder): Promise<void> | void;
   reply(
-    message: { content: string; ephemeral: boolean; components?: InteractionReplyOptions["components"] },
+    message: { content: string; ephemeral: boolean; components?: InteractionReplyOptions["components"]; files?: InteractionReplyOptions["files"] },
   ): Promise<void> | void;
 };
 
@@ -699,6 +699,79 @@ export async function handleButton(
               ...participantRecords.slice(0, 25).map((participant, index) => `${index + 1}. ${participant.displayName}`),
             ].join("\n"),
       ephemeral: true,
+    });
+    return;
+  }
+
+  const draftPick = /^draft_pick:(\d+)$/.exec(interaction.customId);
+
+  if (draftPick) {
+    const guildId = requireGuildId(interaction);
+    const draftId = Number(draftPick[1]);
+    const draft = deps.drafts.findById(draftId);
+
+    if (draft.guildId !== guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    const options = deps.drafts.pickOptions(draftId, player.id);
+
+    if (options.length === 0) {
+      await interaction.reply({ content: "You have no cards to pick right now.", ephemeral: true });
+      return;
+    }
+
+    const catalogCards = deps.cards.findByIds(options.map((card) => card.catalogCardId));
+    const cardsById = new Map(catalogCards.map((card) => [card.ygoprodeckId, card]));
+
+    const imageCards = options.map((option) => {
+      const card = cardsById.get(option.catalogCardId);
+      return {
+        ygoprodeckId: option.catalogCardId,
+        imageUrl: card?.imageUrl ?? "",
+        imageUrlSmall: card?.imageUrlSmall,
+      };
+    });
+
+    let gridAttachment: { attachment: Buffer; name: string } | undefined;
+
+    try {
+      const grid = await deps.draftImages.renderNumberedGrid(imageCards);
+      gridAttachment = { attachment: grid.buffer, name: grid.filename };
+    } catch {
+      // fallback to text list
+    }
+
+    const cardList = options
+      .map((option, index) => {
+        const card = cardsById.get(option.catalogCardId);
+        return `${index + 1}. ${card?.name ?? "Unknown"}`;
+      })
+      .join("\n");
+
+    const content = gridAttachment ? "Pick a card from the grid below:" : ["Pick a card:", cardList].join("\n");
+
+    await interaction.reply({
+      content,
+      ephemeral: true,
+      files: gridAttachment ? [gridAttachment] : undefined,
+      components: [
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`draft_pick_card:${draftId}`)
+            .setPlaceholder("Select a card")
+            .addOptions(
+              ...options.map((option, index) => {
+                const card = cardsById.get(option.catalogCardId);
+                return {
+                  label: `${index + 1}. ${card?.name ?? "Unknown"}`.slice(0, 100),
+                  value: String(option.id),
+                };
+              }),
+            ),
+        ),
+      ],
     });
     return;
   }

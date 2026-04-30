@@ -565,6 +565,19 @@ export function createDraftService(db: Database.Database) {
         return [];
       }
 
+      const existingPick = db
+        .prepare(
+          `
+            select 1 from draft_picks
+            where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?
+          `,
+        )
+        .get(draftId, playerId, draft.currentWaveNumber, draft.currentPickStep);
+
+      if (existingPick) {
+        return [];
+      }
+
       return db
         .prepare(
           `
