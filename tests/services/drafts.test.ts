@@ -510,4 +510,84 @@ describe("draft service", () => {
 
     expect(() => app.drafts.pickCard(draft.id, yugi.id, yugiCardId)).toThrow("Player has already finished drafting");
   });
+
+  it("exports a completed player's drafted main deck as YDK", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 40);
+
+    app.db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
+    app.db.prepare("update draft_players set pick_count = 40, finished_at = current_timestamp where draft_id = ?").run(draft.id);
+
+    const insertPick = app.db.prepare(
+      `
+        insert into draft_picks (draft_id, player_id, draft_card_id, wave_number, pick_step, picked_at)
+        values (?, ?, ?, ?, ?, current_timestamp)
+      `,
+    );
+    const markDraftCardPicked = app.db.prepare(
+      `
+        update draft_cards
+        set picked_by_player_id = ?, picked_at = current_timestamp
+        where id = ?
+      `,
+    );
+
+    for (let id = 1; id <= 40; id += 1) {
+      const draftCardId = insertDraftCard(app.db, draft.id, Math.ceil(id / 8), id);
+      markDraftCardPicked.run(yugi.id, draftCardId);
+      insertPick.run(draft.id, yugi.id, draftCardId, Math.ceil(id / 8), ((id - 1) % 8) + 1);
+    }
+
+    expect(app.drafts.exportYdk(draft.id, yugi.id)).toBe(
+      [
+        "#created by Yugioh Discord Bot",
+        "#main",
+        ...Array.from({ length: 40 }, (_, index) => String(index + 1)),
+        "#extra",
+        "!side",
+      ].join("\n"),
+    );
+  });
+
+  it("rejects YDK export before a player's deck reaches 40 picks", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 39);
+
+    app.db.prepare("update drafts set status = 'active' where id = ?").run(draft.id);
+    app.db.prepare(
+      "update draft_players set pick_count = 39, finished_at = null where draft_id = ? and player_id = ?",
+    ).run(draft.id, yugi.id);
+
+    const insertPick = app.db.prepare(
+      `
+        insert into draft_picks (draft_id, player_id, draft_card_id, wave_number, pick_step, picked_at)
+        values (?, ?, ?, ?, ?, current_timestamp)
+      `,
+    );
+    const markDraftCardPicked = app.db.prepare(
+      `
+        update draft_cards
+        set picked_by_player_id = ?, picked_at = current_timestamp
+        where id = ?
+      `,
+    );
+
+    for (let id = 1; id <= 39; id += 1) {
+      const draftCardId = insertDraftCard(app.db, draft.id, Math.ceil(id / 8), id);
+      markDraftCardPicked.run(yugi.id, draftCardId);
+      insertPick.run(draft.id, yugi.id, draftCardId, Math.ceil(id / 8), ((id - 1) % 8) + 1);
+    }
+
+    expect(() => app.drafts.exportYdk(draft.id, yugi.id)).toThrow("Deck is not complete yet");
+  });
 });

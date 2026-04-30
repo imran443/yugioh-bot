@@ -43,6 +43,11 @@ export type DraftPick = {
   pickedAt: string;
 };
 
+type DraftCardRow = {
+  wave_number: number;
+  picked_by_player_id: number | null;
+};
+
 type CatalogRow = {
   ygoprodeck_id: number;
   name: string;
@@ -167,6 +172,37 @@ export function createDraftService(db: Database.Database) {
     if (draft.status !== "active") {
       throw new Error("Draft must be active");
     }
+  };
+
+  const exportYdk = (draftId: number, playerId: number): string => {
+    findById(draftId);
+    assertJoinedPlayer(draftId, playerId);
+
+    const progress = playerProgress(draftId, playerId);
+
+    if (progress.pick_count < 40) {
+      throw new Error("Deck is not complete yet");
+    }
+
+    const mainDeckCardIds = db
+      .prepare(
+        `
+          select dc.catalog_card_id
+          from draft_picks dp
+          inner join draft_cards dc on dc.id = dp.draft_card_id
+          where dp.draft_id = ? and dp.player_id = ?
+          order by dp.id asc
+          limit 40
+        `,
+      )
+      .all(draftId, playerId)
+      .map((row: any) => String(row.catalog_card_id));
+
+    if (mainDeckCardIds.length < 40) {
+      throw new Error("Deck is not complete yet");
+    }
+
+    return ["#created by Yugioh Discord Bot", "#main", ...mainDeckCardIds, "#extra", "!side"].join("\n");
   };
 
   const catalogCardIdsForDraft = (config: DraftConfig): number[] => {
@@ -297,7 +333,9 @@ export function createDraftService(db: Database.Database) {
       throw new Error("Player has already picked this step");
     }
 
-    const cardRow = db.prepare("select * from draft_cards where id = ? and draft_id = ?").get(draftCardId, draftId);
+    const cardRow = db
+      .prepare("select wave_number, picked_by_player_id from draft_cards where id = ? and draft_id = ?")
+      .get(draftCardId, draftId) as DraftCardRow | undefined;
 
     if (!cardRow || cardRow.wave_number !== draft.currentWaveNumber) {
       throw new Error("Card is not in the current wave");
@@ -542,5 +580,11 @@ export function createDraftService(db: Database.Database) {
     pickCard(draftId: number, playerId: number, draftCardId: number): DraftPick {
       return pickCard(draftId, playerId, draftCardId);
     },
+
+    exportYdk(draftId: number, playerId: number): string {
+      return exportYdk(draftId, playerId);
+    },
   };
 }
+
+export type DraftService = ReturnType<typeof createDraftService>;
