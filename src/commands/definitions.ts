@@ -192,5 +192,50 @@ export const commandDefinitions = [
             .setAutocomplete(true),
       ),
     ),
+  new SlashCommandBuilder()
+    .setName("draft")
+    .setDescription("Manage drafts")
+    .addSubcommand((subcommand) =>
+      subcommand.setName("dashboard").setDescription("Open your private draft dashboard"),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("join")
+        .setDescription("Join a draft")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Draft name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("start")
+        .setDescription("Start a draft")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Draft name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("export")
+        .setDescription("Export your completed draft deck")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Draft name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+        ),
+    ),
   new SlashCommandBuilder().setName("help").setDescription("Show available commands"),
 ].map((command) => command.toJSON());

@@ -43,6 +43,7 @@ describe("command definitions", () => {
       "stats",
       "rankings",
       "event",
+      "draft",
       "help",
     ]);
   });
@@ -159,5 +160,21 @@ describe("command definitions", () => {
     }
     expect(tournamentOption.required).toBe(false);
     expect(tournamentOption.autocomplete).toBe(true);
+  });
+
+  it("defines draft dashboard, join, start, and export subcommands", () => {
+    const draftCommand = commandDefinitions.find((command) => command.name === "draft")!;
+    const subcommands = draftCommand.options?.filter(isSubcommandOption) ?? [];
+
+    expect(subcommands.map((s) => s.name)).toEqual(["dashboard", "join", "start", "export"]);
+
+    for (const subcommandName of ["join", "start", "export"]) {
+      const subcommand = subcommands.find((option) => option.name === subcommandName)!;
+      const nameOption = stringOptionFor(subcommand, "name");
+
+      expect(nameOption.required).toBe(true);
+      expect(nameOption.max_length).toBe(100);
+      expect(nameOption.autocomplete).toBe(true);
+    }
   });
 });
