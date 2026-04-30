@@ -578,6 +578,20 @@ async function handleDraft(
       await interaction.reply(`Started draft: ${startedDraft.name}.`);
       return;
     }
+    case "export": {
+      const name = requireStringOption(interaction, "name");
+      const draft = requireDraft(deps, guildId, name);
+      const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+      const ydk = deps.drafts.exportYdk(draft.id, player.id);
+      const safeName = draft.name.replace(/[^a-zA-Z0-9]/g, "-");
+
+      await interaction.reply({
+        content: `Exported ${draft.name}.`,
+        ephemeral: true,
+        files: [{ attachment: Buffer.from(ydk, "utf8"), name: `${safeName}.ydk` }],
+      });
+      return;
+    }
     default:
       throw new Error(`Unsupported draft subcommand: ${interaction.options.getSubcommand()}`);
   }

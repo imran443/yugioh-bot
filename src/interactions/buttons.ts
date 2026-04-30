@@ -776,5 +776,28 @@ export async function handleButton(
     return;
   }
 
+  const draftExport = /^draft_export:(\d+)$/.exec(interaction.customId);
+
+  if (draftExport) {
+    const guildId = requireGuildId(interaction);
+    const draftId = Number(draftExport[1]);
+    const draft = deps.drafts.findById(draftId);
+
+    if (draft.guildId !== guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    const ydk = deps.drafts.exportYdk(draft.id, player.id);
+    const safeName = draft.name.replace(/[^a-zA-Z0-9]/g, "-");
+
+    await interaction.reply({
+      content: `Exported ${draft.name}.`,
+      ephemeral: true,
+      files: [{ attachment: Buffer.from(ydk, "utf8"), name: `${safeName}.ydk` }],
+    });
+    return;
+  }
+
   throw new Error("Unsupported button interaction");
 }

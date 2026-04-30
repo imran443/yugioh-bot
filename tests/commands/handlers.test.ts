@@ -232,6 +232,58 @@ describe("command handlers", () => {
     ).rejects.toThrow("Only the draft creator can do that");
   });
 
+  it("/draft export returns a ydk attachment when deck is complete", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+
+    for (let step = 1; step <= 40; step += 1) {
+      const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
+      const kaibaOptions = app.drafts.pickOptions(draft.id, kaiba.id);
+      if (yugiOptions.length > 0) app.drafts.pickCard(draft.id, yugi.id, yugiOptions[0].id);
+      if (kaibaOptions.length > 0) app.drafts.pickCard(draft.id, kaiba.id, kaibaOptions[1]?.id ?? kaibaOptions[0].id);
+    }
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "export",
+      user: { id: "user-7", username: "Yugi" },
+      strings: { name: "cube night" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0].content).toContain("Exported cube night");
+    expect(replies[0].files).toBeDefined();
+    expect(replies[0].files![0].name).toBe("cube-night.ydk");
+  });
+
+  it("/draft export rejects incomplete decks", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+
+    await expect(
+      handleCommand(
+        fakeInteraction({
+          commandName: "draft",
+          subcommand: "export",
+          user: { id: "user-7", username: "Yugi" },
+          strings: { name: "cube night" },
+        }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("Deck is not complete yet");
+  });
+
   it("/duel creates a pending match and /approve finalizes it", async () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };
