@@ -123,6 +123,8 @@ In GitHub, open the repo and go to Settings -> Secrets and variables -> Actions.
 
 Push to `main` or run the `Deploy` workflow manually from the GitHub Actions tab.
 
+Until `GCE_HOST`, `GCE_USER`, and `GCE_SSH_PRIVATE_KEY` are configured, the workflow skips deployment cleanly.
+
 ## Troubleshooting
 
 Check service status:

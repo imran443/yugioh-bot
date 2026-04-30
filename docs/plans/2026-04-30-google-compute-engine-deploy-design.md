@@ -103,6 +103,8 @@ Update:
 
 The workflow should fail if SSH cannot connect, if `git fetch` or `git reset` fails, if Docker build fails, or if Compose cannot start the service. Logs from the bot container should be printed at the end of the deploy for quick diagnosis.
 
+Before VM secrets are configured, the workflow should skip deployment cleanly instead of failing on missing secrets.
+
 The VM should keep Docker's `restart: unless-stopped` behavior from `docker-compose.yml`, so the bot restarts after Docker daemon or VM restarts.
 
 ## Testing

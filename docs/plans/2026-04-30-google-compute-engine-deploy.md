@@ -47,24 +47,36 @@ jobs:
     name: Deploy to Google Compute Engine
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      GCE_HOST: ${{ secrets.GCE_HOST }}
+      GCE_USER: ${{ secrets.GCE_USER }}
+      GCE_SSH_PRIVATE_KEY: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+      GCE_PORT: ${{ secrets.GCE_PORT || '22' }}
 
     steps:
+      - name: Skip deploy when VM secrets are not configured
+        if: ${{ env.GCE_HOST == '' || env.GCE_USER == '' || env.GCE_SSH_PRIVATE_KEY == '' }}
+        run: echo "GCE deploy secrets are not configured yet; skipping deploy."
+
       - name: Configure SSH key
+        if: ${{ env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != '' }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.GCE_SSH_PRIVATE_KEY }}" > ~/.ssh/gce_deploy_key
+          printf '%s\n' "$GCE_SSH_PRIVATE_KEY" > ~/.ssh/gce_deploy_key
           chmod 600 ~/.ssh/gce_deploy_key
 
       - name: Trust VM host key
+        if: ${{ env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != '' }}
         run: |
-          ssh-keyscan -p "${{ secrets.GCE_PORT || '22' }}" -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "$GCE_PORT" -H "$GCE_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH
+        if: ${{ env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != '' }}
         run: |
           ssh -i ~/.ssh/gce_deploy_key \
-            -p "${{ secrets.GCE_PORT || '22' }}" \
-            "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" \
+            -p "$GCE_PORT" \
+            "$GCE_USER@$GCE_HOST" \
             'cd /opt/yugioh-discord-bot && git fetch --all --prune && git reset --hard origin/main && docker compose up -d --build && docker compose ps && docker compose logs --tail=80 bot'
 ```
 
@@ -77,6 +89,7 @@ git diff -- .github/workflows/deploy.yml
 ```
 
 Expected: workflow has `push` on `main`, `workflow_dispatch`, SSH setup, and remote deploy command.
+It should also skip cleanly while VM secrets are not configured.
 
 **Step 4: Commit**
 
