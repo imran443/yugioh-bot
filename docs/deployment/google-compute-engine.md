@@ -2,6 +2,8 @@
 
 This guide deploys the Discord bot to a Google Cloud Free Tier Compute Engine VM and uses GitHub Actions to deploy future pushes over SSH.
 
+For a catch-up checklist of the current setup and day-to-day commands, see `docs/deployment/gce-runbook.md`.
+
 ## Cost Guardrails
 
 Use a free-tier eligible Compute Engine setup:
@@ -122,6 +124,8 @@ In GitHub, open the repo and go to Settings -> Secrets and variables -> Actions.
 ## 9. Trigger Deploy
 
 Push to `main` or run the `Deploy` workflow manually from the GitHub Actions tab.
+
+Merging a pull request into `main` also triggers deployment because GitHub records the merge as a push to `main`.
 
 Until `GCE_HOST`, `GCE_USER`, and `GCE_SSH_PRIVATE_KEY` are configured, the workflow skips deployment cleanly.
 

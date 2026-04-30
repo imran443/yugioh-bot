@@ -105,6 +105,10 @@ This Dockerfile uses `node:22-bookworm-slim` instead of Alpine to reduce native 
 
 ## Deployment
 
+For the current Google Compute Engine setup checklist and deployment pipeline catch-up guide, see `docs/deployment/gce-runbook.md`.
+
+The `Deploy` GitHub Actions workflow runs on every push to `main`, including pull request merges into `main`. It SSHes into the VM, resets `/opt/yugioh-discord-bot` to `origin/main`, rebuilds Docker Compose, and restarts the bot.
+
 For Google Cloud Free Tier VM deployment with GitHub Actions, see `docs/deployment/google-compute-engine.md`.
 
 For other cheap/free hosting options, see `docs/deployment/free-cheap-hosting.md`.
