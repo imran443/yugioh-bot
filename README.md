@@ -105,7 +105,9 @@ This Dockerfile uses `node:22-bookworm-slim` instead of Alpine to reduce native 
 
 ## Deployment
 
-For cheap/free hosting, see `docs/deployment/free-cheap-hosting.md`.
+For Google Cloud Free Tier VM deployment with GitHub Actions, see `docs/deployment/google-compute-engine.md`.
+
+For other cheap/free hosting options, see `docs/deployment/free-cheap-hosting.md`.
 
 ## Production Checklist
 

@@ -1,0 +1,36 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Google Compute Engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.GCE_SSH_PRIVATE_KEY }}" > ~/.ssh/gce_deploy_key
+          chmod 600 ~/.ssh/gce_deploy_key
+
+      - name: Trust VM host key
+        run: |
+          ssh-keyscan -p "${{ secrets.GCE_PORT || '22' }}" -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy over SSH
+        run: |
+          ssh -i ~/.ssh/gce_deploy_key \
+            -p "${{ secrets.GCE_PORT || '22' }}" \
+            "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" \
+            'cd /opt/yugioh-discord-bot && git fetch --all --prune && git reset --hard origin/main && docker compose up -d --build && docker compose ps && docker compose logs --tail=80 bot'
