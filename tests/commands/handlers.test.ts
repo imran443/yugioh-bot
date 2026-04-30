@@ -27,7 +27,7 @@ function fakeInteraction(input: {
   users?: Record<string, FakeUser>;
   strings?: Record<string, string>;
 }) {
-  const replies: Array<string | { content: string; components?: readonly unknown[] }> = [];
+  const replies: Array<string | { content: string; ephemeral?: boolean; components?: readonly unknown[] }> = [];
   const interaction: CommandInteractionLike = {
     commandName: input.commandName,
     guildId: "guild-1",
@@ -62,6 +62,7 @@ describe("command handlers", () => {
     expect(replies[0]).toEqual(expect.stringContaining("/rankings"));
     expect(replies[0]).toEqual(expect.stringContaining("Tournament commands"));
     expect(replies[0]).toEqual(expect.stringContaining("/event create"));
+    expect(replies[0]).toEqual(expect.stringContaining("/event dashboard"));
     expect(replies[0]).toEqual(expect.stringContaining("/event signup"));
     expect(replies[0]).toEqual(expect.stringContaining("/event join"));
     expect(replies[0]).toEqual(expect.stringContaining("/event list"));
@@ -70,6 +71,26 @@ describe("command handlers", () => {
     expect(replies[0]).toEqual(expect.stringContaining("/event participants"));
     expect(replies[0]).toEqual(expect.stringContaining("/event report"));
     expect(replies[0]).toEqual(expect.stringContaining("/event cancel"));
+  });
+
+  it("/event dashboard replies privately with dashboard buttons", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "dashboard",
+      user: yugi,
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Tournament Dashboard"),
+      ephemeral: true,
+    });
+    expect(JSON.stringify(replies[0])).toContain("dashboard_open_events");
+    expect(JSON.stringify(replies[0])).toContain("dashboard_report_match");
+    expect(JSON.stringify(replies[0])).toContain("dashboard_pending_approvals");
   });
 
   it("/duel creates a pending match and /approve finalizes it", async () => {

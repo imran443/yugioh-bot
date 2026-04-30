@@ -46,8 +46,52 @@ const tournamentParticipantListLimit = 25;
 
 const helpMessage = [
   "Duel commands: /duel, /approve, /deny, /stats, /rankings",
-  "Tournament commands: /event create, /event signup, /event join, /event list, /event start, /event show, /event participants, /event report, /event cancel",
+  "Tournament commands: /event dashboard, /event create, /event signup, /event join, /event list, /event start, /event show, /event participants, /event report, /event cancel",
 ].join("\n");
+
+function tournamentDashboardReply(): CommandReplyLike {
+  return {
+    content: [
+      "Tournament Dashboard",
+      "Use these buttons to find events, join, report matches, approve results, and see command help.",
+    ].join("\n"),
+    ephemeral: true,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("dashboard_open_events")
+          .setLabel("Open Events")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId("dashboard_my_events")
+          .setLabel("My Events")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("dashboard_report_match")
+          .setLabel("Report Match")
+          .setStyle(ButtonStyle.Success),
+      ),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("dashboard_pending_approvals")
+          .setLabel("Approvals")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("dashboard_stats")
+          .setLabel("Stats")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("dashboard_creator_tools")
+          .setLabel("Creator Tools")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("dashboard_help")
+          .setLabel("Help")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+}
 
 function displayName(user: DiscordUserLike): string {
   return user.displayName ?? user.username;
@@ -325,6 +369,10 @@ async function handleEvent(
       const active = deps.tournaments.listByStatus(guildId, ["active"]);
       const pending = deps.tournaments.listByStatus(guildId, ["pending"]);
       await interaction.reply(formatTournamentList(active, pending, deps));
+      return;
+    }
+    case "dashboard": {
+      await interaction.reply(tournamentDashboardReply());
       return;
     }
     case "signup": {

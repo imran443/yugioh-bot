@@ -69,16 +69,18 @@ describe("command definitions", () => {
     expect(seedOptions?.every((option) => option.required === false)).toBe(true);
   });
 
-  it("defines event list and signup subcommands", () => {
+  it("defines event list, dashboard, and signup subcommands", () => {
     const eventCommand = commandDefinitions.find((command) => command.name === "event")!;
     const subcommands = eventCommand.options?.filter(isSubcommandOption) ?? [];
     const listSubcommand = subcommands.find((option) => option.name === "list")!;
+    const dashboardSubcommand = subcommands.find((option) => option.name === "dashboard")!;
     const signupSubcommand = subcommands.find((option) => option.name === "signup")!;
     const signupOptions = signupSubcommand.options ?? [];
     const nameOption = signupOptions.find((option) => option.name === "name")!;
     const roleOption = signupOptions.find((option) => option.name === "role")!;
 
     expect(listSubcommand.options ?? []).toEqual([]);
+    expect(dashboardSubcommand.options ?? []).toEqual([]);
     expect(isStringOption(nameOption)).toBe(true);
     if (!isStringOption(nameOption)) {
       throw new Error("signup name option must be a string option");

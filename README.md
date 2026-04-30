@@ -11,6 +11,7 @@ A Discord-native bot for tracking Yugioh 1v1 matches, server rankings, approved 
 - `/stats` can include a tournament option to show your player stats for that tournament.
 - `/rankings` shows the server leaderboard.
 - `/help` shows available bot commands.
+- `/event dashboard` opens a private tournament dashboard with buttons for open events, signup, match reporting, approvals, stats, creator tools, and help.
 - `/event list` shows current tournaments.
 - `/event signup` posts a tournament signup message with a Join Tournament button and optional role mention.
 - `/event participants` lists participants for a tournament.
@@ -39,6 +40,10 @@ npm run dev
 
 SQLite data is stored in `./data/bot.sqlite` by default.
 
+## Tournament Dashboard
+
+Use `/event dashboard` to open a private control panel. It lets players see open events, join with one click, report tournament matches, approve or deny pending results, view stats, and find creator tools without remembering every command.
+
 ## Environment Variables
 
 - `DISCORD_TOKEN`: Discord bot token.
@@ -62,17 +67,17 @@ Use a test Discord server and two Discord accounts if possible.
 7. Run `/rankings` and confirm approved records are shown.
 8. Run `/event create name:locals format:round_robin player1:@player1 player2:@player2` and confirm the seeded participant count is shown.
 9. Run `/event list` and confirm `locals` appears.
-10. Confirm autocomplete suggestions match the option context: `/event signup` and `/event start` suggest your pending events, `/event show` and `/event participants` suggest server events, `/event report` suggests active events you are in, `/event cancel` suggests your pending or active events, and `/stats tournament` suggests active or completed events.
-11. Run `/event signup name:locals role:@role` and confirm the signup post mentions the role and includes a Join Tournament button.
-12. Click Join Tournament from another account and confirm the player is added and receives an ephemeral reply. Click again and confirm participants are not duplicated.
-13. Run `/event start name:locals`.
-14. Run `/stats player:@player1 tournament:locals` and confirm that player's stats for the tournament appear.
-15. Run `/stats player:@player1` with no tournament option and confirm active tournament stats appear when that player is in exactly one active tournament.
-16. Run `/event show name:locals` and confirm the open match count is shown.
-17. Run `/event participants name:locals` and confirm the seeded and joined participants are listed.
-18. Run `/event report name:locals @player result:win`.
-19. Have the opponent run `/approve`.
-20. Run `/event show name:locals` and confirm the match count changed.
+10. Run `/event dashboard` and confirm the private dashboard appears with Open Events, My Events, Report Match, Approvals, Stats, Creator Tools, and Help buttons.
+11. Confirm autocomplete suggestions match the option context: `/event signup` and `/event start` suggest your pending events, `/event show` and `/event participants` suggest server events, `/event report` suggests active events you are in, `/event cancel` suggests your pending or active events, and `/stats tournament` suggests active or completed events.
+12. Run `/event signup name:locals role:@role` and confirm the signup post mentions the role and includes a Join Tournament button.
+13. Click Join Tournament from another account and confirm the player is added and receives an ephemeral reply. Click again and confirm participants are not duplicated.
+14. Run `/event start name:locals`.
+15. From `/event dashboard`, click Report Match, choose the open opponent, and report a result with the I Won or I Lost button.
+16. From the opponent account, open `/event dashboard`, click Approvals, and approve or deny the pending result.
+17. Run `/stats player:@player1 tournament:locals` and confirm that player's stats for the tournament appear.
+18. Run `/stats player:@player1` with no tournament option and confirm active tournament stats appear when that player is in exactly one active tournament.
+19. Run `/event show name:locals` and confirm the open match count is shown.
+20. Run `/event participants name:locals` and confirm the seeded and joined participants are listed.
 21. Run `/event cancel name:locals` if you want to clean up the test event.
 
 ## Quality Checks

@@ -141,6 +141,16 @@ export function createTournamentService(db: Database.Database) {
       .map((row: any) => row.player_id);
   };
 
+  const findTournamentMatchById = (tournamentMatchId: number): TournamentMatch => {
+    const row = db.prepare("select * from tournament_matches where id = ?").get(tournamentMatchId);
+
+    if (!row) {
+      throw new Error("Tournament match not found");
+    }
+
+    return mapTournamentMatch(row);
+  };
+
   return {
     create(
       guildId: string,
@@ -228,6 +238,41 @@ export function createTournamentService(db: Database.Database) {
         `,
         )
         .all(guildId, playerId)
+        .map(mapTournament);
+    },
+
+    forPlayer(guildId: string, playerId: number): Tournament[] {
+      return db
+        .prepare(
+          `
+          select t.* from tournaments t
+          inner join tournament_participants tp on tp.tournament_id = t.id
+          where t.guild_id = ?
+            and tp.player_id = ?
+            and t.status in ('pending', 'active')
+          order by case t.status when 'active' then 0 else 1 end, t.created_at asc, t.id asc
+        `,
+        )
+        .all(guildId, playerId)
+        .map(mapTournament);
+    },
+
+    createdBy(guildId: string, createdByUserId: string, statuses: TournamentStatus[]): Tournament[] {
+      if (statuses.length === 0) {
+        return [];
+      }
+
+      return db
+        .prepare(
+          `
+          select * from tournaments
+          where guild_id = ?
+            and created_by_user_id = ?
+            and status in (${statuses.map(() => "?").join(", ")})
+          order by created_at asc, id asc
+        `,
+        )
+        .all(guildId, createdByUserId, ...statuses)
         .map(mapTournament);
     },
 
@@ -375,6 +420,23 @@ export function createTournamentService(db: Database.Database) {
         .map(mapTournamentMatch);
     },
 
+    findTournamentMatchById,
+
+    openMatchesForPlayer(tournamentId: number, playerId: number): TournamentMatch[] {
+      return db
+        .prepare(
+          `
+          select * from tournament_matches
+          where tournament_id = ?
+            and status = 'open'
+            and (player_one_id = ? or player_two_id = ?)
+          order by round_number asc, id asc
+        `,
+        )
+        .all(tournamentId, playerId, playerId)
+        .map(mapTournamentMatch);
+    },
+
     stats(tournamentId: number, playerId: number): { wins: number; losses: number } {
       const wins = db
         .prepare(
@@ -461,6 +523,63 @@ export function createTournamentService(db: Database.Database) {
         where id = ?
       `,
       ).run(matchId, (tournamentMatch as any).id);
+
+      return mapMatch(db.prepare("select * from matches where id = ?").get(matchId));
+    },
+
+    reportTournamentMatch(tournamentMatchId: number, reporterId: number, winnerId: number): Match {
+      const tournamentMatch = findTournamentMatchById(tournamentMatchId);
+      const tournament = findById(tournamentMatch.tournamentId);
+
+      if (tournament.status !== "active") {
+        throw new Error("Tournament is not active");
+      }
+
+      if (tournamentMatch.status !== "open" || tournamentMatch.playerTwoId === null) {
+        throw new Error("Tournament match is not open");
+      }
+
+      const playerIds = [tournamentMatch.playerOneId, tournamentMatch.playerTwoId];
+
+      if (!playerIds.includes(reporterId)) {
+        throw new Error("You are not in this tournament match");
+      }
+
+      if (!playerIds.includes(winnerId)) {
+        throw new Error("Winner must be one of the match players");
+      }
+
+      const opponentId =
+        reporterId === tournamentMatch.playerOneId
+          ? tournamentMatch.playerTwoId
+          : tournamentMatch.playerOneId;
+      const result = db
+        .prepare(
+          `
+          insert into matches (
+            guild_id,
+            player_one_id,
+            player_two_id,
+            winner_id,
+            reporter_id,
+            status,
+            source,
+            tournament_id
+          )
+          values (?, ?, ?, ?, ?, 'pending', 'tournament', ?)
+        `,
+        )
+        .run(tournament.guildId, reporterId, opponentId, winnerId, reporterId, tournament.id);
+
+      const matchId = Number(result.lastInsertRowid);
+
+      db.prepare(
+        `
+        update tournament_matches
+        set match_id = ?, status = 'pending_approval'
+        where id = ?
+      `,
+      ).run(matchId, tournamentMatch.id);
 
       return mapMatch(db.prepare("select * from matches where id = ?").get(matchId));
     },

@@ -99,6 +99,9 @@ export const commandDefinitions = [
     )
     .addSubcommand((subcommand) => subcommand.setName("list").setDescription("List events"))
     .addSubcommand((subcommand) =>
+      subcommand.setName("dashboard").setDescription("Open your private tournament dashboard"),
+    )
+    .addSubcommand((subcommand) =>
       subcommand
         .setName("signup")
         .setDescription("Post tournament signup")
