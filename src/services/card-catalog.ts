@@ -39,6 +39,7 @@ export type SyncDraftPoolInput = {
 };
 
 const YGOPRODECK_API_URL = "https://db.ygoprodeck.com/api/v7/cardinfo.php";
+const YGOPRODECK_CARDSETS_URL = "https://db.ygoprodeck.com/api/v7/cardsets.php";
 const EXTRA_DECK_FRAME_TYPES = new Set(["fusion", "synchro", "xyz", "link"]);
 
 function normalizeName(name: string) {
@@ -181,23 +182,34 @@ export function createCardCatalogService(
       const hasQuery = query && query.trim().length > 0;
 
       const sql = hasQuery
-        ? `
-          select distinct json_extract(json_each.value, '$.set_name') as set_name
-          from card_catalog, json_each(card_catalog.card_sets_json)
-          where lower(json_extract(json_each.value, '$.set_name')) like lower(?)
-          order by set_name
-          limit 25
-        `
-        : `
-          select distinct json_extract(json_each.value, '$.set_name') as set_name
-          from card_catalog, json_each(card_catalog.card_sets_json)
-          order by set_name
-          limit 25
-        `;
+        ? `select set_name from card_sets where lower(set_name) like lower(?) order by set_name limit 25`
+        : `select set_name from card_sets order by set_name limit 25`;
 
       const rows = hasQuery ? db.prepare(sql).all(`%${query.trim()}%`) : db.prepare(sql).all();
 
       return (rows as Array<{ set_name: string }>).map((row) => row.set_name);
+    },
+
+    async syncSets(): Promise<string[]> {
+      const response = await fetchImpl(YGOPRODECK_CARDSETS_URL);
+
+      if (!response.ok) {
+        throw new Error("YGOPRODeck cardsets request failed");
+      }
+
+      const payload = (await response.json()) as Array<{ set_name: string }>;
+      const setNames = payload.map((set) => set.set_name);
+      const syncedAt = new Date().toISOString();
+
+      const insert = db.prepare(`insert or replace into card_sets (set_name, synced_at) values (?, ?)`);
+
+      db.transaction(() => {
+        for (const setName of setNames) {
+          insert.run(setName, syncedAt);
+        }
+      })();
+
+      return setNames;
     },
 
     findByIds,

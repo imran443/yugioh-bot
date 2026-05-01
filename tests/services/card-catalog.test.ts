@@ -17,7 +17,11 @@ type YgoprodeckCard = {
   }>;
 };
 
-function setup(cardsBySet: Record<string, YgoprodeckCard[]>, cardsByName: Record<string, YgoprodeckCard[]> = {}) {
+function setup(
+  cardsBySet: Record<string, YgoprodeckCard[]> = {},
+  cardsByName: Record<string, YgoprodeckCard[]> = {},
+  setsResponse: Array<{ set_name: string }> = [],
+) {
   const db = new Database(":memory:");
   migrate(db);
 
@@ -26,6 +30,15 @@ function setup(cardsBySet: Record<string, YgoprodeckCard[]>, cardsByName: Record
     fetch: async (input) => {
       const url = new URL(String(input));
       fetchCalls.push(url.toString());
+
+      if (url.pathname.endsWith("cardsets.php")) {
+        return {
+          ok: true,
+          async json() {
+            return setsResponse;
+          },
+        } as Response;
+      }
 
       const setName = url.searchParams.get("cardset");
       const cardName = url.searchParams.get("name");
@@ -180,30 +193,13 @@ describe("card catalog service", () => {
   });
 
   it("lists all distinct set names from the catalog", async () => {
-    const app = setup({
-      "Metal Raiders": [
-        {
-          id: 1,
-          name: "Summoned Skull",
-          type: "Fiend / Normal Monster",
-          frameType: "normal",
-          card_images: [{ image_url: "https://img/full/1", image_url_small: "https://img/small/1" }],
-          card_sets: [{ set_name: "Metal Raiders" }],
-        },
-      ],
-      "Legend of Blue Eyes White Dragon": [
-        {
-          id: 2,
-          name: "Blue-Eyes White Dragon",
-          type: "Dragon / Normal Monster",
-          frameType: "normal",
-          card_images: [{ image_url: "https://img/full/2", image_url_small: "https://img/small/2" }],
-          card_sets: [{ set_name: "Legend of Blue Eyes White Dragon" }],
-        },
-      ],
-    });
+    const app = setup(
+      {},
+      {},
+      [{ set_name: "Metal Raiders" }, { set_name: "Legend of Blue Eyes White Dragon" }],
+    );
 
-    await app.catalog.syncDraftPool({ setNames: ["Metal Raiders", "Legend of Blue Eyes White Dragon"], includeNames: [], excludeNames: [] });
+    await app.catalog.syncSets();
 
     const sets = app.catalog.listSets();
 
@@ -211,30 +207,13 @@ describe("card catalog service", () => {
   });
 
   it("filters set names by query", async () => {
-    const app = setup({
-      "Metal Raiders": [
-        {
-          id: 1,
-          name: "Summoned Skull",
-          type: "Fiend / Normal Monster",
-          frameType: "normal",
-          card_images: [{ image_url: "https://img/full/1", image_url_small: "https://img/small/1" }],
-          card_sets: [{ set_name: "Metal Raiders" }],
-        },
-      ],
-      "Legend of Blue Eyes White Dragon": [
-        {
-          id: 2,
-          name: "Blue-Eyes White Dragon",
-          type: "Dragon / Normal Monster",
-          frameType: "normal",
-          card_images: [{ image_url: "https://img/full/2", image_url_small: "https://img/small/2" }],
-          card_sets: [{ set_name: "Legend of Blue Eyes White Dragon" }],
-        },
-      ],
-    });
+    const app = setup(
+      {},
+      {},
+      [{ set_name: "Metal Raiders" }, { set_name: "Legend of Blue Eyes White Dragon" }],
+    );
 
-    await app.catalog.syncDraftPool({ setNames: ["Metal Raiders", "Legend of Blue Eyes White Dragon"], includeNames: [], excludeNames: [] });
+    await app.catalog.syncSets();
 
     expect(app.catalog.listSets("metal")).toEqual(["Metal Raiders"]);
     expect(app.catalog.listSets("Dragon")).toEqual(["Legend of Blue Eyes White Dragon"]);
@@ -242,28 +221,53 @@ describe("card catalog service", () => {
   });
 
   it("limits set results to 25", async () => {
-    const cardsBySet: Record<string, YgoprodeckCard[]> = {};
+    const app = setup(
+      {},
+      {},
+      Array.from({ length: 30 }, (_, i) => ({ set_name: `Set ${i}` })),
+    );
 
-    for (let i = 0; i < 30; i += 1) {
-      cardsBySet[`Set ${i}`] = [
-        {
-          id: i + 1,
-          name: `Card ${i}`,
-          type: "Spell Card",
-          frameType: "spell",
-          card_images: [{ image_url: "https://img/full/1", image_url_small: "https://img/small/1" }],
-          card_sets: [{ set_name: `Set ${i}` }],
-        },
-      ];
-    }
+    await app.catalog.syncSets();
 
-    const app = setup(cardsBySet);
+    expect(app.catalog.listSets()).toHaveLength(25);
+  });
 
-    await app.catalog.syncDraftPool({
-      setNames: Object.keys(cardsBySet),
-      includeNames: [],
-      excludeNames: [],
-    });
+  it("syncs sets from the API into the database", async () => {
+    const app = setup({}, {}, [
+      { set_name: "Legend of Blue Eyes White Dragon" },
+      { set_name: "Metal Raiders" },
+      { set_name: "Pharaoh's Servant" },
+    ]);
+
+    const sets = await app.catalog.syncSets();
+
+    expect(sets).toHaveLength(3);
+    expect(app.fetchCalls).toContain("https://db.ygoprodeck.com/api/v7/cardsets.php");
+    expect(app.catalog.listSets()).toEqual(["Legend of Blue Eyes White Dragon", "Metal Raiders", "Pharaoh's Servant"]);
+  });
+
+  it("filters synced sets by query", async () => {
+    const app = setup({}, {}, [
+      { set_name: "Legend of Blue Eyes White Dragon" },
+      { set_name: "Metal Raiders" },
+      { set_name: "Pharaoh's Servant" },
+    ]);
+
+    await app.catalog.syncSets();
+
+    expect(app.catalog.listSets("metal")).toEqual(["Metal Raiders"]);
+    expect(app.catalog.listSets("Dragon")).toEqual(["Legend of Blue Eyes White Dragon"]);
+    expect(app.catalog.listSets("xyz")).toEqual([]);
+  });
+
+  it("limits set results to 25", async () => {
+    const app = setup(
+      {},
+      {},
+      Array.from({ length: 30 }, (_, i) => ({ set_name: `Set ${i}` })),
+    );
+
+    await app.catalog.syncSets();
 
     expect(app.catalog.listSets()).toHaveLength(25);
   });

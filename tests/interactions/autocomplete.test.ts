@@ -328,18 +328,9 @@ describe("autocomplete interactions", () => {
 
   it("suggests set names for draft sets query", async () => {
     const app = setup();
-    app.db.prepare(
-      `
-        insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
-        values (?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-    ).run(1, "Card 1", "Spell", "spell", "", "", JSON.stringify([{ set_name: "Metal Raiders" }, { set_name: "Legend of Blue Eyes White Dragon" }]), "2026-01-01");
-    app.db.prepare(
-      `
-        insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
-        values (?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-    ).run(2, "Card 2", "Spell", "spell", "", "", JSON.stringify([{ set_name: "Pharaoh's Servant" }]), "2026-01-01");
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Metal Raiders", "2026-01-01");
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Legend of Blue Eyes White Dragon", "2026-01-01");
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Pharaoh's Servant", "2026-01-01");
 
     const { interaction, responses } = fakeAutocomplete({
       commandName: "draft",

@@ -64,4 +64,58 @@ describe("draft cleanup service", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("reports image cache byte size", async () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const dir = await mkdtemp(path.join(tmpdir(), "draft-cleanup-"));
+    try {
+      await writeFile(path.join(dir, "1.png"), Buffer.alloc(100));
+      await writeFile(path.join(dir, "2.png"), Buffer.alloc(200));
+      const cleanup = createDraftCleanupService(db, { imageCacheDir: dir });
+
+      const bytes = await cleanup.imageCacheBytes();
+
+      expect(bytes).toBe(300);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not remove images when cache is under the max bytes limit", async () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const dir = await mkdtemp(path.join(tmpdir(), "draft-cleanup-"));
+    try {
+      await writeFile(path.join(dir, "1.png"), Buffer.alloc(100));
+      const cleanup = createDraftCleanupService(db, { imageCacheDir: dir });
+
+      const deleted = await cleanup.removeOldestImages(500);
+
+      expect(deleted).toBe(0);
+      expect(await readdir(dir)).toEqual(["1.png"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("removes oldest images when cache exceeds the max bytes limit", async () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const dir = await mkdtemp(path.join(tmpdir(), "draft-cleanup-"));
+    try {
+      await writeFile(path.join(dir, "1.png"), Buffer.alloc(100));
+      await writeFile(path.join(dir, "2.png"), Buffer.alloc(200));
+      await writeFile(path.join(dir, "3.png"), Buffer.alloc(300));
+      const cleanup = createDraftCleanupService(db, { imageCacheDir: dir });
+
+      const deleted = await cleanup.removeOldestImages(350);
+
+      expect(deleted).toBe(2);
+      const remaining = await readdir(dir);
+      expect(remaining).toEqual(["3.png"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

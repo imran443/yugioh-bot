@@ -20,6 +20,7 @@ import {
 } from "./commands/handlers.js";
 import { openDatabase } from "./db/connection.js";
 import { createCardCatalogService } from "./services/card-catalog.js";
+import { createDraftCleanupService } from "./services/draft-cleanup.js";
 import { createDraftImageService } from "./services/draft-images.js";
 import { createDraftService } from "./services/drafts.js";
 import { createDraftTemplateService } from "./services/draft-templates.js";
@@ -50,6 +51,8 @@ if (!token) {
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const db = openDatabase();
 const cardImageCacheDir = process.env.CARD_IMAGE_CACHE_DIR ?? "./data/card-images";
+const cardImageCacheMaxBytes = Number(process.env.CARD_IMAGE_CACHE_MAX_BYTES ?? "524288000");
+const cleanup = createDraftCleanupService(db, { imageCacheDir: cardImageCacheDir });
 const deps = {
   matches: createMatchService(db),
   players: createPlayerRepository(db),
@@ -58,6 +61,7 @@ const deps = {
   cards: createCardCatalogService(db),
   templates: createDraftTemplateService(db),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
+  cleanup,
   notifier: {
     async sendPickPrompt(input: Parameters<DraftNotifier["sendPickPrompt"]>[0]) {
       const channel = await client.channels.fetch(input.channelId);
@@ -198,6 +202,56 @@ function toAutocompleteInteraction(
 
 client.once("ready", () => {
   console.log(`Logged in as ${client.user?.tag ?? "unknown bot"}`);
+
+  const setCount = db.prepare("select count(*) as count from card_sets").get() as { count: number };
+
+  if (setCount.count === 0) {
+    console.log("Card sets cache is empty. Syncing on startup...");
+    deps.cards.syncSets()
+      .then((count) => console.log(`Synced ${count} card sets on startup`))
+      .catch((error) => console.error("Failed to sync card sets on startup:", error));
+  }
+
+  const setsCron = process.env.SETS_SYNC_CRON ?? "0 6 * * *";
+  const setsTimezone = process.env.SETS_SYNC_TIMEZONE ?? "UTC";
+
+  cron.schedule(
+    setsCron,
+    async () => {
+      try {
+        const count = await deps.cards.syncSets();
+        console.log(`Synced ${count} card sets`);
+      } catch (error) {
+        console.error("Failed to sync card sets:", error);
+      }
+    },
+    { timezone: setsTimezone },
+  );
+
+  const imageCleanupCron = process.env.IMAGE_CLEANUP_CRON ?? "0 4 * * *";
+  const imageCleanupTimezone = process.env.IMAGE_CLEANUP_TIMEZONE ?? "UTC";
+
+  cron.schedule(
+    imageCleanupCron,
+    async () => {
+      try {
+        const currentBytes = await cleanup.imageCacheBytes();
+        const maxMb = Math.round(cardImageCacheMaxBytes / 1024 / 1024);
+        const currentMb = Math.round(currentBytes / 1024 / 1024);
+
+        if (currentBytes <= cardImageCacheMaxBytes) {
+          console.log(`Image cache is ${currentMb}MB / ${maxMb}MB. No cleanup needed.`);
+          return;
+        }
+
+        const deleted = await cleanup.removeOldestImages(cardImageCacheMaxBytes);
+        console.log(`Image cache was ${currentMb}MB / ${maxMb}MB. Deleted ${deleted} oldest images.`);
+      } catch (error) {
+        console.error("Failed to clean up image cache:", error);
+      }
+    },
+    { timezone: imageCleanupTimezone },
+  );
 
   const reminderChannelId = process.env.DISCORD_REMINDER_CHANNEL_ID;
   const reminderCron = process.env.REMINDER_CRON ?? "0 10 * * *";

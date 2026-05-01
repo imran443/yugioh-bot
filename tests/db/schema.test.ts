@@ -25,6 +25,7 @@ describe("database schema", () => {
 
     expect(tables).toEqual([
       "card_catalog",
+      "card_sets",
       "draft_cards",
       "draft_picks",
       "draft_players",

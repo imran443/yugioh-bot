@@ -180,11 +180,14 @@ describe("command definitions", () => {
 
   it("defines draft template subcommand group with save, list, and delete", () => {
     const draftCommand = commandDefinitions.find((command) => command.name === "draft")!;
-    const templateGroup = draftCommand.options?.find((option) => option.type === ApplicationCommandOptionType.SubcommandGroup && option.name === "template")!;
+    const templateGroup = draftCommand.options?.find(
+      (option): option is Extract<APIApplicationCommandOption, { type: ApplicationCommandOptionType.SubcommandGroup }> =>
+        option.type === ApplicationCommandOptionType.SubcommandGroup && option.name === "template",
+    )!;
 
     expect(templateGroup).toBeDefined();
 
-    const templateSubcommands = templateGroup.options?.filter(isSubcommandOption) ?? [];
+    const templateSubcommands = (templateGroup.options ?? []).filter(isSubcommandOption);
 
     expect(templateSubcommands.map((s) => s.name)).toEqual(["save", "list", "delete"]);
 

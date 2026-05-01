@@ -652,10 +652,20 @@ async function handleDraft(
     }
     case "sets": {
       const query = interaction.options.getString("query") ?? "";
-      const sets = deps.cards.listSets(query);
+      let sets = deps.cards.listSets(query);
 
       if (sets.length === 0) {
-        await interaction.reply(query ? `No sets found matching "${query}".` : "No sets available yet. Sync some cards first with /draft create.");
+        try {
+          await deps.cards.syncSets();
+          sets = deps.cards.listSets(query);
+        } catch {
+          await interaction.reply("Could not fetch sets from YGOPRODeck. Try again later.");
+          return;
+        }
+      }
+
+      if (sets.length === 0) {
+        await interaction.reply(query ? `No sets found matching "${query}".` : "No sets available.");
         return;
       }
 

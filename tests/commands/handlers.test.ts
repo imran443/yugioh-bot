@@ -10,6 +10,8 @@ import { createDraftTemplateService } from "../../src/services/draft-templates.j
 import { createMatchService } from "../../src/services/matches.js";
 import { createTournamentService } from "../../src/services/tournaments.js";
 
+const mockSetNames = ["Legend of Blue Eyes White Dragon", "Metal Raiders", "Pharaoh's Servant"];
+
 type CommandDependencies = Parameters<typeof handleCommand>[1];
 type _DraftCommandDependencyChecks = [
   CommandDependencies["drafts"],
@@ -59,7 +61,22 @@ function setup() {
   const matches = createMatchService(db);
   const tournaments = createTournamentService(db);
   const drafts = createDraftService(db);
-  const cards = createCardCatalogService(db);
+  const cards = createCardCatalogService(db, {
+    fetch: async (input) => {
+      const url = new URL(String(input));
+
+      if (url.pathname.endsWith("cardsets.php")) {
+        return {
+          ok: true,
+          async json() {
+            return mockSetNames.map((set_name) => ({ set_name }));
+          },
+        } as Response;
+      }
+
+      return { ok: true, async json() { return { data: [] }; } } as Response;
+    },
+  });
   const templates = createDraftTemplateService(db);
   const draftImages = createDraftImageService({ cacheDir: "./data/test-card-images" });
   const notifierCalls: Array<{ channelId: string; userId: string; draftId: number; draftName: string }> = [];
@@ -288,6 +305,40 @@ describe("command handlers", () => {
         app,
       ),
     ).rejects.toThrow("Deck is not complete yet");
+  });
+
+  it("/draft sets lists available card sets from the API", async () => {
+    const app = setup();
+    await app.cards.syncSets();
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "sets",
+      user: { id: "user-1", username: "Yugi" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe(
+      [
+        "Available sets:",
+        ...mockSetNames.map((set) => `- ${set}`),
+      ].join("\n"),
+    );
+  });
+
+  it("/draft sets filters card sets by query", async () => {
+    const app = setup();
+    await app.cards.syncSets();
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "sets",
+      user: { id: "user-1", username: "Yugi" },
+      strings: { query: "metal" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toBe('Sets matching "metal":\n- Metal Raiders');
   });
 
   it("/duel creates a pending match and /approve finalizes it", async () => {

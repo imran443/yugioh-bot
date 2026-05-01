@@ -199,6 +199,11 @@ export function migrate(db: Database.Database) {
       unique (guild_id, name)
     );
 
+    create table if not exists card_sets (
+      set_name text primary key not null,
+      synced_at text not null
+    );
+
     create index if not exists draft_cards_unpicked_by_draft_wave
     on draft_cards (draft_id, wave_number)
     where picked_by_player_id is null;
