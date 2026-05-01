@@ -633,7 +633,7 @@ async function handleDraft(
 
       const creator = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
       const draft = deps.drafts.create(guildId, channelId, draftName, config, interaction.user.id, creator.id);
-      await interaction.reply(`Created draft: ${draft.name}. Use the dashboard to manage it.`);
+      await interaction.reply(draftSignupPostReply(draft));
       return;
     }
     case "join": {

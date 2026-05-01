@@ -204,7 +204,10 @@ describe("command handlers", () => {
 
     await handleCommand(interaction, app);
 
-    expect(replies[0]).toEqual(expect.stringContaining("Created draft: cube night"));
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Signups are open for cube night"),
+    });
+    expect(JSON.stringify(replies[0])).toContain("join_draft");
 
     const draft = app.drafts.findByName("guild-1", "cube night");
 
@@ -228,7 +231,10 @@ describe("command handlers", () => {
 
     await handleCommand(interaction, app);
 
-    expect(replies[0]).toEqual(expect.stringContaining("Created draft: empty draft"));
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Signups are open for empty draft"),
+    });
+    expect(JSON.stringify(replies[0])).toContain("join_draft");
 
     const draft = app.drafts.findByName("guild-1", "empty draft");
 
