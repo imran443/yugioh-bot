@@ -1,5 +1,15 @@
 import type Database from "better-sqlite3";
 
+function hasColumn(db: Database.Database, table: string, column: string) {
+  return (db.pragma(`table_info(${table})`) as Array<{ name: string }>).some((info) => info.name === column);
+}
+
+function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string) {
+  if (!hasColumn(db, table, column)) {
+    db.exec(`alter table ${table} add column ${column} ${definition}`);
+  }
+}
+
 export function migrate(db: Database.Database) {
   db.exec("drop table if exists tournaments_without_name_unique");
 
@@ -53,6 +63,8 @@ export function migrate(db: Database.Database) {
       config_json text not null default '{}',
       current_wave_number integer not null default 0,
       current_pick_step integer not null default 0,
+      pick_deadline_at text,
+      status_message_id text,
       created_at text not null default current_timestamp,
       started_at text,
       ended_at text
@@ -63,15 +75,29 @@ export function migrate(db: Database.Database) {
       player_id integer not null references players(id),
       pick_count integer not null default 0,
       finished_at text,
+      seat_index integer,
       joined_at text not null default current_timestamp,
       primary key (draft_id, player_id)
+    );
+
+    create table if not exists draft_packs (
+      id integer primary key autoincrement,
+      draft_id integer not null references drafts(id),
+      pack_round integer not null,
+      origin_seat_index integer not null,
+      current_holder_seat_index integer not null,
+      pass_direction integer not null,
+      created_at text not null default current_timestamp,
+      unique (draft_id, pack_round, origin_seat_index)
     );
 
     create table if not exists draft_cards (
       id integer primary key autoincrement,
       draft_id integer not null references drafts(id),
       wave_number integer not null,
+      draft_pack_id integer references draft_packs(id),
       catalog_card_id integer not null references card_catalog(ygoprodeck_id),
+      position integer,
       picked_by_player_id integer,
       picked_at text,
       created_at text not null default current_timestamp,
@@ -86,6 +112,7 @@ export function migrate(db: Database.Database) {
       draft_card_id integer not null references draft_cards(id),
       wave_number integer not null,
       pick_step integer not null,
+      pick_method text not null default 'manual',
       picked_at text not null,
       foreign key (draft_id, player_id) references draft_players(draft_id, player_id),
       foreign key (draft_card_id, draft_id, wave_number) references draft_cards(id, draft_id, wave_number),
@@ -180,6 +207,13 @@ export function migrate(db: Database.Database) {
     }
   }
 
+  addColumnIfMissing(db, "drafts", "pick_deadline_at", "text");
+  addColumnIfMissing(db, "drafts", "status_message_id", "text");
+  addColumnIfMissing(db, "draft_players", "seat_index", "integer");
+  addColumnIfMissing(db, "draft_cards", "draft_pack_id", "integer references draft_packs(id)");
+  addColumnIfMissing(db, "draft_cards", "position", "integer");
+  addColumnIfMissing(db, "draft_picks", "pick_method", "text not null default 'manual'");
+
   db.exec(`
     create unique index if not exists tournaments_current_name_unique
     on tournaments (guild_id, name)
@@ -207,5 +241,11 @@ export function migrate(db: Database.Database) {
     create index if not exists draft_cards_unpicked_by_draft_wave
     on draft_cards (draft_id, wave_number)
     where picked_by_player_id is null;
+
+    create index if not exists draft_packs_holder_idx
+    on draft_packs (draft_id, pack_round, current_holder_seat_index);
+
+    create index if not exists draft_cards_pack_idx
+    on draft_cards (draft_pack_id, picked_by_player_id, position);
   `);
 }

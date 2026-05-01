@@ -27,6 +27,7 @@ describe("database schema", () => {
       "card_catalog",
       "card_sets",
       "draft_cards",
+      "draft_packs",
       "draft_picks",
       "draft_players",
       "draft_templates",
@@ -124,6 +125,8 @@ describe("database schema", () => {
       "config_json",
       "current_wave_number",
       "current_pick_step",
+      "pick_deadline_at",
+      "status_message_id",
       "created_at",
       "started_at",
       "ended_at",
@@ -134,6 +137,7 @@ describe("database schema", () => {
       "player_id",
       "pick_count",
       "finished_at",
+      "seat_index",
       "joined_at",
     ]);
 
@@ -141,9 +145,21 @@ describe("database schema", () => {
       "id",
       "draft_id",
       "wave_number",
+      "draft_pack_id",
       "catalog_card_id",
+      "position",
       "picked_by_player_id",
       "picked_at",
+      "created_at",
+    ]);
+
+    expect(getTableInfo(db, "draft_packs").map((column) => column.name)).toEqual([
+      "id",
+      "draft_id",
+      "pack_round",
+      "origin_seat_index",
+      "current_holder_seat_index",
+      "pass_direction",
       "created_at",
     ]);
 
@@ -154,6 +170,7 @@ describe("database schema", () => {
       "draft_card_id",
       "wave_number",
       "pick_step",
+      "pick_method",
       "picked_at",
     ]);
 
@@ -348,6 +365,42 @@ describe("database schema", () => {
       `,
       ).run(),
     ).toThrow(/UNIQUE constraint failed/);
+  });
+
+  it("creates true pack-passing draft columns", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+
+    const draftColumns = getTableInfo(db, "drafts");
+    const playerColumns = getTableInfo(db, "draft_players");
+    const cardColumns = getTableInfo(db, "draft_cards");
+    const pickColumns = getTableInfo(db, "draft_picks");
+
+    expect(draftColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["pick_deadline_at", "status_message_id"]),
+    );
+    expect(playerColumns.map((column) => column.name)).toContain("seat_index");
+    expect(cardColumns.map((column) => column.name)).toEqual(expect.arrayContaining(["draft_pack_id", "position"]));
+    expect(pickColumns.map((column) => column.name)).toContain("pick_method");
+  });
+
+  it("creates draft packs for pack-passing state", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+
+    const columns = getTableInfo(db, "draft_packs");
+
+    expect(columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "id",
+        "draft_id",
+        "pack_round",
+        "origin_seat_index",
+        "current_holder_seat_index",
+        "pass_direction",
+        "created_at",
+      ]),
+    );
   });
 
   it("migrates old tournament name uniqueness to current-event uniqueness", () => {
