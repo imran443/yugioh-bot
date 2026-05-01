@@ -64,6 +64,7 @@ type CommandDependencies = {
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
 const tournamentListSectionLimit = 5;
 const tournamentParticipantListLimit = 25;
+const draftParticipantListLimit = 25;
 
 const helpMessage = [
   "Duel commands: /duel, /approve, /deny, /stats, /rankings",
@@ -175,6 +176,10 @@ function requireStringOption(interaction: CommandInteractionLike, name: string):
   }
 
   return value;
+}
+
+function dedupeTrimmed(values: Array<string | null>): string[] {
+  return [...new Set(values.map((value) => value?.trim() ?? "").filter((value) => value.length > 0))];
 }
 
 function winnerFromResult(result: string, reporterId: number, opponentId: number): number {
@@ -467,7 +472,16 @@ async function handleEvent(
       const name = requireStringOption(interaction, "name");
       const tournament = requireTournament(deps, guildId, name);
       const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-      deps.tournaments.join(tournament.id, player.id);
+      try {
+        deps.tournaments.join(tournament.id, player.id);
+      } catch (error) {
+        if (error instanceof Error && error.message === "You have already joined this tournament") {
+          await interaction.reply({ content: "You have already joined this tournament.", ephemeral: true });
+          return;
+        }
+
+        throw error;
+      }
       await interaction.reply(`Joined event: ${tournament.name}.`);
       return;
     }
@@ -615,14 +629,13 @@ async function handleDraft(
       const includesValue = interaction.options.getString("includes") ?? "";
       const excludesValue = interaction.options.getString("excludes") ?? "";
 
-      const setNames = [
+      const setNames = dedupeTrimmed([
         interaction.options.getString("set1"),
         interaction.options.getString("set2"),
         interaction.options.getString("set3"),
         interaction.options.getString("set4"),
         interaction.options.getString("set5"),
-      ]
-        .filter((s): s is string => s !== null && s.trim().length > 0);
+      ]);
 
       const config = {
         setNames,
@@ -645,7 +658,16 @@ async function handleDraft(
       const name = requireStringOption(interaction, "name");
       const draft = requireDraft(deps, guildId, name);
       const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-      deps.drafts.join(draft.id, player.id);
+      try {
+        deps.drafts.join(draft.id, player.id);
+      } catch (error) {
+        if (error instanceof Error && error.message === "You have already joined this draft") {
+          await interaction.reply({ content: "You have already joined this draft.", ephemeral: true });
+          return;
+        }
+
+        throw error;
+      }
       await interaction.reply(`Joined draft: ${draft.name}.`);
       return;
     }
@@ -653,6 +675,11 @@ async function handleDraft(
       const name = requireStringOption(interaction, "name");
       const draft = requireDraft(deps, guildId, name);
       requireDraftCreator(draft, interaction.user.id);
+      await deps.cards.syncDraftPool({
+        setNames: draft.config.setNames ?? [],
+        includeNames: draft.config.includeNames ?? [],
+        excludeNames: draft.config.excludeNames ?? [],
+      });
       const startedDraft = deps.drafts.start(draft.id);
 
       for (const draftPlayer of deps.drafts.players(startedDraft.id)) {
@@ -699,9 +726,14 @@ async function handleDraft(
       const name = requireStringOption(interaction, "name");
       const draft = requireDraft(deps, guildId, name);
       const players = deps.drafts.players(draft.id);
-      const playerList = players.length === 0
+      const visiblePlayers = players.slice(0, draftParticipantListLimit);
+      const hiddenCount = players.length - visiblePlayers.length;
+      const playerList = visiblePlayers.length === 0
         ? "No players have joined yet."
-        : players.map((p, i) => `${i + 1}. ${p.displayName}`).join("\n");
+        : [
+            ...visiblePlayers.map((p, i) => `${i + 1}. ${p.displayName}`),
+            ...(hiddenCount > 0 ? [`...and ${hiddenCount} more player(s).`] : []),
+          ].join("\n");
 
       await interaction.reply(
         [

@@ -273,7 +273,16 @@ async function handleJoinTournament(
 
   const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
 
-  deps.tournaments.join(tournament.id, player.id);
+  try {
+    deps.tournaments.join(tournament.id, player.id);
+  } catch (error) {
+    if (error instanceof Error && error.message === "You have already joined this tournament") {
+      await interaction.reply({ content: "You have already joined this tournament.", ephemeral: true });
+      return;
+    }
+
+    throw error;
+  }
   await interaction.reply(`${displayName(interaction.user)} joined event: ${tournament.name}.`);
 }
 
@@ -409,12 +418,14 @@ export async function handleButton(
       ephemeral: true,
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          ...visibleDrafts.map((draft) =>
-            new ButtonBuilder()
-              .setCustomId(`join_draft:${draft.id}`)
-              .setLabel(`Join ${draft.name}`.slice(0, 80))
-              .setStyle(ButtonStyle.Primary),
-          ),
+          ...visibleDrafts.map((draft) => {
+            const isCreator = draft.createdByUserId === interaction.user.id;
+
+            return new ButtonBuilder()
+              .setCustomId(isCreator ? `draft_start:${draft.id}` : `join_draft:${draft.id}`)
+              .setLabel(`${isCreator ? "Start" : "Join"} ${draft.name}`.slice(0, 80))
+              .setStyle(isCreator ? ButtonStyle.Success : ButtonStyle.Primary);
+          }),
         ),
       ],
     });
@@ -466,7 +477,16 @@ export async function handleButton(
     }
 
     const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-    deps.drafts.join(draft.id, player.id);
+    try {
+      deps.drafts.join(draft.id, player.id);
+    } catch (error) {
+      if (error instanceof Error && error.message === "You have already joined this draft") {
+        await interaction.reply({ content: "You have already joined this draft.", ephemeral: true });
+        return;
+      }
+
+      throw error;
+    }
     await interaction.reply(`${displayName(interaction.user)} joined draft: ${draft.name}.`);
     return;
   }
@@ -482,6 +502,11 @@ export async function handleButton(
     }
 
     requireDraftCreator(draft, interaction.user.id);
+    await deps.cards.syncDraftPool({
+      setNames: draft.config.setNames ?? [],
+      includeNames: draft.config.includeNames ?? [],
+      excludeNames: draft.config.excludeNames ?? [],
+    });
     const startedDraft = deps.drafts.start(draft.id);
 
     for (const draftPlayer of deps.drafts.players(startedDraft.id)) {

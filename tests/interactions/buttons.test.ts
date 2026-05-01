@@ -122,14 +122,16 @@ describe("button interactions", () => {
     expect(replies[0]).toEqual({ content: "Yugi joined event: locals." });
   });
 
-  it("rejects joining a tournament you are already in", async () => {
+  it("replies clearly when joining a tournament you are already in", async () => {
     const app = setup();
     const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "creator-1");
     const player = app.players.upsert("guild-1", "user-1", "Yugi");
     app.tournaments.join(tournament.id, player.id);
-    const { interaction } = fakeButton({ customId: `join_tournament:${tournament.id}` });
+    const { interaction, replies } = fakeButton({ customId: `join_tournament:${tournament.id}` });
 
-    await expect(handleButton(interaction, app)).rejects.toThrow("You have already joined this tournament");
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toEqual({ content: "You have already joined this tournament.", ephemeral: true });
   });
 
   it("rejects non-join button custom IDs", async () => {
@@ -196,6 +198,22 @@ describe("button interactions", () => {
     expect(JSON.stringify(replies[0])).toContain("cube night");
   });
 
+  it("lists creator-owned open drafts from the dashboard with start buttons", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    const { interaction, replies } = fakeButton({ customId: "draft_open", user: { id: "user-7", username: "Yugi" } });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Open drafts:"),
+      ephemeral: true,
+    });
+    expect(JSON.stringify(replies[0])).toContain(`draft_start:${draft.id}`);
+    expect(JSON.stringify(replies[0])).not.toContain(`join_draft:${draft.id}`);
+  });
+
   it("shows no open drafts message when none exist", async () => {
     const app = setup();
     const { interaction, replies } = fakeButton({ customId: "draft_open" });
@@ -249,16 +267,18 @@ describe("button interactions", () => {
     expect(replies[0]).toEqual({ content: "Kaiba joined draft: cube night." });
   });
 
-  it("rejects joining a draft you are already in", async () => {
+  it("replies clearly when joining a draft you are already in", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
-    const { interaction } = fakeButton({
+    const { interaction, replies } = fakeButton({
       customId: `join_draft:${draft.id}`,
       user: { id: "user-7", username: "Yugi" },
     });
 
-    await expect(handleButton(interaction, app)).rejects.toThrow("You have already joined this draft");
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toEqual({ content: "You have already joined this draft.", ephemeral: true });
   });
 
   it("starts a draft from the dashboard and sends pick prompts to all joined players", async () => {

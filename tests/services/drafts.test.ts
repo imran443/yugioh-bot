@@ -56,6 +56,35 @@ function insertDraftCard(db: Database.Database, draftId: number, waveNumber: num
   );
 }
 
+function insertCatalogCard(
+  db: Database.Database,
+  input: { id: number; name: string; type: string; frameType: string; setName: string },
+) {
+  db.prepare(
+    `
+      insert into card_catalog (
+        ygoprodeck_id,
+        name,
+        type,
+        frame_type,
+        image_url,
+        image_url_small,
+        card_sets_json,
+        cached_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    input.id,
+    input.name,
+    input.type,
+    input.frameType,
+    `https://img/full/${input.id}`,
+    `https://img/small/${input.id}`,
+    JSON.stringify([{ set_name: input.setName }]),
+    "2026-01-01T00:00:00Z",
+  );
+}
+
 describe("draft service", () => {
   it("creates a pending draft, stores config, and auto-joins the creator", () => {
     const app = setup();
@@ -230,6 +259,41 @@ describe("draft service", () => {
     expect(app.db.prepare("select count(*) as count from draft_cards where draft_id = ?").get(draft.id)).toEqual({
       count: 16,
     });
+  });
+
+  it("excludes cached extra deck cards when opening draft waves", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "cube night",
+      { setNames: ["Metal Raiders"] },
+      "user-1",
+      yugi.id,
+    );
+    app.drafts.join(draft.id, kaiba.id);
+    insertCatalogCard(app.db, {
+      id: 1,
+      name: "Summoned Skull",
+      type: "Fiend / Normal Monster",
+      frameType: "normal",
+      setName: "Metal Raiders",
+    });
+    insertCatalogCard(app.db, {
+      id: 2,
+      name: "Fusionist",
+      type: "Beast / Fusion Monster",
+      frameType: "fusion",
+      setName: "Metal Raiders",
+    });
+
+    app.drafts.start(draft.id);
+
+    expect(app.db.prepare("select distinct catalog_card_id from draft_cards where draft_id = ?").all(draft.id)).toEqual([
+      { catalog_card_id: 1 },
+    ]);
   });
 
   it("requires a pending draft to start", () => {

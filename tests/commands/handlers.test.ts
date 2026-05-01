@@ -12,6 +12,17 @@ import { createTournamentService } from "../../src/services/tournaments.js";
 
 const mockSetNames = ["Legend of Blue Eyes White Dragon", "Metal Raiders", "Pharaoh's Servant"];
 
+function mockCardsForSet(setName: string, startId: number, count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: startId + index,
+    name: `${setName} Card ${index + 1}`,
+    type: "Spellcaster / Normal Monster",
+    frameType: "normal",
+    card_images: [{ image_url: `https://img/full/${startId + index}`, image_url_small: `https://img/small/${startId + index}` }],
+    card_sets: [{ set_name: setName }],
+  }));
+}
+
 type CommandDependencies = Parameters<typeof handleCommand>[1];
 type _DraftCommandDependencyChecks = [
   CommandDependencies["drafts"],
@@ -54,7 +65,7 @@ function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
   }
 }
 
-function setup() {
+function setup(options: { cardsBySet?: Record<string, unknown[]>; fetchCalls?: string[] } = {}) {
   const db = new Database(":memory:");
   migrate(db);
   const players = createPlayerRepository(db);
@@ -64,12 +75,22 @@ function setup() {
   const cards = createCardCatalogService(db, {
     fetch: async (input) => {
       const url = new URL(String(input));
+      options.fetchCalls?.push(String(url));
 
       if (url.pathname.endsWith("cardsets.php")) {
         return {
           ok: true,
           async json() {
             return mockSetNames.map((set_name) => ({ set_name }));
+          },
+        } as Response;
+      }
+
+      if (url.pathname.endsWith("cardinfo.php") && url.searchParams.has("cardset")) {
+        return {
+          ok: true,
+          async json() {
+            return { data: options.cardsBySet?.[url.searchParams.get("cardset") ?? ""] ?? [] };
           },
         } as Response;
       }
@@ -220,6 +241,28 @@ describe("command handlers", () => {
     });
   });
 
+  it("/draft create trims and deduplicates set options", async () => {
+    const app = setup();
+    const { interaction } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "create",
+      user: { id: "user-1", username: "Yugi" },
+      strings: {
+        name: "trimmed draft",
+        set1: " Metal Raiders ",
+        set2: "Metal Raiders",
+        set3: "Legend of Blue Eyes White Dragon",
+      },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(app.drafts.findByName("guild-1", "trimmed draft")?.config.setNames).toEqual([
+      "Metal Raiders",
+      "Legend of Blue Eyes White Dragon",
+    ]);
+  });
+
   it("/draft create creates a draft with no optional fields", async () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };
@@ -293,6 +336,55 @@ describe("command handlers", () => {
       { channelId: "channel-1", userId: "user-7", draftId: draft.id, draftName: "cube night" },
       { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
     ]);
+  });
+
+  it("/draft start syncs set-backed pools before opening the first wave", async () => {
+    const app = setup({
+      cardsBySet: {
+        "Metal Raiders": mockCardsForSet("Metal Raiders", 1000, 8),
+        "Legend of Blue Eyes White Dragon": mockCardsForSet("Legend of Blue Eyes White Dragon", 2000, 8),
+      },
+    });
+    const yugi = { id: "user-7", username: "Yugi" };
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "draft",
+        subcommand: "create",
+        user: yugi,
+        strings: {
+          name: "retro draft",
+          set1: "Metal Raiders",
+          set2: "Legend of Blue Eyes White Dragon",
+        },
+      }).interaction,
+      app,
+    );
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "draft",
+        subcommand: "join",
+        user: { id: "user-9", username: "Kaiba" },
+        strings: { name: "retro draft" },
+      }).interaction,
+      app,
+    );
+
+    await handleCommand(
+      fakeInteraction({
+        commandName: "draft",
+        subcommand: "start",
+        user: yugi,
+        strings: { name: "retro draft" },
+      }).interaction,
+      app,
+    );
+
+    const draft = app.drafts.findByName("guild-1", "retro draft")!;
+
+    expect(draft.status).toBe("active");
+    expect(app.db.prepare("select count(*) as count from draft_cards where draft_id = ?").get(draft.id)).toEqual({ count: 16 });
   });
 
   it("/draft start rejects non-creators", async () => {
@@ -425,22 +517,51 @@ describe("command handlers", () => {
     expect(replies[0]).toEqual(expect.stringContaining("pending"));
   });
 
-  it("/draft join rejects duplicate joins", async () => {
+  it("/draft show caps participant lists", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
-    app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.create("guild-1", "channel-1", "big draft", {}, "user-7", yugi.id);
 
-    await expect(
-      handleCommand(
+    for (let index = 0; index < 30; index += 1) {
+      await handleCommand(
         fakeInteraction({
           commandName: "draft",
           subcommand: "join",
-          user: { id: "user-7", username: "Yugi" },
-          strings: { name: "cube night" },
+          user: { id: `user-${index + 100}`, username: `Player ${index + 1}` },
+          strings: { name: "big draft" },
         }).interaction,
         app,
-      ),
-    ).rejects.toThrow("You have already joined this draft");
+      );
+    }
+
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "show",
+      user: { id: "user-1", username: "Yugi" },
+      strings: { name: "big draft" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toEqual(expect.stringContaining("Players (31):"));
+    expect(replies[0]).toEqual(expect.stringContaining("...and 6 more player(s)."));
+    expect(replies[0]).not.toEqual(expect.stringContaining("Player 30"));
+  });
+
+  it("/draft join replies clearly for duplicate joins", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "join",
+      user: { id: "user-7", username: "Yugi" },
+      strings: { name: "cube night" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toEqual({ content: "You have already joined this draft.", ephemeral: true });
   });
 
   it("/draft sets lists available card sets from the API", async () => {
@@ -1108,23 +1229,21 @@ describe("command handlers", () => {
     );
   });
 
-  it("/event join rejects duplicate joins", async () => {
+  it("/event join replies clearly for duplicate joins", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
     const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
     app.tournaments.join(tournament.id, yugi.id);
+    const { interaction, replies } = fakeInteraction({
+      commandName: "event",
+      subcommand: "join",
+      user: { id: "user-1", username: "Yugi" },
+      strings: { name: "locals" },
+    });
 
-    await expect(
-      handleCommand(
-        fakeInteraction({
-          commandName: "event",
-          subcommand: "join",
-          user: { id: "user-1", username: "Yugi" },
-          strings: { name: "locals" },
-        }).interaction,
-        app,
-      ),
-    ).rejects.toThrow("You have already joined this tournament");
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toEqual({ content: "You have already joined this tournament.", ephemeral: true });
   });
 
   it("/event create seeds unique provided players", async () => {

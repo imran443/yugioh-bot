@@ -51,6 +51,8 @@ type DraftCardRow = {
 type CatalogRow = {
   ygoprodeck_id: number;
   name: string;
+  type: string;
+  frame_type: string;
   card_sets_json: string;
 };
 
@@ -98,6 +100,19 @@ function mapDraftPick(row: any): DraftPick {
 
 function normalizeName(value: string) {
   return value.trim().toLowerCase();
+}
+
+const extraDeckFrameTypes = new Set(["fusion", "synchro", "xyz", "link"]);
+
+function isExtraDeckCatalogRow(row: CatalogRow) {
+  return (
+    extraDeckFrameTypes.has(row.frame_type) ||
+    row.type.includes("Fusion Monster") ||
+    row.type.includes("Synchro Monster") ||
+    row.type.includes("XYZ Monster") ||
+    row.type.includes("Xyz Monster") ||
+    row.type.includes("Link Monster")
+  );
 }
 
 export function createDraftService(db: Database.Database) {
@@ -212,11 +227,15 @@ export function createDraftService(db: Database.Database) {
     const hasExplicitPool = setNames.size > 0 || includeNames.size > 0;
 
     return db
-      .prepare("select ygoprodeck_id, name, card_sets_json from card_catalog")
+      .prepare("select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog")
       .all()
       .map((row: any) => row as CatalogRow)
       .filter((row) => {
         const normalizedName = normalizeName(row.name);
+
+        if (isExtraDeckCatalogRow(row)) {
+          return false;
+        }
 
         if (excludeNames.has(normalizedName)) {
           return false;
