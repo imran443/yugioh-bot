@@ -388,6 +388,73 @@ export async function handleButton(
     return;
   }
 
+  if (interaction.customId === "draft_open") {
+    const guildId = requireGuildId(interaction);
+    const drafts = deps.drafts.listByStatus(guildId, ["pending"]);
+
+    if (drafts.length === 0) {
+      await interaction.reply({ content: "No open drafts right now.", ephemeral: true });
+      return;
+    }
+
+    const visibleDrafts = drafts.slice(0, 5);
+    const hiddenCount = drafts.length - visibleDrafts.length;
+
+    await interaction.reply({
+      content: [
+        "Open drafts:",
+        ...visibleDrafts.map((draft) => `- ${draft.name}`),
+        ...(hiddenCount > 0 ? [`...and ${hiddenCount} more draft(s).`] : []),
+      ].join("\n"),
+      ephemeral: true,
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          ...visibleDrafts.map((draft) =>
+            new ButtonBuilder()
+              .setCustomId(`join_draft:${draft.id}`)
+              .setLabel(`Join ${draft.name}`.slice(0, 80))
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ),
+      ],
+    });
+    return;
+  }
+
+  if (interaction.customId === "draft_export") {
+    const guildId = requireGuildId(interaction);
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    const drafts = deps.drafts.listByStatus(guildId, ["completed"]);
+
+    if (drafts.length === 0) {
+      await interaction.reply({ content: "No completed drafts to export.", ephemeral: true });
+      return;
+    }
+
+    const visibleDrafts = drafts.slice(0, 5);
+    const hiddenCount = drafts.length - visibleDrafts.length;
+
+    await interaction.reply({
+      content: [
+        "Completed drafts:",
+        ...visibleDrafts.map((draft) => `- ${draft.name}`),
+        ...(hiddenCount > 0 ? [`...and ${hiddenCount} more draft(s).`] : []),
+      ].join("\n"),
+      ephemeral: true,
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          ...visibleDrafts.map((draft) =>
+            new ButtonBuilder()
+              .setCustomId(`draft_export:${draft.id}`)
+              .setLabel(`Export ${draft.name}`.slice(0, 80))
+              .setStyle(ButtonStyle.Secondary),
+          ),
+        ),
+      ],
+    });
+    return;
+  }
+
   const joinDraft = /^join_draft:(\d+)$/.exec(interaction.customId);
 
   if (joinDraft) {

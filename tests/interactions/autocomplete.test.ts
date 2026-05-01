@@ -342,6 +342,38 @@ describe("autocomplete interactions", () => {
     expect(responses[0]).toEqual([{ name: "Metal Raiders", value: "Metal Raiders" }]);
   });
 
+  it("suggests set names for draft create sets option", async () => {
+    const app = setup();
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Metal Raiders", "2026-01-01");
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Legend of Blue Eyes White Dragon", "2026-01-01");
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Pharaoh's Servant", "2026-01-01");
+
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      options: { getSubcommand: () => "create", getSubcommandGroup: () => null, getFocused: () => ({ name: "sets", value: "metal" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Metal Raiders", value: "Metal Raiders" }]);
+  });
+
+  it("suggests set names based on last segment for draft create sets", async () => {
+    const app = setup();
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Metal Raiders", "2026-01-01");
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Legend of Blue Eyes White Dragon", "2026-01-01");
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Pharaoh's Servant", "2026-01-01");
+
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      options: { getSubcommand: () => "create", getSubcommandGroup: () => null, getFocused: () => ({ name: "sets", value: "Metal Raiders, leg" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Legend of Blue Eyes White Dragon", value: "Legend of Blue Eyes White Dragon" }]);
+  });
+
   it("suggests template names for draft template delete", async () => {
     const app = setup();
     app.templates.save("guild-1", "Classic", { setNames: ["Metal Raiders"] }, "user-1");

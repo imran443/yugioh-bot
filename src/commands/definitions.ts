@@ -200,6 +200,40 @@ export const commandDefinitions = [
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName("create")
+        .setDescription("Create a new draft")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Draft name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("sets")
+            .setDescription("Card sets (comma-separated)")
+            .setRequired(false)
+            .setMaxLength(500)
+            .setAutocomplete(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("includes")
+            .setDescription("Cards to include")
+            .setRequired(false)
+            .setMaxLength(500),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("excludes")
+            .setDescription("Cards to exclude")
+            .setRequired(false)
+            .setMaxLength(500),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName("join")
         .setDescription("Join a draft")
         .addStringOption((option) =>

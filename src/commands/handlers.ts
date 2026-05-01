@@ -604,6 +604,38 @@ async function handleDraft(
     case "dashboard":
       await interaction.reply(draftDashboardReply());
       return;
+    case "create": {
+      const channelId = interaction.channelId;
+
+      if (!channelId) {
+        throw new Error("This command must be used in a channel");
+      }
+
+      const draftName = requireStringOption(interaction, "name");
+      const setsValue = interaction.options.getString("sets") ?? "";
+      const includesValue = interaction.options.getString("includes") ?? "";
+      const excludesValue = interaction.options.getString("excludes") ?? "";
+
+      const config = {
+        setNames: setsValue
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+        includeNames: includesValue
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+        excludeNames: excludesValue
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+      };
+
+      const creator = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+      const draft = deps.drafts.create(guildId, channelId, draftName, config, interaction.user.id, creator.id);
+      await interaction.reply(`Created draft: ${draft.name}. Use the dashboard to manage it.`);
+      return;
+    }
     case "join": {
       const name = requireStringOption(interaction, "name");
       const draft = requireDraft(deps, guildId, name);

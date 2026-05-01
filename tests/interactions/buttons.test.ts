@@ -170,6 +170,57 @@ describe("button interactions", () => {
     expect(JSON.stringify(modals[0])).toContain("Create Draft");
   });
 
+  it("lists open drafts from the dashboard with join buttons", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    const { interaction, replies } = fakeButton({ customId: "draft_open" });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Open drafts:"),
+      ephemeral: true,
+    });
+    expect(JSON.stringify(replies[0])).toContain(`join_draft:${draft.id}`);
+    expect(JSON.stringify(replies[0])).toContain("cube night");
+  });
+
+  it("shows no open drafts message when none exist", async () => {
+    const app = setup();
+    const { interaction, replies } = fakeButton({ customId: "draft_open" });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toEqual({ content: "No open drafts right now.", ephemeral: true });
+  });
+
+  it("lists completed drafts from the dashboard with export buttons", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
+    const { interaction, replies } = fakeButton({ customId: "draft_export" });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringContaining("Completed drafts:"),
+      ephemeral: true,
+    });
+    expect(JSON.stringify(replies[0])).toContain(`draft_export:${draft.id}`);
+    expect(JSON.stringify(replies[0])).toContain("cube night");
+  });
+
+  it("shows no completed drafts message when none exist", async () => {
+    const app = setup();
+    const { interaction, replies } = fakeButton({ customId: "draft_export" });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toEqual({ content: "No completed drafts to export.", ephemeral: true });
+  });
+
   it("joins a pending draft from the public signup button and replies ephemerally", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");

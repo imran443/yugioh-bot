@@ -187,6 +187,59 @@ describe("command handlers", () => {
     expect(JSON.stringify(replies[0])).toContain("draft_export");
   });
 
+  it("/draft create creates a draft with sets, includes, and excludes", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "create",
+      user: yugi,
+      strings: {
+        name: "cube night",
+        sets: "Metal Raiders, Legend of Blue Eyes White Dragon",
+        includes: "Dark Magician",
+        excludes: "Blue-Eyes White Dragon",
+      },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toEqual(expect.stringContaining("Created draft: cube night"));
+
+    const draft = app.drafts.findByName("guild-1", "cube night");
+
+    expect(draft).toBeDefined();
+    expect(draft?.config).toEqual({
+      setNames: ["Metal Raiders", "Legend of Blue Eyes White Dragon"],
+      includeNames: ["Dark Magician"],
+      excludeNames: ["Blue-Eyes White Dragon"],
+    });
+  });
+
+  it("/draft create creates a draft with no optional fields", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "create",
+      user: yugi,
+      strings: { name: "empty draft" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toEqual(expect.stringContaining("Created draft: empty draft"));
+
+    const draft = app.drafts.findByName("guild-1", "empty draft");
+
+    expect(draft).toBeDefined();
+    expect(draft?.config).toEqual({
+      setNames: [],
+      includeNames: [],
+      excludeNames: [],
+    });
+  });
+
   it("/draft join joins a pending draft by name", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
