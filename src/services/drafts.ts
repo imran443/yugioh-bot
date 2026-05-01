@@ -30,6 +30,7 @@ export type Draft = {
 export type DraftPlayer = {
   playerId: number;
   displayName: string;
+  seatIndex?: number;
 };
 
 export type DraftCard = {
@@ -133,6 +134,10 @@ function normalizeDraftConfig(config: DraftConfig): DraftConfig {
 const extraDeckFrameTypes = new Set(["fusion", "synchro", "xyz", "link"]);
 const pickOptionLimit = 8;
 
+function deadlineIso(now: Date, seconds: number) {
+  return new Date(now.getTime() + seconds * 1000).toISOString();
+}
+
 function isExtraDeckCatalogRow(row: CatalogRow) {
   return (
     extraDeckFrameTypes.has(row.frame_type) ||
@@ -211,6 +216,23 @@ export function createDraftService(db: Database.Database) {
         `,
       )
       .get(draftId, playerId) as { pick_count: number; finished_at: string | null };
+
+  const playerSeatIndex = (draftId: number, playerId: number): number => {
+    const row = db
+      .prepare(
+        `
+          select seat_index from draft_players
+          where draft_id = ? and player_id = ?
+        `,
+      )
+      .get(draftId, playerId) as { seat_index: number | null } | undefined;
+
+    if (!row || row.seat_index === null) {
+      throw new Error("Draft seat has not been assigned yet");
+    }
+
+    return row.seat_index;
+  };
 
   const assertActiveDraft = (draft: Draft) => {
     if (draft.status !== "active") {
@@ -304,22 +326,37 @@ export function createDraftService(db: Database.Database) {
       throw new Error("Draft pool is empty");
     }
 
+    const packSize = config.packSize ?? defaultDraftConfig.packSize;
+    const passDirection = waveNumber % 2 === 0 && config.alternatePassDirection ? -1 : 1;
+    const insertPack = db.prepare(
+      `
+        insert into draft_packs (
+          draft_id,
+          pack_round,
+          origin_seat_index,
+          current_holder_seat_index,
+          pass_direction
+        ) values (?, ?, ?, ?, ?)
+      `,
+    );
     const insertDraftCard = db.prepare(
       `
-        insert into draft_cards (draft_id, wave_number, catalog_card_id)
-        values (?, ?, ?)
+        insert into draft_cards (draft_id, wave_number, draft_pack_id, catalog_card_id, position)
+        values (?, ?, ?, ?, ?)
       `,
     );
 
     for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
-      for (let cardIndex = 0; cardIndex < 8; cardIndex += 1) {
+      const packId = Number(insertPack.run(draftId, waveNumber, playerIndex, playerIndex, passDirection).lastInsertRowid);
+
+      for (let cardIndex = 0; cardIndex < packSize; cardIndex += 1) {
         const catalogCardId = catalogCardIds[Math.floor(Math.random() * catalogCardIds.length)];
-        insertDraftCard.run(draftId, waveNumber, catalogCardId);
+        insertDraftCard.run(draftId, waveNumber, packId, catalogCardId, cardIndex);
       }
     }
   };
 
-  const startDraft = db.transaction((draftId: number) => {
+  const startDraft = db.transaction((draftId: number, now = new Date()) => {
     const draft = findById(draftId);
 
     if (draft.status !== "pending") {
@@ -341,18 +378,31 @@ export function createDraftService(db: Database.Database) {
       throw new Error("Draft requires at least two players to start");
     }
 
+    const assignSeat = db.prepare(
+      `
+        update draft_players
+        set seat_index = ?
+        where draft_id = ? and player_id = ?
+      `,
+    );
+
+    for (const [seatIndex, playerId] of playerIds.entries()) {
+      assignSeat.run(seatIndex, draftId, playerId);
+    }
+
     openWave(draftId, 1, playerIds.length, draft.config);
 
     db.prepare(
       `
         update drafts
         set status = 'active',
-            started_at = current_timestamp,
+            started_at = ?,
             current_wave_number = 1,
-            current_pick_step = 1
+            current_pick_step = 1,
+            pick_deadline_at = ?
         where id = ?
       `,
-    ).run(draftId);
+    ).run(now.toISOString(), deadlineIso(now, draft.config.pickSeconds ?? defaultDraftConfig.pickSeconds), draftId);
 
     return findById(draftId);
   });
@@ -574,7 +624,7 @@ export function createDraftService(db: Database.Database) {
       return db
         .prepare(
           `
-          select p.id as player_id, p.display_name
+          select p.id as player_id, p.display_name, dp.seat_index
           from draft_players dp
           inner join players p on p.id = dp.player_id
           where dp.draft_id = ?
@@ -582,11 +632,53 @@ export function createDraftService(db: Database.Database) {
         `,
         )
         .all(draftId)
-        .map((row: any) => ({ playerId: row.player_id, displayName: row.display_name }));
+        .map((row: any) => ({
+          playerId: row.player_id,
+          displayName: row.display_name,
+          ...(row.seat_index === null ? {} : { seatIndex: row.seat_index }),
+        }));
     },
 
-    start(draftId: number): Draft {
-      return startDraft(draftId);
+    start(draftId: number, now = new Date()): Draft {
+      return startDraft(draftId, now);
+    },
+
+    currentPackOptions(draftId: number, playerId: number): DraftCard[] {
+      const draft = findById(draftId);
+      assertActiveDraft(draft);
+      assertJoinedPlayer(draftId, playerId);
+
+      const playerRow = playerProgress(draftId, playerId);
+
+      if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
+        return [];
+      }
+
+      const seatIndex = playerSeatIndex(draftId, playerId);
+      const pack = db
+        .prepare(
+          `
+            select id from draft_packs
+            where draft_id = ? and pack_round = ? and current_holder_seat_index = ?
+            limit 1
+          `,
+        )
+        .get(draftId, draft.currentPackRound, seatIndex) as { id: number } | undefined;
+
+      if (!pack) {
+        return [];
+      }
+
+      return db
+        .prepare(
+          `
+            select * from draft_cards
+            where draft_pack_id = ? and picked_by_player_id is null
+            order by position asc, id asc
+          `,
+        )
+        .all(pack.id)
+        .map(mapDraftCard);
     },
 
     currentWaveCards(draftId: number): DraftCard[] {

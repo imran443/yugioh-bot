@@ -195,7 +195,7 @@ describe("draft service", () => {
     ).toThrow("An active or pending draft already uses that name");
   });
 
-  it("starts a pending draft, opens the first 8-card wave for each player, and exposes current wave cards", () => {
+  it("starts a draft by seating players and opening one 8-card pack per player", () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
     const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
@@ -247,22 +247,26 @@ describe("draft service", () => {
       );
     }
 
-    const started = app.drafts.start(draft.id);
+    const started = app.drafts.start(draft.id, new Date("2026-05-01T00:00:00.000Z"));
     const waveCards = app.drafts.currentWaveCards(draft.id);
 
-    expect(started).toMatchObject({
+    expect(started).toEqual(expect.objectContaining({
       id: draft.id,
       status: "active",
-      currentWaveNumber: 1,
+      currentPackRound: 1,
       currentPickStep: 1,
-    });
-    expect(app.db.prepare("select started_at from drafts where id = ?").get(draft.id)).toEqual({
-      started_at: expect.any(String),
-    });
+      pickDeadlineAt: "2026-05-01T00:00:45.000Z",
+    }));
+    expect(app.drafts.players(draft.id)).toEqual([
+      { playerId: yugi.id, displayName: "Yugi", seatIndex: 0 },
+      { playerId: kaiba.id, displayName: "Kaiba", seatIndex: 1 },
+    ]);
     expect(waveCards).toHaveLength(16);
     expect(waveCards.every((card) => card.waveNumber === 1)).toBe(true);
     expect(waveCards.every((card) => card.pickedByPlayerId === null)).toBe(true);
     expect(new Set(waveCards.map((card) => card.catalogCardId))).toEqual(new Set([1, 3]));
+    expect(app.drafts.currentPackOptions(draft.id, yugi.id)).toHaveLength(8);
+    expect(app.drafts.currentPackOptions(draft.id, kaiba.id)).toHaveLength(8);
     expect(app.db.prepare("select count(*) as count from draft_cards where draft_id = ?").get(draft.id)).toEqual({
       count: 16,
     });
@@ -519,7 +523,7 @@ describe("draft service", () => {
 
     expect(app.drafts.findById(draft.id)).toMatchObject({
       status: "active",
-      currentWaveNumber: 2,
+      currentPackRound: 2,
       currentPickStep: 1,
     });
     expect(app.drafts.currentWaveCards(draft.id)).toHaveLength(16);
@@ -550,7 +554,7 @@ describe("draft service", () => {
     expect(app.drafts.pickOptions(draft.id, yugi.id)).toEqual([]);
     expect(app.drafts.findById(draft.id)).toMatchObject({
       status: "active",
-      currentWaveNumber: 5,
+      currentPackRound: 5,
       currentPickStep: 1,
     });
     expect(
@@ -564,7 +568,7 @@ describe("draft service", () => {
 
     expect(app.drafts.findById(draft.id)).toMatchObject({
       status: "completed",
-      currentWaveNumber: 5,
+      currentPackRound: 5,
       currentPickStep: 1,
     });
     expect(app.db.prepare("select ended_at from drafts where id = ?").get(draft.id)).toEqual({
