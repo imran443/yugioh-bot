@@ -118,7 +118,8 @@ describe("draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    app.drafts.join(draft.id, kaiba.id);
+
+    expect(() => app.drafts.join(draft.id, kaiba.id)).toThrow("You have already joined this draft");
 
     expect(app.drafts.players(draft.id)).toEqual([
       { playerId: yugi.id, displayName: "Yugi" },

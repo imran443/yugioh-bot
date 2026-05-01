@@ -429,4 +429,21 @@ describe("autocomplete interactions", () => {
 
     expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
   });
+
+  it("suggests all drafts for draft show", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "Retro", {}, "user-1", yugi.id);
+    const modern = app.drafts.create("guild-1", "channel-1", "Modern", {}, "user-2", yugi.id);
+    app.db.prepare("update drafts set status = 'completed' where id = ?").run(modern.id);
+
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      options: { getSubcommand: () => "show", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "re" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
+  });
 });

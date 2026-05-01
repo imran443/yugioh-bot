@@ -44,7 +44,8 @@ describe("tournament service", () => {
     const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
 
     app.tournaments.join(tournament.id, yugi.id);
-    app.tournaments.join(tournament.id, yugi.id);
+
+    expect(() => app.tournaments.join(tournament.id, yugi.id)).toThrow("You have already joined this tournament");
 
     expect(app.tournaments.participants(tournament.id)).toEqual([yugi.id]);
   });

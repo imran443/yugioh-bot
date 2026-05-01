@@ -690,6 +690,24 @@ async function handleDraft(
       await interaction.reply(`Cancelled draft: ${draft.name}.`);
       return;
     }
+    case "show": {
+      const name = requireStringOption(interaction, "name");
+      const draft = requireDraft(deps, guildId, name);
+      const players = deps.drafts.players(draft.id);
+      const playerList = players.length === 0
+        ? "No players have joined yet."
+        : players.map((p, i) => `${i + 1}. ${p.displayName}`).join("\n");
+
+      await interaction.reply(
+        [
+          `**${draft.name}** (${draft.status})`,
+          `Players (${players.length}):`,
+          playerList,
+          draft.status === "pending" ? "Use `/draft join` or click the Join button to enter." : "",
+        ].filter(Boolean).join("\n"),
+      );
+      return;
+    }
     case "sets": {
       const query = interaction.options.getString("query") ?? "";
       let sets = deps.cards.listSets(query);

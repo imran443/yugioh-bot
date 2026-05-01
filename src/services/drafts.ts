@@ -508,9 +508,15 @@ export function createDraftService(db: Database.Database) {
 
       assertPlayerGuild(playerId, draft.guildId);
 
+      const existing = db.prepare("select 1 from draft_players where draft_id = ? and player_id = ?").get(draftId, playerId);
+
+      if (existing) {
+        throw new Error("You have already joined this draft");
+      }
+
       db.prepare(
         `
-        insert or ignore into draft_players (draft_id, player_id)
+        insert into draft_players (draft_id, player_id)
         values (?, ?)
       `,
       ).run(draftId, playerId);

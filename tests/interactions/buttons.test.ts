@@ -86,7 +86,7 @@ function fakeButton(input: Partial<ButtonInteractionLike> = {}) {
     guildId: "guild-1",
     user: { id: "user-1", username: "Yugi" },
     reply: (message) => {
-      replies.push(message);
+      replies.push(typeof message === "string" ? { content: message } : message);
     },
     showModal: (modal) => {
       modals.push(modal);
@@ -110,7 +110,7 @@ describe("button interactions", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-  it("joins a pending tournament and replies ephemerally", async () => {
+  it("joins a pending tournament and announces publicly", async () => {
     const app = setup();
     const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "creator-1");
     const { interaction, replies } = fakeButton({ customId: `join_tournament:${tournament.id}` });
@@ -119,7 +119,17 @@ describe("button interactions", () => {
 
     const player = app.players.findByDiscordId("guild-1", "user-1")!;
     expect(app.tournaments.participants(tournament.id)).toEqual([player.id]);
-    expect(replies[0]).toEqual({ content: "Joined event: locals.", ephemeral: true });
+    expect(replies[0]).toEqual({ content: "Yugi joined event: locals." });
+  });
+
+  it("rejects joining a tournament you are already in", async () => {
+    const app = setup();
+    const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "creator-1");
+    const player = app.players.upsert("guild-1", "user-1", "Yugi");
+    app.tournaments.join(tournament.id, player.id);
+    const { interaction } = fakeButton({ customId: `join_tournament:${tournament.id}` });
+
+    await expect(handleButton(interaction, app)).rejects.toThrow("You have already joined this tournament");
   });
 
   it("rejects non-join button custom IDs", async () => {
@@ -221,7 +231,7 @@ describe("button interactions", () => {
     expect(replies[0]).toEqual({ content: "No completed drafts to export.", ephemeral: true });
   });
 
-  it("joins a pending draft from the public signup button and replies ephemerally", async () => {
+  it("joins a pending draft from the public signup button and announces publicly", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
@@ -236,7 +246,19 @@ describe("button interactions", () => {
       { playerId: yugi.id, displayName: "Yugi" },
       { playerId: expect.any(Number), displayName: "Kaiba" },
     ]);
-    expect(replies[0]).toEqual({ content: "Joined draft: cube night.", ephemeral: true });
+    expect(replies[0]).toEqual({ content: "Kaiba joined draft: cube night." });
+  });
+
+  it("rejects joining a draft you are already in", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    const { interaction } = fakeButton({
+      customId: `join_draft:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await expect(handleButton(interaction, app)).rejects.toThrow("You have already joined this draft");
   });
 
   it("starts a draft from the dashboard and sends pick prompts to all joined players", async () => {

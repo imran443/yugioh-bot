@@ -320,9 +320,15 @@ export function createTournamentService(db: Database.Database) {
         throw new Error("Tournament has already started");
       }
 
+      const existing = db.prepare("select 1 from tournament_participants where tournament_id = ? and player_id = ?").get(tournamentId, playerId);
+
+      if (existing) {
+        throw new Error("You have already joined this tournament");
+      }
+
       db.prepare(
         `
-        insert or ignore into tournament_participants (tournament_id, player_id)
+        insert into tournament_participants (tournament_id, player_id)
         values (?, ?)
       `,
       ).run(tournamentId, playerId);

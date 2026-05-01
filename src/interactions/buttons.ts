@@ -24,7 +24,7 @@ export type ButtonInteractionLike = {
   user: DiscordUserLike;
   showModal?(modal: ModalBuilder): Promise<void> | void;
   reply(
-    message: { content: string; ephemeral: boolean; components?: InteractionReplyOptions["components"]; files?: InteractionReplyOptions["files"] },
+    message: string | { content: string; ephemeral?: boolean; components?: InteractionReplyOptions["components"]; files?: InteractionReplyOptions["files"] },
   ): Promise<void> | void;
 };
 
@@ -274,7 +274,7 @@ async function handleJoinTournament(
   const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
 
   deps.tournaments.join(tournament.id, player.id);
-  await interaction.reply({ content: `Joined event: ${tournament.name}.`, ephemeral: true });
+  await interaction.reply(`${displayName(interaction.user)} joined event: ${tournament.name}.`);
 }
 
 async function handleReportResult(
@@ -467,7 +467,7 @@ export async function handleButton(
 
     const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
     deps.drafts.join(draft.id, player.id);
-    await interaction.reply({ content: `Joined draft: ${draft.name}.`, ephemeral: true });
+    await interaction.reply(`${displayName(interaction.user)} joined draft: ${draft.name}.`);
     return;
   }
 

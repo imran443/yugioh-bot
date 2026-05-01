@@ -166,9 +166,9 @@ describe("command definitions", () => {
     const draftCommand = commandDefinitions.find((command) => command.name === "draft")!;
     const subcommands = draftCommand.options?.filter(isSubcommandOption) ?? [];
 
-    expect(subcommands.map((s) => s.name)).toEqual(["dashboard", "create", "join", "start", "export", "cancel", "sets"]);
+    expect(subcommands.map((s) => s.name)).toEqual(["dashboard", "create", "join", "start", "export", "cancel", "show", "sets"]);
 
-    for (const subcommandName of ["join", "start", "export", "cancel"]) {
+    for (const subcommandName of ["join", "start", "export", "cancel", "show"]) {
       const subcommand = subcommands.find((option) => option.name === subcommandName)!;
       const nameOption = stringOptionFor(subcommand, "name");
 

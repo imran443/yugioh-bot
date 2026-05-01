@@ -286,6 +286,19 @@ export const commandDefinitions = [
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName("show")
+        .setDescription("Show draft details and participants")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Draft name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName("sets")
         .setDescription("List available card sets")
         .addStringOption((option) =>

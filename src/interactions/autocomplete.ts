@@ -204,6 +204,17 @@ export async function handleAutocomplete(
           ),
         );
         return;
+      case "show":
+        await interaction.respond(
+          draftChoices(
+            deps.drafts.autocomplete({
+              guildId: interaction.guildId,
+              query,
+              statuses: ["pending", "active", "completed"],
+            }),
+          ),
+        );
+        return;
       case "export":
         await interaction.respond(
           draftChoices(

@@ -403,6 +403,45 @@ describe("command handlers", () => {
     ).rejects.toThrow("Only the draft creator can do that");
   });
 
+  it("/draft show displays draft details and participants", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "show",
+      user: { id: "user-1", username: "Yugi" },
+      strings: { name: "cube night" },
+    });
+
+    await handleCommand(interaction, app);
+
+    expect(replies[0]).toEqual(expect.stringContaining("cube night"));
+    expect(replies[0]).toEqual(expect.stringContaining("Yugi"));
+    expect(replies[0]).toEqual(expect.stringContaining("Kaiba"));
+    expect(replies[0]).toEqual(expect.stringContaining("pending"));
+  });
+
+  it("/draft join rejects duplicate joins", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+
+    await expect(
+      handleCommand(
+        fakeInteraction({
+          commandName: "draft",
+          subcommand: "join",
+          user: { id: "user-7", username: "Yugi" },
+          strings: { name: "cube night" },
+        }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("You have already joined this draft");
+  });
+
   it("/draft sets lists available card sets from the API", async () => {
     const app = setup();
     await app.cards.syncSets();
@@ -1066,6 +1105,25 @@ describe("command handlers", () => {
     expect(JSON.parse(JSON.stringify(replies[0])).components[0].components[0].custom_id).toBe(
       `join_tournament:${tournament.id}`,
     );
+  });
+
+  it("/event join rejects duplicate joins", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+    app.tournaments.join(tournament.id, yugi.id);
+
+    await expect(
+      handleCommand(
+        fakeInteraction({
+          commandName: "event",
+          subcommand: "join",
+          user: { id: "user-1", username: "Yugi" },
+          strings: { name: "locals" },
+        }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("You have already joined this tournament");
   });
 
   it("/event create seeds unique provided players", async () => {
