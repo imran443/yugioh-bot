@@ -6,6 +6,11 @@ export type DraftConfig = {
   setNames?: string[];
   includeNames?: string[];
   excludeNames?: string[];
+  packSize?: number;
+  packsPerPlayer?: number;
+  pickSeconds?: number;
+  alternatePassDirection?: boolean;
+  randomizeSeats?: boolean;
 };
 
 export type Draft = {
@@ -16,8 +21,10 @@ export type Draft = {
   status: DraftStatus;
   createdByUserId: string;
   config: DraftConfig;
-  currentWaveNumber: number;
+  currentPackRound: number;
   currentPickStep: number;
+  pickDeadlineAt: string | null;
+  statusMessageId: string | null;
 };
 
 export type DraftPlayer = {
@@ -70,9 +77,11 @@ function mapDraft(row: any): Draft {
     name: row.name,
     status: row.status,
     createdByUserId: row.created_by_user_id,
-    config: JSON.parse(row.config_json),
-    currentWaveNumber: row.current_wave_number,
+    config: normalizeDraftConfig(JSON.parse(row.config_json)),
+    currentPackRound: row.current_wave_number,
     currentPickStep: row.current_pick_step,
+    pickDeadlineAt: row.pick_deadline_at,
+    statusMessageId: row.status_message_id,
   };
 }
 
@@ -100,6 +109,25 @@ function mapDraftPick(row: any): DraftPick {
 
 function normalizeName(value: string) {
   return value.trim().toLowerCase();
+}
+
+const defaultDraftConfig = {
+  packSize: 8,
+  packsPerPlayer: 5,
+  pickSeconds: 45,
+  alternatePassDirection: true,
+  randomizeSeats: false,
+} satisfies Required<Pick<DraftConfig, "packSize" | "packsPerPlayer" | "pickSeconds" | "alternatePassDirection" | "randomizeSeats">>;
+
+function normalizeDraftConfig(config: DraftConfig): DraftConfig {
+  return {
+    ...config,
+    packSize: config.packSize ?? defaultDraftConfig.packSize,
+    packsPerPlayer: config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer,
+    pickSeconds: config.pickSeconds ?? defaultDraftConfig.pickSeconds,
+    alternatePassDirection: config.alternatePassDirection ?? defaultDraftConfig.alternatePassDirection,
+    randomizeSeats: config.randomizeSeats ?? defaultDraftConfig.randomizeSeats,
+  };
 }
 
 const extraDeckFrameTypes = new Set(["fusion", "synchro", "xyz", "link"]);
@@ -143,7 +171,7 @@ export function createDraftService(db: Database.Database) {
           values (?, ?, ?, 'pending', ?, ?)
         `,
         )
-        .run(guildId, channelId, name, createdByUserId, JSON.stringify(config));
+        .run(guildId, channelId, name, createdByUserId, JSON.stringify(normalizeDraftConfig(config)));
 
       const draftId = Number(result.lastInsertRowid);
 
@@ -347,7 +375,7 @@ export function createDraftService(db: Database.Database) {
           where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?
         `,
       )
-      .get(draftId, playerId, draft.currentWaveNumber, draft.currentPickStep);
+      .get(draftId, playerId, draft.currentPackRound, draft.currentPickStep);
 
     if (existingPick) {
       throw new Error("Player has already picked this step");
@@ -357,7 +385,7 @@ export function createDraftService(db: Database.Database) {
       .prepare("select wave_number, picked_by_player_id from draft_cards where id = ? and draft_id = ?")
       .get(draftCardId, draftId) as DraftCardRow | undefined;
 
-    if (!cardRow || cardRow.wave_number !== draft.currentWaveNumber) {
+    if (!cardRow || cardRow.wave_number !== draft.currentPackRound) {
       throw new Error("Card is not in the current wave");
     }
 
@@ -380,7 +408,7 @@ export function createDraftService(db: Database.Database) {
           values (?, ?, ?, ?, ?, current_timestamp)
         `,
       )
-      .run(draftId, playerId, draftCardId, draft.currentWaveNumber, draft.currentPickStep);
+      .run(draftId, playerId, draftCardId, draft.currentPackRound, draft.currentPickStep);
 
     db.prepare(
       `
@@ -398,7 +426,7 @@ export function createDraftService(db: Database.Database) {
           where draft_id = ? and wave_number = ? and pick_step = ?
         `,
       )
-      .get(draftId, draft.currentWaveNumber, draft.currentPickStep) as { count: number };
+      .get(draftId, draft.currentPackRound, draft.currentPickStep) as { count: number };
 
     const remainingPlayers = activePlayerRows(draftId);
 
@@ -421,7 +449,7 @@ export function createDraftService(db: Database.Database) {
               )
           `,
         )
-        .get(draftId, draft.currentWaveNumber, draft.currentPickStep) as { count: number };
+        .get(draftId, draft.currentPackRound, draft.currentPickStep) as { count: number };
 
       if (currentStepPickCountRow.count > 0 && pendingCurrentStepPlayerCountRow.count === 0) {
         const unpickedWaveCardCountRow = db
@@ -431,17 +459,17 @@ export function createDraftService(db: Database.Database) {
               where draft_id = ? and wave_number = ? and picked_by_player_id is null
             `,
           )
-          .get(draftId, draft.currentWaveNumber) as { count: number };
+          .get(draftId, draft.currentPackRound) as { count: number };
 
         if (unpickedWaveCardCountRow.count === 0) {
-          openWave(draftId, draft.currentWaveNumber + 1, remainingPlayers.length, draft.config);
+          openWave(draftId, draft.currentPackRound + 1, remainingPlayers.length, draft.config);
           db.prepare(
             `
               update drafts
               set current_wave_number = ?, current_pick_step = 1
               where id = ?
             `,
-          ).run(draft.currentWaveNumber + 1, draftId);
+          ).run(draft.currentPackRound + 1, draftId);
         } else {
           db.prepare("update drafts set current_pick_step = current_pick_step + 1 where id = ?").run(draftId);
         }
@@ -564,7 +592,7 @@ export function createDraftService(db: Database.Database) {
     currentWaveCards(draftId: number): DraftCard[] {
       const draft = findById(draftId);
 
-      if (draft.currentWaveNumber === 0) {
+      if (draft.currentPackRound === 0) {
         return [];
       }
 
@@ -576,7 +604,7 @@ export function createDraftService(db: Database.Database) {
             order by id asc
           `,
         )
-        .all(draftId, draft.currentWaveNumber)
+        .all(draftId, draft.currentPackRound)
         .map(mapDraftCard);
     },
 
@@ -598,7 +626,7 @@ export function createDraftService(db: Database.Database) {
             where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?
           `,
         )
-        .get(draftId, playerId, draft.currentWaveNumber, draft.currentPickStep);
+        .get(draftId, playerId, draft.currentPackRound, draft.currentPickStep);
 
       if (existingPick) {
         return [];
@@ -613,7 +641,7 @@ export function createDraftService(db: Database.Database) {
             limit ?
           `,
         )
-        .all(draftId, draft.currentWaveNumber, pickOptionLimit)
+        .all(draftId, draft.currentPackRound, pickOptionLimit)
         .map(mapDraftCard);
     },
 

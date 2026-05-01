@@ -114,9 +114,16 @@ describe("draft service", () => {
         setNames: ["Battle Pack 3"],
         includeNames: ["Dark Magician"],
         excludeNames: ["Pot of Greed"],
+        packSize: 8,
+        packsPerPlayer: 5,
+        pickSeconds: 45,
+        alternatePassDirection: true,
+        randomizeSeats: false,
       },
-      currentWaveNumber: 0,
+      currentPackRound: 0,
       currentPickStep: 0,
+      pickDeadlineAt: null,
+      statusMessageId: null,
     });
     expect(app.drafts.findById(draft.id)).toEqual(draft);
     expect(app.drafts.findByName("guild-1", "cube night")).toEqual(draft);
