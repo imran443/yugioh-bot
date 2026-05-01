@@ -51,7 +51,7 @@ if (!token) {
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const db = openDatabase();
 const cardImageCacheDir = process.env.CARD_IMAGE_CACHE_DIR ?? "./data/card-images";
-const cardImageCacheMaxBytes = Number(process.env.CARD_IMAGE_CACHE_MAX_BYTES ?? "524288000");
+const cardImageCacheMaxBytes = Number(process.env.CARD_IMAGE_CACHE_MAX_BYTES ?? "16106127360"); // 15 GB default
 const cleanup = createDraftCleanupService(db, { imageCacheDir: cardImageCacheDir });
 const deps = {
   matches: createMatchService(db),
