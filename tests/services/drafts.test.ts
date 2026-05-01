@@ -45,14 +45,43 @@ function seedCatalogCards(db: Database.Database, count: number) {
   }
 }
 
-function insertDraftCard(db: Database.Database, draftId: number, waveNumber: number, catalogCardId: number) {
+function insertDraftCard(
+  db: Database.Database,
+  draftId: number,
+  waveNumber: number,
+  catalogCardId: number,
+  input: { draftPackId?: number | null; position?: number | null } = {},
+) {
   return Number(
     db.prepare(
       `
-        insert into draft_cards (draft_id, wave_number, catalog_card_id)
-        values (?, ?, ?)
+        insert into draft_cards (draft_id, wave_number, draft_pack_id, catalog_card_id, position)
+        values (?, ?, ?, ?, ?)
       `,
-    ).run(draftId, waveNumber, catalogCardId).lastInsertRowid,
+    ).run(draftId, waveNumber, input.draftPackId ?? null, catalogCardId, input.position ?? null).lastInsertRowid,
+  );
+}
+
+function insertDraftPack(
+  db: Database.Database,
+  draftId: number,
+  packRound: number,
+  originSeatIndex: number,
+  currentHolderSeatIndex: number,
+  passDirection = 1,
+) {
+  return Number(
+    db.prepare(
+      `
+        insert into draft_packs (
+          draft_id,
+          pack_round,
+          origin_seat_index,
+          current_holder_seat_index,
+          pass_direction
+        ) values (?, ?, ?, ?, ?)
+      `,
+    ).run(draftId, packRound, originSeatIndex, currentHolderSeatIndex, passDirection).lastInsertRowid,
   );
 }
 
@@ -395,7 +424,7 @@ describe("draft service", () => {
       pickStep: 1,
     });
     expect(app.drafts.findById(draft.id).currentPickStep).toBe(2);
-    expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(8);
+    expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(7);
     expect(
       app.db
         .prepare(
@@ -438,6 +467,103 @@ describe("draft service", () => {
     expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(8);
     expect(app.drafts.pickOptions(draft.id, kaiba.id)).toHaveLength(8);
     expect(app.drafts.pickOptions(draft.id, joey.id)).toHaveLength(8);
+  });
+
+  it("passes packs after every active player picks", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const joey = app.players.upsert("guild-1", "user-3", "Joey");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    app.drafts.join(draft.id, joey.id);
+    seedCatalogCards(app.db, 120);
+    app.drafts.start(draft.id, new Date("2026-05-01T00:00:00.000Z"));
+
+    const yugiFirstPack = app.drafts.currentPackOptions(draft.id, yugi.id).map((card) => card.id);
+    const kaibaFirstPack = app.drafts.currentPackOptions(draft.id, kaiba.id).map((card) => card.id);
+    const joeyFirstPack = app.drafts.currentPackOptions(draft.id, joey.id).map((card) => card.id);
+
+    app.drafts.pickCard(draft.id, yugi.id, yugiFirstPack[0], "manual", new Date("2026-05-01T00:00:05.000Z"));
+    expect(app.drafts.findById(draft.id).currentPickStep).toBe(1);
+
+    app.drafts.pickCard(draft.id, kaiba.id, kaibaFirstPack[0], "manual", new Date("2026-05-01T00:00:06.000Z"));
+    app.drafts.pickCard(draft.id, joey.id, joeyFirstPack[0], "manual", new Date("2026-05-01T00:00:07.000Z"));
+
+    const advanced = app.drafts.findById(draft.id);
+    expect(advanced.currentPickStep).toBe(2);
+    expect(advanced.pickDeadlineAt).toBe("2026-05-01T00:00:52.000Z");
+    expect(app.drafts.currentPackOptions(draft.id, yugi.id).map((card) => card.id)).not.toEqual(yugiFirstPack.slice(1));
+  });
+
+  it("alternates pass direction by pack round", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "cube night",
+      { packsPerPlayer: 2 },
+      "user-1",
+      yugi.id,
+    );
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 120);
+    app.drafts.start(draft.id, new Date("2026-05-01T00:00:00.000Z"));
+
+    for (let pick = 0; pick < 8; pick += 1) {
+      const yugiCard = app.drafts.currentPackOptions(draft.id, yugi.id)[0];
+      const kaibaCard = app.drafts.currentPackOptions(draft.id, kaiba.id)[0];
+      app.drafts.pickCard(draft.id, yugi.id, yugiCard.id, "manual", new Date(`2026-05-01T00:00:${String(10 + pick * 2).padStart(2, "0")}.000Z`));
+      app.drafts.pickCard(draft.id, kaiba.id, kaibaCard.id, "manual", new Date(`2026-05-01T00:00:${String(11 + pick * 2).padStart(2, "0")}.000Z`));
+    }
+
+    expect(app.drafts.findById(draft.id)).toMatchObject({ currentPackRound: 2, currentPickStep: 1 });
+    expect(
+      app.db
+        .prepare("select distinct pass_direction from draft_packs where draft_id = ? and pack_round = 2 order by pass_direction asc")
+        .all(draft.id),
+    ).toEqual([{ pass_direction: -1 }]);
+  });
+
+  it("randomly auto-picks for pending players when the deadline expires", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 80);
+    app.drafts.start(draft.id, new Date("2026-05-01T00:00:00.000Z"));
+
+    const yugiOptions = app.drafts.currentPackOptions(draft.id, yugi.id);
+    app.drafts.pickCard(draft.id, yugi.id, yugiOptions[0].id, "manual", new Date("2026-05-01T00:00:10.000Z"));
+
+    const result = app.drafts.expireCurrentPickStep(draft.id, new Date("2026-05-01T00:00:45.000Z"));
+
+    expect(result.autoPickedPlayerIds).toEqual([kaiba.id]);
+    expect(app.drafts.findById(draft.id).currentPickStep).toBe(2);
+    const autoPickRow = app.db.prepare("select pick_method from draft_picks where player_id = ?").get(kaiba.id) as {
+      pick_method: string;
+    };
+    expect(autoPickRow.pick_method).toBe("auto");
+  });
+
+  it("returns a player's drafted pool with catalog ids in pick order", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 80);
+    app.drafts.start(draft.id, new Date("2026-05-01T00:00:00.000Z"));
+
+    const firstPick = app.drafts.currentPackOptions(draft.id, yugi.id)[0];
+    app.drafts.pickCard(draft.id, yugi.id, firstPick.id, "manual", new Date("2026-05-01T00:00:05.000Z"));
+
+    expect(app.drafts.pool(draft.id, yugi.id)).toEqual([
+      expect.objectContaining({ draftCardId: firstPick.id, catalogCardId: firstPick.catalogCardId }),
+    ]);
   });
 
   it("validates joined players, active wave cards, and one pick per player per step", () => {
@@ -487,7 +613,7 @@ describe("draft service", () => {
     expect(() => app.drafts.pickCard(draft.id, yugi.id, secondOption.id)).toThrow(
       "Player has already picked this step",
     );
-    expect(() => app.drafts.pickCard(draft.id, kaiba.id, firstOption.id)).toThrow("Card has already been picked");
+    expect(() => app.drafts.pickCard(draft.id, kaiba.id, firstOption.id)).toThrow("Card is not in your current pack");
 
     app.db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
 
@@ -515,8 +641,19 @@ describe("draft service", () => {
     app.db.prepare("update drafts set current_wave_number = 1, current_pick_step = 8 where id = ?").run(draft.id);
     app.db.prepare("update draft_players set pick_count = 7, finished_at = null where draft_id = ?").run(draft.id);
 
-    const yugiCardId = insertDraftCard(app.db, draft.id, 1, 1);
-    const kaibaCardId = insertDraftCard(app.db, draft.id, 1, 2);
+    const packs = app.db
+      .prepare(
+        `
+          select id, current_holder_seat_index
+          from draft_packs
+          where draft_id = ? and pack_round = 1
+          order by current_holder_seat_index asc
+        `,
+      )
+      .all(draft.id) as Array<{ id: number; current_holder_seat_index: number }>;
+
+    const yugiCardId = insertDraftCard(app.db, draft.id, 1, 1, { draftPackId: packs[0].id, position: 0 });
+    const kaibaCardId = insertDraftCard(app.db, draft.id, 1, 2, { draftPackId: packs[1].id, position: 0 });
 
     app.drafts.pickCard(draft.id, yugi.id, yugiCardId);
     app.drafts.pickCard(draft.id, kaiba.id, kaibaCardId);
@@ -544,10 +681,13 @@ describe("draft service", () => {
     app.db.prepare("update drafts set current_wave_number = 5, current_pick_step = 1 where id = ?").run(draft.id);
     app.db.prepare("update draft_players set pick_count = 39, finished_at = null where draft_id = ?").run(draft.id);
 
-    const yugiCardId = insertDraftCard(app.db, draft.id, 5, 1);
-    const kaibaCardId = insertDraftCard(app.db, draft.id, 5, 2);
-    insertDraftCard(app.db, draft.id, 5, 3);
-    insertDraftCard(app.db, draft.id, 5, 4);
+    const yugiPackId = insertDraftPack(app.db, draft.id, 5, 0, 0, 1);
+    const kaibaPackId = insertDraftPack(app.db, draft.id, 5, 1, 1, 1);
+
+    const yugiCardId = insertDraftCard(app.db, draft.id, 5, 1, { draftPackId: yugiPackId, position: 0 });
+    const kaibaCardId = insertDraftCard(app.db, draft.id, 5, 2, { draftPackId: kaibaPackId, position: 0 });
+    insertDraftCard(app.db, draft.id, 5, 3, { draftPackId: kaibaPackId, position: 1 });
+    insertDraftCard(app.db, draft.id, 5, 4, { draftPackId: kaibaPackId, position: 2 });
 
     app.drafts.pickCard(draft.id, yugi.id, yugiCardId);
 

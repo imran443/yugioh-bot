@@ -48,11 +48,21 @@ export type DraftPick = {
   draftCardId: number;
   waveNumber: number;
   pickStep: number;
+  pickMethod?: "manual" | "auto";
   pickedAt: string;
+};
+
+export type DraftPoolCard = {
+  draftCardId: number;
+  catalogCardId: number;
+  pickMethod: "manual" | "auto";
+  packRound: number;
+  pickStep: number;
 };
 
 type DraftCardRow = {
   wave_number: number;
+  draft_pack_id: number | null;
   picked_by_player_id: number | null;
 };
 
@@ -68,6 +78,7 @@ type DraftPlayerProgressRow = {
   player_id: number;
   pick_count: number;
   finished_at: string | null;
+  seat_index: number | null;
 };
 
 function mapDraft(row: any): Draft {
@@ -104,6 +115,7 @@ function mapDraftPick(row: any): DraftPick {
     draftCardId: row.draft_card_id,
     waveNumber: row.wave_number,
     pickStep: row.pick_step,
+    pickMethod: row.pick_method,
     pickedAt: row.picked_at,
   };
 }
@@ -217,6 +229,18 @@ export function createDraftService(db: Database.Database) {
       )
       .get(draftId, playerId) as { pick_count: number; finished_at: string | null };
 
+  const hasPickedCurrentStep = (draftId: number, playerId: number, packRound: number, pickStep: number) =>
+    Boolean(
+      db
+        .prepare(
+          `
+            select 1 from draft_picks
+            where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?
+          `,
+        )
+        .get(draftId, playerId, packRound, pickStep),
+    );
+
   const playerSeatIndex = (draftId: number, playerId: number): number => {
     const row = db
       .prepare(
@@ -240,6 +264,53 @@ export function createDraftService(db: Database.Database) {
     }
   };
 
+  const activeSeatIndexes = (draftId: number): number[] =>
+    activePlayerRows(draftId)
+      .map((row) => row.seat_index)
+      .filter((seatIndex): seatIndex is number => seatIndex !== null)
+      .sort((a, b) => a - b);
+
+  const advanceSeatIndex = (seatIndexes: number[], currentSeatIndex: number, direction: number): number => {
+    const currentIndex = seatIndexes.indexOf(currentSeatIndex);
+
+    if (currentIndex === -1 || seatIndexes.length === 0) {
+      return currentSeatIndex;
+    }
+
+    const offset = direction >= 0 ? 1 : -1;
+    const nextIndex = (currentIndex + offset + seatIndexes.length) % seatIndexes.length;
+    return seatIndexes[nextIndex];
+  };
+
+  const pool = (draftId: number, playerId: number): DraftPoolCard[] => {
+    findById(draftId);
+    assertJoinedPlayer(draftId, playerId);
+
+    return db
+      .prepare(
+        `
+          select
+            dp.draft_card_id,
+            dc.catalog_card_id,
+            dp.pick_method,
+            dp.wave_number,
+            dp.pick_step
+          from draft_picks dp
+          inner join draft_cards dc on dc.id = dp.draft_card_id
+          where dp.draft_id = ? and dp.player_id = ?
+          order by dp.id asc
+        `,
+      )
+      .all(draftId, playerId)
+      .map((row: any) => ({
+        draftCardId: row.draft_card_id,
+        catalogCardId: row.catalog_card_id,
+        pickMethod: row.pick_method,
+        packRound: row.wave_number,
+        pickStep: row.pick_step,
+      }));
+  };
+
   const exportYdk = (draftId: number, playerId: number): string => {
     findById(draftId);
     assertJoinedPlayer(draftId, playerId);
@@ -250,19 +321,7 @@ export function createDraftService(db: Database.Database) {
       throw new Error("Deck is not complete yet");
     }
 
-    const mainDeckCardIds = db
-      .prepare(
-        `
-          select dc.catalog_card_id
-          from draft_picks dp
-          inner join draft_cards dc on dc.id = dp.draft_card_id
-          where dp.draft_id = ? and dp.player_id = ?
-          order by dp.id asc
-          limit 40
-        `,
-      )
-      .all(draftId, playerId)
-      .map((row: any) => String(row.catalog_card_id));
+    const mainDeckCardIds = pool(draftId, playerId).slice(0, 40).map((row) => String(row.catalogCardId));
 
     if (mainDeckCardIds.length < 40) {
       throw new Error("Deck is not complete yet");
@@ -310,7 +369,7 @@ export function createDraftService(db: Database.Database) {
     db
       .prepare(
         `
-          select player_id, pick_count, finished_at
+          select player_id, pick_count, finished_at, seat_index
           from draft_players
           where draft_id = ? and finished_at is null
           order by joined_at asc, rowid asc
@@ -407,7 +466,14 @@ export function createDraftService(db: Database.Database) {
     return findById(draftId);
   });
 
-  const pickCard = db.transaction((draftId: number, playerId: number, draftCardId: number) => {
+  const pickCard = db.transaction(
+    (
+      draftId: number,
+      playerId: number,
+      draftCardId: number,
+      pickMethod: "manual" | "auto" = "manual",
+      now = new Date(),
+    ) => {
     const draft = findById(draftId);
     assertActiveDraft(draft);
     assertJoinedPlayer(draftId, playerId);
@@ -418,25 +484,35 @@ export function createDraftService(db: Database.Database) {
       throw new Error("Player has already finished drafting");
     }
 
-    const existingPick = db
-      .prepare(
-        `
-          select 1 from draft_picks
-          where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?
-        `,
-      )
-      .get(draftId, playerId, draft.currentPackRound, draft.currentPickStep);
-
-    if (existingPick) {
+    if (hasPickedCurrentStep(draftId, playerId, draft.currentPackRound, draft.currentPickStep)) {
       throw new Error("Player has already picked this step");
     }
 
     const cardRow = db
-      .prepare("select wave_number, picked_by_player_id from draft_cards where id = ? and draft_id = ?")
+      .prepare("select wave_number, draft_pack_id, picked_by_player_id from draft_cards where id = ? and draft_id = ?")
       .get(draftCardId, draftId) as DraftCardRow | undefined;
 
     if (!cardRow || cardRow.wave_number !== draft.currentPackRound) {
       throw new Error("Card is not in the current wave");
+    }
+
+    const seatIndex = playerSeatIndex(draftId, playerId);
+    const currentPack = db
+      .prepare(
+        `
+          select id, pass_direction from draft_packs
+          where draft_id = ? and pack_round = ? and current_holder_seat_index = ?
+          limit 1
+        `,
+      )
+      .get(draftId, draft.currentPackRound, seatIndex) as { id: number; pass_direction: number } | undefined;
+
+    if (!currentPack) {
+      throw new Error("Player has no current pack");
+    }
+
+    if (cardRow.draft_pack_id !== currentPack.id) {
+      throw new Error("Card is not in your current pack");
     }
 
     if (cardRow.picked_by_player_id !== null) {
@@ -446,28 +522,28 @@ export function createDraftService(db: Database.Database) {
     db.prepare(
       `
         update draft_cards
-        set picked_by_player_id = ?, picked_at = current_timestamp
+        set picked_by_player_id = ?, picked_at = ?
         where id = ?
       `,
-    ).run(playerId, draftCardId);
+    ).run(playerId, now.toISOString(), draftCardId);
 
     const result = db
       .prepare(
         `
-          insert into draft_picks (draft_id, player_id, draft_card_id, wave_number, pick_step, picked_at)
-          values (?, ?, ?, ?, ?, current_timestamp)
+          insert into draft_picks (draft_id, player_id, draft_card_id, wave_number, pick_step, pick_method, picked_at)
+          values (?, ?, ?, ?, ?, ?, ?)
         `,
       )
-      .run(draftId, playerId, draftCardId, draft.currentPackRound, draft.currentPickStep);
+      .run(draftId, playerId, draftCardId, draft.currentPackRound, draft.currentPickStep, pickMethod, now.toISOString());
 
     db.prepare(
       `
         update draft_players
         set pick_count = pick_count + 1,
-            finished_at = case when pick_count + 1 >= 40 then current_timestamp else finished_at end
+            finished_at = case when pick_count + 1 >= 40 then ? else finished_at end
         where draft_id = ? and player_id = ?
       `,
-    ).run(draftId, playerId);
+    ).run(now.toISOString(), draftId, playerId);
 
     const currentStepPickCountRow = db
       .prepare(
@@ -481,7 +557,7 @@ export function createDraftService(db: Database.Database) {
     const remainingPlayers = activePlayerRows(draftId);
 
     if (remainingPlayers.length === 0) {
-      db.prepare("update drafts set status = 'completed', ended_at = current_timestamp where id = ?").run(draftId);
+      db.prepare("update drafts set status = 'completed', ended_at = ? where id = ?").run(now.toISOString(), draftId);
     } else {
       const pendingCurrentStepPlayerCountRow = db
         .prepare(
@@ -512,23 +588,153 @@ export function createDraftService(db: Database.Database) {
           .get(draftId, draft.currentPackRound) as { count: number };
 
         if (unpickedWaveCardCountRow.count === 0) {
-          openWave(draftId, draft.currentPackRound + 1, remainingPlayers.length, draft.config);
+          if (draft.currentPackRound >= (draft.config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer)) {
+            db.prepare("update drafts set status = 'completed', ended_at = ? where id = ?").run(now.toISOString(), draftId);
+          } else {
+            openWave(draftId, draft.currentPackRound + 1, remainingPlayers.length, draft.config);
+            db.prepare(
+              `
+                update drafts
+                set current_wave_number = ?, current_pick_step = 1, pick_deadline_at = ?
+                where id = ?
+              `,
+            ).run(
+              draft.currentPackRound + 1,
+              deadlineIso(now, draft.config.pickSeconds ?? defaultDraftConfig.pickSeconds),
+              draftId,
+            );
+          }
+        } else {
+          const seatIndexes = activeSeatIndexes(draftId);
+          const currentPacks = db
+            .prepare(
+              `
+                select id, current_holder_seat_index, pass_direction
+                from draft_packs
+                where draft_id = ? and pack_round = ?
+                order by id asc
+              `,
+            )
+            .all(draftId, draft.currentPackRound) as Array<{
+            id: number;
+            current_holder_seat_index: number;
+            pass_direction: number;
+          }>;
+
+          const updatePackHolder = db.prepare(
+            `
+              update draft_packs
+              set current_holder_seat_index = ?
+              where id = ?
+            `,
+          );
+
+          for (const pack of currentPacks) {
+            const hasUnpickedCards = db
+              .prepare(
+                `
+                  select 1 from draft_cards
+                  where draft_pack_id = ? and picked_by_player_id is null
+                  limit 1
+                `,
+              )
+              .get(pack.id);
+
+            if (!hasUnpickedCards) {
+              continue;
+            }
+
+            updatePackHolder.run(
+              advanceSeatIndex(seatIndexes, pack.current_holder_seat_index, pack.pass_direction),
+              pack.id,
+            );
+          }
+
           db.prepare(
             `
               update drafts
-              set current_wave_number = ?, current_pick_step = 1
+              set current_pick_step = current_pick_step + 1,
+                  pick_deadline_at = ?
               where id = ?
             `,
-          ).run(draft.currentPackRound + 1, draftId);
-        } else {
-          db.prepare("update drafts set current_pick_step = current_pick_step + 1 where id = ?").run(draftId);
+          ).run(deadlineIso(now, draft.config.pickSeconds ?? defaultDraftConfig.pickSeconds), draftId);
         }
       }
     }
 
     const pickRow = db.prepare("select * from draft_picks where id = ?").get(Number(result.lastInsertRowid));
     return mapDraftPick(pickRow);
-  });
+    },
+  );
+
+  const expireCurrentPickStep = (draftId: number, now = new Date()): { autoPickedPlayerIds: number[] } => {
+    const draft = findById(draftId);
+
+    if (draft.status !== "active" || !draft.pickDeadlineAt || new Date(draft.pickDeadlineAt).getTime() > now.getTime()) {
+      return { autoPickedPlayerIds: [] };
+    }
+
+    const pendingPlayers = activePlayerRows(draftId)
+      .filter((row) => !hasPickedCurrentStep(draftId, row.player_id, draft.currentPackRound, draft.currentPickStep))
+      .map((row) => row.player_id);
+    const autoPickedPlayerIds: number[] = [];
+
+    for (const playerId of pendingPlayers) {
+      const options = db.transaction(() => currentPackOptionsInternal(draftId, playerId))();
+
+      if (options.length === 0) {
+        continue;
+      }
+
+      const option = options[Math.floor(Math.random() * options.length)];
+      pickCard(draftId, playerId, option.id, "auto", now);
+      autoPickedPlayerIds.push(playerId);
+    }
+
+    return { autoPickedPlayerIds };
+  };
+
+  const currentPackOptionsInternal = (draftId: number, playerId: number): DraftCard[] => {
+    const draft = findById(draftId);
+    assertActiveDraft(draft);
+    assertJoinedPlayer(draftId, playerId);
+
+    const playerRow = playerProgress(draftId, playerId);
+
+    if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
+      return [];
+    }
+
+    if (hasPickedCurrentStep(draftId, playerId, draft.currentPackRound, draft.currentPickStep)) {
+      return [];
+    }
+
+    const seatIndex = playerSeatIndex(draftId, playerId);
+    const pack = db
+      .prepare(
+        `
+          select id from draft_packs
+          where draft_id = ? and pack_round = ? and current_holder_seat_index = ?
+          limit 1
+        `,
+      )
+      .get(draftId, draft.currentPackRound, seatIndex) as { id: number } | undefined;
+
+    if (!pack) {
+      return [];
+    }
+
+    return db
+      .prepare(
+        `
+          select * from draft_cards
+          where draft_pack_id = ? and picked_by_player_id is null
+          order by position asc, id asc
+        `,
+      )
+      .all(pack.id)
+      .map(mapDraftCard);
+  };
 
   return {
     create(
@@ -644,41 +850,7 @@ export function createDraftService(db: Database.Database) {
     },
 
     currentPackOptions(draftId: number, playerId: number): DraftCard[] {
-      const draft = findById(draftId);
-      assertActiveDraft(draft);
-      assertJoinedPlayer(draftId, playerId);
-
-      const playerRow = playerProgress(draftId, playerId);
-
-      if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
-        return [];
-      }
-
-      const seatIndex = playerSeatIndex(draftId, playerId);
-      const pack = db
-        .prepare(
-          `
-            select id from draft_packs
-            where draft_id = ? and pack_round = ? and current_holder_seat_index = ?
-            limit 1
-          `,
-        )
-        .get(draftId, draft.currentPackRound, seatIndex) as { id: number } | undefined;
-
-      if (!pack) {
-        return [];
-      }
-
-      return db
-        .prepare(
-          `
-            select * from draft_cards
-            where draft_pack_id = ? and picked_by_player_id is null
-            order by position asc, id asc
-          `,
-        )
-        .all(pack.id)
-        .map(mapDraftCard);
+      return currentPackOptionsInternal(draftId, playerId);
     },
 
     currentWaveCards(draftId: number): DraftCard[] {
@@ -701,44 +873,25 @@ export function createDraftService(db: Database.Database) {
     },
 
     pickOptions(draftId: number, playerId: number): DraftCard[] {
-      const draft = findById(draftId);
-      assertActiveDraft(draft);
-      assertJoinedPlayer(draftId, playerId);
-
-      const playerRow = playerProgress(draftId, playerId);
-
-      if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
-        return [];
-      }
-
-      const existingPick = db
-        .prepare(
-          `
-            select 1 from draft_picks
-            where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?
-          `,
-        )
-        .get(draftId, playerId, draft.currentPackRound, draft.currentPickStep);
-
-      if (existingPick) {
-        return [];
-      }
-
-      return db
-        .prepare(
-          `
-            select * from draft_cards
-            where draft_id = ? and wave_number = ? and picked_by_player_id is null
-            order by id asc
-            limit ?
-          `,
-        )
-        .all(draftId, draft.currentPackRound, pickOptionLimit)
-        .map(mapDraftCard);
+      return currentPackOptionsInternal(draftId, playerId);
     },
 
-    pickCard(draftId: number, playerId: number, draftCardId: number): DraftPick {
-      return pickCard(draftId, playerId, draftCardId);
+    pickCard(
+      draftId: number,
+      playerId: number,
+      draftCardId: number,
+      pickMethod: "manual" | "auto" = "manual",
+      now = new Date(),
+    ): DraftPick {
+      return pickCard(draftId, playerId, draftCardId, pickMethod, now);
+    },
+
+    expireCurrentPickStep(draftId: number, now = new Date()): { autoPickedPlayerIds: number[] } {
+      return expireCurrentPickStep(draftId, now);
+    },
+
+    pool(draftId: number, playerId: number): DraftPoolCard[] {
+      return pool(draftId, playerId);
     },
 
     exportYdk(draftId: number, playerId: number): string {
