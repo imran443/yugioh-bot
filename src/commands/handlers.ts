@@ -682,6 +682,14 @@ async function handleDraft(
       });
       return;
     }
+    case "cancel": {
+      const name = requireStringOption(interaction, "name");
+      const draft = requireDraft(deps, guildId, name);
+      requireDraftCreator(draft, interaction.user.id);
+      deps.drafts.cancel(draft.id);
+      await interaction.reply(`Cancelled draft: ${draft.name}.`);
+      return;
+    }
     case "sets": {
       const query = interaction.options.getString("query") ?? "";
       let sets = deps.cards.listSets(query);

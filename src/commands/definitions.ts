@@ -273,6 +273,19 @@ export const commandDefinitions = [
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName("cancel")
+        .setDescription("Cancel a draft")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Draft name")
+            .setRequired(true)
+            .setMaxLength(maxTournamentNameLength)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName("sets")
         .setDescription("List available card sets")
         .addStringOption((option) =>

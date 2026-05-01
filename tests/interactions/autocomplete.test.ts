@@ -326,6 +326,21 @@ describe("autocomplete interactions", () => {
     expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
   });
 
+  it("suggests pending and active drafts for cancel", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "Retro", {}, "user-1", yugi.id);
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      user: { id: "user-1", username: "Yugi" },
+      options: { getSubcommand: () => "cancel", getSubcommandGroup: () => null, getFocused: () => ({ name: "name", value: "re" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "Retro", value: "Retro" }]);
+  });
+
   it("suggests set names for draft sets query", async () => {
     const app = setup();
     app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Metal Raiders", "2026-01-01");

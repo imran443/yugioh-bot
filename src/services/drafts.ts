@@ -598,6 +598,18 @@ export function createDraftService(db: Database.Database) {
       return exportYdk(draftId, playerId);
     },
 
+    cancel(draftId: number): Draft {
+      const draft = findById(draftId);
+
+      if (draft.status === "completed" || draft.status === "cancelled") {
+        throw new Error("Draft is already finished");
+      }
+
+      db.prepare("update drafts set status = 'cancelled', ended_at = current_timestamp where id = ?").run(draftId);
+
+      return findById(draftId);
+    },
+
     autocomplete(input: {
       guildId: string;
       query: string;

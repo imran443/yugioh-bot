@@ -366,6 +366,43 @@ describe("command handlers", () => {
     ).rejects.toThrow("Deck is not complete yet");
   });
 
+  it("/draft cancel cancels a pending draft by name", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    const { interaction, replies } = fakeInteraction({
+      commandName: "draft",
+      subcommand: "cancel",
+      user: { id: "user-7", username: "Yugi" },
+      strings: { name: "cube night" },
+    });
+
+    await handleCommand(interaction, app);
+
+    const draft = app.drafts.findByName("guild-1", "cube night");
+
+    expect(draft?.status).toBe("cancelled");
+    expect(replies[0]).toBe("Cancelled draft: cube night.");
+  });
+
+  it("/draft cancel rejects non-creators", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+
+    await expect(
+      handleCommand(
+        fakeInteraction({
+          commandName: "draft",
+          subcommand: "cancel",
+          user: { id: "user-9", username: "Kaiba" },
+          strings: { name: "cube night" },
+        }).interaction,
+        app,
+      ),
+    ).rejects.toThrow("Only the draft creator can do that");
+  });
+
   it("/draft sets lists available card sets from the API", async () => {
     const app = setup();
     await app.cards.syncSets();
