@@ -48,7 +48,7 @@ if (!token) {
   throw new Error("DISCORD_TOKEN is required");
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages] });
 const db = openDatabase();
 const cardImageCacheDir = process.env.CARD_IMAGE_CACHE_DIR ?? "./data/card-images";
 const cardImageCacheMaxBytes = Number(process.env.CARD_IMAGE_CACHE_MAX_BYTES ?? "16106127360"); // 15 GB default
@@ -64,14 +64,8 @@ const deps = {
   cleanup,
   notifier: {
     async sendPickPrompt(input: Parameters<DraftNotifier["sendPickPrompt"]>[0]) {
-      const channel = await client.channels.fetch(input.channelId);
-
-      if (channel?.type !== ChannelType.GuildText) {
-        return;
-      }
-
-      await channel.send({
-        content: `<@${input.userId}> ${input.draftName} is ready for your next pick.`,
+      const message = {
+        content: `${input.draftName} is ready for your next pick.`,
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -80,6 +74,25 @@ const deps = {
               .setStyle(ButtonStyle.Primary),
           ),
         ],
+      };
+
+      try {
+        const user = await client.users.fetch(input.userId);
+        await user.send(message);
+        return;
+      } catch (error) {
+        console.warn(`Failed to DM draft pick prompt to ${input.userId}; falling back to channel prompt`, error);
+      }
+
+      const channel = await client.channels.fetch(input.channelId);
+
+      if (channel?.type !== ChannelType.GuildText) {
+        return;
+      }
+
+      await channel.send({
+        ...message,
+        content: `<@${input.userId}> ${message.content}`,
       });
     },
   },

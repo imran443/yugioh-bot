@@ -354,7 +354,7 @@ describe("draft service", () => {
 
     const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
 
-    expect(yugiOptions).toHaveLength(16);
+    expect(yugiOptions).toHaveLength(8);
     expect(yugiOptions.every((card) => card.waveNumber === 1)).toBe(true);
     expect(yugiOptions.every((card) => card.pickedByPlayerId === null)).toBe(true);
 
@@ -371,7 +371,7 @@ describe("draft service", () => {
 
     const kaibaOptions = app.drafts.pickOptions(draft.id, kaiba.id);
 
-    expect(kaibaOptions).toHaveLength(15);
+    expect(kaibaOptions).toHaveLength(8);
     expect(kaibaOptions.map((card) => card.id)).not.toContain(yugiOptions[0].id);
 
     const kaibaPick = app.drafts.pickCard(draft.id, kaiba.id, kaibaOptions[0].id);
@@ -384,7 +384,7 @@ describe("draft service", () => {
       pickStep: 1,
     });
     expect(app.drafts.findById(draft.id).currentPickStep).toBe(2);
-    expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(14);
+    expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(8);
     expect(
       app.db
         .prepare(
@@ -410,6 +410,23 @@ describe("draft service", () => {
         pick_step: 1,
       },
     ]);
+  });
+
+  it("limits each player prompt to 8 pick options", () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const joey = app.players.upsert("guild-1", "user-3", "Joey");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    app.drafts.join(draft.id, joey.id);
+    seedCatalogCards(app.db, 24);
+    app.drafts.start(draft.id);
+
+    expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(8);
+    expect(app.drafts.pickOptions(draft.id, kaiba.id)).toHaveLength(8);
+    expect(app.drafts.pickOptions(draft.id, joey.id)).toHaveLength(8);
   });
 
   it("validates joined players, active wave cards, and one pick per player per step", () => {

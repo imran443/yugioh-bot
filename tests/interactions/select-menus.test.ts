@@ -141,9 +141,7 @@ describe("select menu interactions", () => {
 
     expect(replies[0].content).toContain("Card 1");
     expect(replies[0].ephemeral).toBe(true);
-    expect(app.notifierCalls).toEqual([
-      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
-    ]);
+    expect(app.notifierCalls).toEqual([]);
   });
 
   it("sends next pick prompts after the final player picks a step", async () => {
@@ -165,9 +163,7 @@ describe("select menu interactions", () => {
       app,
     );
 
-    expect(app.notifierCalls).toEqual([
-      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
-    ]);
+    expect(app.notifierCalls).toEqual([]);
 
     await handleSelectMenu(
       fakeSelectMenu({
@@ -179,10 +175,31 @@ describe("select menu interactions", () => {
     );
 
     expect(app.notifierCalls).toEqual([
-      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
       { channelId: "channel-1", userId: "user-7", draftId: draft.id, draftName: "cube night" },
       { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
     ]);
+  });
+
+  it("records draft picks from direct message prompts", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+    const waveCards = app.drafts.currentWaveCards(draft.id);
+    const { interaction, replies } = fakeSelectMenu({
+      customId: `draft_pick_card:${draft.id}`,
+      guildId: null,
+      user: { id: "user-7", username: "Yugi" },
+      values: [String(waveCards[0].id)],
+    });
+
+    await handleSelectMenu(interaction, app);
+
+    expect(replies[0].content).toContain("Card 1");
+    expect(replies[0].ephemeral).toBe(true);
   });
 
   it("tells a player they already picked when they try again", async () => {

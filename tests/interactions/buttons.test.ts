@@ -348,6 +348,56 @@ describe("button interactions", () => {
     expect(JSON.stringify(replies[0])).toContain("Card 8");
   });
 
+  it("renders draft pick images from exactly 8 current options", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const joey = app.players.upsert("guild-1", "user-10", "Joey");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    app.drafts.join(draft.id, joey.id);
+    seedDraftCatalog(app, 24);
+    app.drafts.start(draft.id);
+    const renderedOptionCounts: number[] = [];
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pick:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, {
+      ...app,
+      draftImages: {
+        async renderNumberedGrid(cards: { ygoprodeckId: number; imageUrl: string; imageUrlSmall?: string }[]) {
+          renderedOptionCounts.push(cards.length);
+          return { filename: "draft-picks.png", buffer: Buffer.from("fake-png-buffer") };
+        },
+      },
+    });
+
+    expect(renderedOptionCounts).toEqual([8]);
+    expect(replies[0].files).toBeDefined();
+  });
+
+  it("opens draft pick prompts from direct messages", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pick:${draft.id}`,
+      guildId: null,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, { ...app, draftImages: createFakeDraftImageService() });
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].content).toContain("Pick a card");
+  });
+
   it("falls back to text list when image service throws", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");

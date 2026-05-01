@@ -103,6 +103,7 @@ function normalizeName(value: string) {
 }
 
 const extraDeckFrameTypes = new Set(["fusion", "synchro", "xyz", "link"]);
+const pickOptionLimit = 8;
 
 function isExtraDeckCatalogRow(row: CatalogRow) {
   return (
@@ -609,9 +610,10 @@ export function createDraftService(db: Database.Database) {
             select * from draft_cards
             where draft_id = ? and wave_number = ? and picked_by_player_id is null
             order by id asc
+            limit ?
           `,
         )
-        .all(draftId, draft.currentWaveNumber)
+        .all(draftId, draft.currentWaveNumber, pickOptionLimit)
         .map(mapDraftCard);
     },
 

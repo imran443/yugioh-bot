@@ -60,11 +60,11 @@ export async function handleSelectMenu(
   const draftPickCard = /^draft_pick_card:(\d+)$/.exec(interaction.customId);
 
   if (draftPickCard) {
-    const guildId = requireGuildId(interaction);
     const draftId = Number(draftPickCard[1]);
     const draft = deps.drafts.findById(draftId);
+    const guildId = interaction.guildId ?? draft.guildId;
 
-    if (draft.guildId !== guildId) {
+    if (interaction.guildId && draft.guildId !== interaction.guildId) {
       throw new Error("Draft not found in this server");
     }
 
@@ -77,6 +77,7 @@ export async function handleSelectMenu(
     }
 
     const draftCardId = Number(interaction.values[0]);
+    const beforePickDraft = deps.drafts.findById(draftId);
     deps.drafts.pickCard(draftId, player.id, draftCardId);
 
     const pickedCard = options.find((card) => card.id === draftCardId);
@@ -87,7 +88,11 @@ export async function handleSelectMenu(
 
     const updatedDraft = deps.drafts.findById(draftId);
 
-    if (updatedDraft.status === "active") {
+    const advancedPickStep =
+      updatedDraft.currentWaveNumber !== beforePickDraft.currentWaveNumber ||
+      updatedDraft.currentPickStep !== beforePickDraft.currentPickStep;
+
+    if (updatedDraft.status === "active" && advancedPickStep) {
       for (const draftPlayer of deps.drafts.players(draftId)) {
         const playerOptions = deps.drafts.pickOptions(draftId, draftPlayer.playerId);
 

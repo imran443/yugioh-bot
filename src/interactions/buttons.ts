@@ -810,11 +810,11 @@ export async function handleButton(
   const draftPick = /^draft_pick:(\d+)$/.exec(interaction.customId);
 
   if (draftPick) {
-    const guildId = requireGuildId(interaction);
     const draftId = Number(draftPick[1]);
     const draft = deps.drafts.findById(draftId);
+    const guildId = interaction.guildId ?? draft.guildId;
 
-    if (draft.guildId !== guildId) {
+    if (interaction.guildId && draft.guildId !== interaction.guildId) {
       throw new Error("Draft not found in this server");
     }
 
