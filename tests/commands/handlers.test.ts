@@ -196,7 +196,8 @@ describe("command handlers", () => {
       user: yugi,
       strings: {
         name: "cube night",
-        sets: "Metal Raiders, Legend of Blue Eyes White Dragon",
+        set1: "Metal Raiders",
+        set2: "Legend of Blue Eyes White Dragon",
         includes: "Dark Magician",
         excludes: "Blue-Eyes White Dragon",
       },

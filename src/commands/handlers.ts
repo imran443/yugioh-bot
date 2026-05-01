@@ -612,15 +612,20 @@ async function handleDraft(
       }
 
       const draftName = requireStringOption(interaction, "name");
-      const setsValue = interaction.options.getString("sets") ?? "";
       const includesValue = interaction.options.getString("includes") ?? "";
       const excludesValue = interaction.options.getString("excludes") ?? "";
 
+      const setNames = [
+        interaction.options.getString("set1"),
+        interaction.options.getString("set2"),
+        interaction.options.getString("set3"),
+        interaction.options.getString("set4"),
+        interaction.options.getString("set5"),
+      ]
+        .filter((s): s is string => s !== null && s.trim().length > 0);
+
       const config = {
-        setNames: setsValue
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0),
+        setNames,
         includeNames: includesValue
           .split(",")
           .map((s) => s.trim())

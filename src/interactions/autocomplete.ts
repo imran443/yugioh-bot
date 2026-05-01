@@ -147,12 +147,8 @@ export async function handleAutocomplete(
       return;
     }
 
-    if (subcommand === "create" && focused.name === "sets") {
-      const lastSegment = query
-        .split(",")
-        .map((s) => s.trim())
-        .pop() ?? "";
-      const sets = deps.cards.listSets(lastSegment);
+    if (subcommand === "create" && /^set[1-5]$/.test(focused.name)) {
+      const sets = deps.cards.listSets(query);
 
       await interaction.respond(
         sets.map((set) => ({

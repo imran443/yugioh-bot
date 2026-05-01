@@ -357,7 +357,7 @@ describe("autocomplete interactions", () => {
     expect(responses[0]).toEqual([{ name: "Metal Raiders", value: "Metal Raiders" }]);
   });
 
-  it("suggests set names for draft create sets option", async () => {
+  it("suggests set names for draft create set1 option", async () => {
     const app = setup();
     app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Metal Raiders", "2026-01-01");
     app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Legend of Blue Eyes White Dragon", "2026-01-01");
@@ -365,7 +365,7 @@ describe("autocomplete interactions", () => {
 
     const { interaction, responses } = fakeAutocomplete({
       commandName: "draft",
-      options: { getSubcommand: () => "create", getSubcommandGroup: () => null, getFocused: () => ({ name: "sets", value: "metal" }) },
+      options: { getSubcommand: () => "create", getSubcommandGroup: () => null, getFocused: () => ({ name: "set1", value: "metal" }) },
     });
 
     await handleAutocomplete(interaction, app);
@@ -373,7 +373,7 @@ describe("autocomplete interactions", () => {
     expect(responses[0]).toEqual([{ name: "Metal Raiders", value: "Metal Raiders" }]);
   });
 
-  it("suggests set names based on last segment for draft create sets", async () => {
+  it("suggests set names for draft create set2 option", async () => {
     const app = setup();
     app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Metal Raiders", "2026-01-01");
     app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run("Legend of Blue Eyes White Dragon", "2026-01-01");
@@ -381,7 +381,7 @@ describe("autocomplete interactions", () => {
 
     const { interaction, responses } = fakeAutocomplete({
       commandName: "draft",
-      options: { getSubcommand: () => "create", getSubcommandGroup: () => null, getFocused: () => ({ name: "sets", value: "Metal Raiders, leg" }) },
+      options: { getSubcommand: () => "create", getSubcommandGroup: () => null, getFocused: () => ({ name: "set2", value: "legend" }) },
     });
 
     await handleAutocomplete(interaction, app);

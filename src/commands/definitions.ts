@@ -211,23 +211,55 @@ export const commandDefinitions = [
         )
         .addStringOption((option) =>
           option
-            .setName("sets")
-            .setDescription("Card sets (comma-separated)")
+            .setName("set1")
+            .setDescription("Card set 1")
             .setRequired(false)
-            .setMaxLength(500)
+            .setMaxLength(100)
+            .setAutocomplete(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("set2")
+            .setDescription("Card set 2")
+            .setRequired(false)
+            .setMaxLength(100)
+            .setAutocomplete(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("set3")
+            .setDescription("Card set 3")
+            .setRequired(false)
+            .setMaxLength(100)
+            .setAutocomplete(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("set4")
+            .setDescription("Card set 4")
+            .setRequired(false)
+            .setMaxLength(100)
+            .setAutocomplete(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("set5")
+            .setDescription("Card set 5")
+            .setRequired(false)
+            .setMaxLength(100)
             .setAutocomplete(true),
         )
         .addStringOption((option) =>
           option
             .setName("includes")
-            .setDescription("Cards to include")
+            .setDescription("Cards to include (comma-separated)")
             .setRequired(false)
             .setMaxLength(500),
         )
         .addStringOption((option) =>
           option
             .setName("excludes")
-            .setDescription("Cards to exclude")
+            .setDescription("Cards to exclude (comma-separated)")
             .setRequired(false)
             .setMaxLength(500),
         ),
