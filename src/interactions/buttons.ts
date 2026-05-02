@@ -9,7 +9,7 @@ import {
   type InteractionReplyOptions,
 } from "discord.js";
 import { formatStats } from "../formatters/stats.js";
-import type { DiscordUserLike, DraftNotifier } from "../commands/handlers.js";
+import type { DiscordUserLike, DraftMessenger } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
@@ -35,7 +35,7 @@ type ButtonDependencies = {
   drafts: DraftService;
   cards: CardCatalogService;
   draftImages: DraftImageService;
-  notifier: DraftNotifier;
+  messenger: DraftMessenger;
 };
 
 const dashboardEventListLimit = 10;
@@ -509,20 +509,7 @@ export async function handleButton(
     });
     const startedDraft = deps.drafts.start(draft.id);
 
-    for (const draftPlayer of deps.drafts.players(startedDraft.id)) {
-      const player = deps.players.findById(draftPlayer.playerId);
-
-      if (!player || player.guildId !== guildId) {
-        continue;
-      }
-
-      await deps.notifier.sendPickPrompt({
-        channelId: startedDraft.channelId,
-        userId: player.discordUserId,
-        draftId: startedDraft.id,
-        draftName: startedDraft.name,
-      });
-    }
+    await deps.messenger.postStatus(startedDraft);
 
     await interaction.reply({ content: `Started draft: ${startedDraft.name}.`, ephemeral: true });
     return;
@@ -928,8 +915,10 @@ export async function handleButton(
     const cardName = catalogCards[0]?.name ?? "Unknown";
 
     deps.drafts.pickCard(draftId, player.id, selectedOption.id);
+    const updatedDraft = deps.drafts.findById(draftId);
 
     await interaction.reply({ content: `You picked ${cardName}.`, ephemeral: true });
+    await deps.messenger.updateStatus(updatedDraft);
     return;
   }
 

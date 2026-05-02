@@ -6,6 +6,7 @@ import {
   ButtonStyle,
   ChannelType,
   Client,
+  EmbedBuilder,
   GatewayIntentBits,
   type AutocompleteInteraction,
   type ButtonInteraction,
@@ -16,13 +17,13 @@ import {
 import {
   handleCommand,
   type CommandInteractionLike,
-  type DraftNotifier,
+  type DraftMessenger,
 } from "./commands/handlers.js";
 import { openDatabase } from "./db/connection.js";
 import { createCardCatalogService } from "./services/card-catalog.js";
 import { createDraftCleanupService } from "./services/draft-cleanup.js";
 import { createDraftImageService } from "./services/draft-images.js";
-import { createDraftService } from "./services/drafts.js";
+import { createDraftService, type Draft } from "./services/drafts.js";
 import { createDraftTemplateService } from "./services/draft-templates.js";
 import {
   handleAutocomplete,
@@ -39,6 +40,7 @@ import {
   formatTournamentReminder,
   selectTournamentReminderTargets,
 } from "./reminders/tournament-reminders.js";
+import { createDraftTimerService } from "./services/draft-timer.js";
 import { createMatchService } from "./services/matches.js";
 import { createTournamentService } from "./services/tournaments.js";
 
@@ -48,11 +50,74 @@ if (!token) {
   throw new Error("DISCORD_TOKEN is required");
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const db = openDatabase();
 const cardImageCacheDir = process.env.CARD_IMAGE_CACHE_DIR ?? "./data/card-images";
 const cardImageCacheMaxBytes = Number(process.env.CARD_IMAGE_CACHE_MAX_BYTES ?? "16106127360"); // 15 GB default
 const cleanup = createDraftCleanupService(db, { imageCacheDir: cardImageCacheDir });
+
+function buildDraftStatus(draft: Draft) {
+  const draftService = deps.drafts;
+  const playerService = deps.players;
+  const players = draftService.players(draft.id);
+  const picks = draftService.picks(draft.id);
+  const currentPicks = picks.filter(
+    (p) => p.waveNumber === draft.currentPackRound && p.pickStep === draft.currentPickStep,
+  );
+  const pickedPlayerIds = new Set(currentPicks.map((p) => p.playerId));
+  const pickedCount = pickedPlayerIds.size;
+  const waitingPlayers = players.filter((p) => !pickedPlayerIds.has(p.playerId));
+
+  const remainingSeconds = draft.pickDeadlineAt
+    ? Math.max(0, Math.ceil((new Date(draft.pickDeadlineAt).getTime() - Date.now()) / 1000))
+    : 0;
+
+  const embed = new EmbedBuilder()
+    .setTitle(draft.name)
+    .setColor(
+      draft.status === "active" ? 0x3498db : draft.status === "completed" ? 0x2ecc71 : 0xe74c3c,
+    );
+
+  if (draft.status === "active") {
+    embed.setDescription(`Pack ${draft.currentPackRound}, Pick ${draft.currentPickStep}`);
+    embed.addFields(
+      { name: "⏱️ Timer", value: `${remainingSeconds}s`, inline: true },
+      { name: "✅ Picked", value: `${pickedCount}/${players.length}`, inline: true },
+      {
+        name: "⏳ Waiting for",
+        value:
+          waitingPlayers
+            .map((p) => playerService.findById(p.playerId)?.displayName ?? "Unknown")
+            .join(", ") || "None",
+        inline: false,
+      },
+    );
+  } else if (draft.status === "completed") {
+    embed.setDescription("Draft completed!");
+  } else if (draft.status === "cancelled") {
+    embed.setDescription("Draft cancelled.");
+  }
+
+  const components: ActionRowBuilder<ButtonBuilder>[] = [];
+
+  if (draft.status === "active") {
+    components.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`draft_pick:${draft.id}`)
+          .setLabel("Pick Card")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`draft_pool:${draft.id}`)
+          .setLabel("View My Pool")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+  }
+
+  return { embed, components };
+}
+
 const deps = {
   matches: createMatchService(db),
   players: createPlayerRepository(db),
@@ -62,41 +127,49 @@ const deps = {
   templates: createDraftTemplateService(db),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
   cleanup,
-  notifier: {
-    async sendPickPrompt(input: Parameters<DraftNotifier["sendPickPrompt"]>[0]) {
-      const message = {
-        content: `${input.draftName} is ready for your next pick.`,
-        components: [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`draft_pick:${input.draftId}`)
-              .setLabel("Pick Card")
-              .setStyle(ButtonStyle.Primary),
-          ),
-        ],
-      };
-
-      try {
-        const user = await client.users.fetch(input.userId);
-        await user.send(message);
-        return;
-      } catch (error) {
-        console.warn(`Failed to DM draft pick prompt to ${input.userId}; falling back to channel prompt`, error);
-      }
-
-      const channel = await client.channels.fetch(input.channelId);
+  messenger: {
+    async postStatus(draft: Draft) {
+      const channel = await client.channels.fetch(draft.channelId);
 
       if (channel?.type !== ChannelType.GuildText) {
         return;
       }
 
-      await channel.send({
-        ...message,
-        content: `<@${input.userId}> ${message.content}`,
-      });
+      const { embed, components } = buildDraftStatus(draft);
+      const message = await channel.send({ embeds: [embed], components });
+
+      try {
+        await message.pin();
+      } catch {
+        // ignore pin failures
+      }
+
+      deps.drafts.setStatusMessageId(draft.id, message.id);
     },
-  },
+
+    async updateStatus(draft: Draft) {
+      if (!draft.statusMessageId) {
+        return;
+      }
+
+      const channel = await client.channels.fetch(draft.channelId);
+
+      if (channel?.type !== ChannelType.GuildText) {
+        return;
+      }
+
+      try {
+        const message = await channel.messages.fetch(draft.statusMessageId);
+        const { embed, components } = buildDraftStatus(draft);
+        await message.edit({ embeds: [embed], components });
+      } catch (error) {
+        console.warn(`Failed to update draft status message for ${draft.id}`, error);
+      }
+    },
+  } as DraftMessenger,
 };
+
+const draftTimer = createDraftTimerService({ drafts: deps.drafts, messenger: deps.messenger });
 
 function toCommandInteraction(
   interaction: ChatInputCommandInteraction,
@@ -265,6 +338,16 @@ client.once("ready", () => {
     },
     { timezone: imageCleanupTimezone },
   );
+
+  draftTimer
+    .tick()
+    .then(() => {
+      draftTimer.start();
+    })
+    .catch((error) => {
+      console.error("Failed to run initial draft timer tick:", error);
+      draftTimer.start();
+    });
 
   const reminderChannelId = process.env.DISCORD_REMINDER_CHANNEL_ID;
   const reminderCron = process.env.REMINDER_CRON ?? "0 10 * * *";

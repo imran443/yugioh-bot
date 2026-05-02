@@ -14,7 +14,7 @@ type _DraftButtonDependencyChecks = [
   ButtonDependencies["drafts"],
   ButtonDependencies["cards"],
   ButtonDependencies["draftImages"],
-  ButtonDependencies["notifier"],
+  ButtonDependencies["messenger"],
 ];
 
 function createFakeDraftImageService() {
@@ -70,7 +70,8 @@ function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
 function setup() {
   const db = new Database(":memory:");
   migrate(db);
-  const notifierCalls: Array<{ channelId: string; userId: string; draftId: number; draftName: string }> = [];
+  const postStatusCalls: Array<{ draftId: number }> = [];
+  const updateStatusCalls: Array<{ draftId: number }> = [];
 
   return {
     db,
@@ -80,12 +81,16 @@ function setup() {
     drafts: createDraftService(db),
     cards: createCardCatalogService(db),
     draftImages: createDraftImageService({ cacheDir: "./data/test-card-images" }),
-    notifier: {
-      sendPickPrompt: async (input: { channelId: string; userId: string; draftId: number; draftName: string }) => {
-        notifierCalls.push(input);
+    messenger: {
+      async postStatus(draft: { id: number }) {
+        postStatusCalls.push({ draftId: draft.id });
+      },
+      async updateStatus(draft: { id: number }) {
+        updateStatusCalls.push({ draftId: draft.id });
       },
     },
-    notifierCalls,
+    postStatusCalls,
+    updateStatusCalls,
   };
 }
 
@@ -313,10 +318,7 @@ describe("button interactions", () => {
       currentPickStep: 1,
     });
     expect(replies[0]).toEqual({ content: "Started draft: cube night.", ephemeral: true });
-    expect(app.notifierCalls).toEqual([
-      { channelId: "channel-1", userId: "user-7", draftId: draft.id, draftName: "cube night" },
-      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
-    ]);
+    expect(app.postStatusCalls).toEqual([{ draftId: draft.id }]);
   });
 
   it("rejects non-creators starting drafts from the dashboard", async () => {

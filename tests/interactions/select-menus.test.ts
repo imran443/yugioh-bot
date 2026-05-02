@@ -15,8 +15,7 @@ type SelectMenuDependencies = Parameters<typeof handleSelectMenu>[1];
 type _DraftSelectMenuDependencyChecks = [
   SelectMenuDependencies["drafts"],
   SelectMenuDependencies["cards"],
-  SelectMenuDependencies["draftImages"],
-  SelectMenuDependencies["notifier"],
+  SelectMenuDependencies["messenger"],
 ];
 
 function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
@@ -52,7 +51,8 @@ function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
 function setup() {
   const db = new Database(":memory:");
   migrate(db);
-  const notifierCalls: Array<{ channelId: string; userId: string; draftId: number; draftName: string }> = [];
+  const postStatusCalls: Array<{ draftId: number }> = [];
+  const updateStatusCalls: Array<{ draftId: number }> = [];
 
   return {
     db,
@@ -61,12 +61,16 @@ function setup() {
     drafts: createDraftService(db),
     cards: createCardCatalogService(db),
     draftImages: createDraftImageService({ cacheDir: "./data/test-card-images" }),
-    notifier: {
-      sendPickPrompt: async (input: { channelId: string; userId: string; draftId: number; draftName: string }) => {
-        notifierCalls.push(input);
+    messenger: {
+      async postStatus(draft: { id: number }) {
+        postStatusCalls.push({ draftId: draft.id });
+      },
+      async updateStatus(draft: { id: number }) {
+        updateStatusCalls.push({ draftId: draft.id });
       },
     },
-    notifierCalls,
+    postStatusCalls,
+    updateStatusCalls,
   };
 }
 
@@ -141,10 +145,10 @@ describe("select menu interactions", () => {
 
     expect(replies[0].content).toContain("Card 1");
     expect(replies[0].ephemeral).toBe(true);
-    expect(app.notifierCalls).toEqual([]);
+    expect(app.updateStatusCalls).toEqual([]);
   });
 
-  it("sends next pick prompts after the final player picks a step", async () => {
+  it("updates status after the final player picks a step", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
@@ -164,7 +168,7 @@ describe("select menu interactions", () => {
       app,
     );
 
-    expect(app.notifierCalls).toEqual([]);
+    expect(app.updateStatusCalls).toEqual([]);
 
     await handleSelectMenu(
       fakeSelectMenu({
@@ -175,10 +179,8 @@ describe("select menu interactions", () => {
       app,
     );
 
-    expect(app.notifierCalls).toEqual([
-      { channelId: "channel-1", userId: "user-7", draftId: draft.id, draftName: "cube night" },
-      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
-    ]);
+    expect(app.updateStatusCalls.length).toBe(1);
+    expect(app.updateStatusCalls[0].draftId).toBe(draft.id);
   });
 
   it("records draft picks from direct message prompts", async () => {

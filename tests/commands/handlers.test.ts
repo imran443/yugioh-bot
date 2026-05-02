@@ -29,7 +29,7 @@ type _DraftCommandDependencyChecks = [
   CommandDependencies["cards"],
   CommandDependencies["templates"],
   CommandDependencies["draftImages"],
-  CommandDependencies["notifier"],
+  CommandDependencies["messenger"],
 ];
 
 type FakeUser = { id: string; username: string };
@@ -100,14 +100,18 @@ function setup(options: { cardsBySet?: Record<string, unknown[]>; fetchCalls?: s
   });
   const templates = createDraftTemplateService(db);
   const draftImages = createDraftImageService({ cacheDir: "./data/test-card-images" });
-  const notifierCalls: Array<{ channelId: string; userId: string; draftId: number; draftName: string }> = [];
-  const notifier = {
-    sendPickPrompt: async (input: { channelId: string; userId: string; draftId: number; draftName: string }) => {
-      notifierCalls.push(input);
+  const postStatusCalls: Array<{ draftId: number }> = [];
+  const updateStatusCalls: Array<{ draftId: number }> = [];
+  const messenger = {
+    async postStatus(draft: { id: number }) {
+      postStatusCalls.push({ draftId: draft.id });
+    },
+    async updateStatus(draft: { id: number }) {
+      updateStatusCalls.push({ draftId: draft.id });
     },
   };
 
-  return { db, matches, players, tournaments, drafts, cards, templates, draftImages, notifier, notifierCalls };
+  return { db, matches, players, tournaments, drafts, cards, templates, draftImages, messenger, postStatusCalls, updateStatusCalls };
 }
 
 function fakeInteraction(input: {
@@ -342,10 +346,7 @@ describe("command handlers", () => {
       currentPickStep: 1,
     });
     expect(replies[0]).toBe("Started draft: cube night.");
-    expect(app.notifierCalls).toEqual([
-      { channelId: "channel-1", userId: "user-7", draftId: draft.id, draftName: "cube night" },
-      { channelId: "channel-1", userId: "user-9", draftId: draft.id, draftName: "cube night" },
-    ]);
+    expect(app.postStatusCalls).toEqual([{ draftId: draft.id }]);
   });
 
   it("/draft start syncs set-backed pools before opening the first wave", async () => {

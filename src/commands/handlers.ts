@@ -4,7 +4,7 @@ import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
 import type { DraftTemplateService } from "../services/draft-templates.js";
-import type { DraftService } from "../services/drafts.js";
+import type { Draft, DraftService } from "../services/drafts.js";
 import type { MatchService } from "../services/matches.js";
 import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
 
@@ -41,13 +41,9 @@ export type CommandInteractionLike = {
   reply(message: string | CommandReplyLike): Promise<void> | void;
 };
 
-export type DraftNotifier = {
-  sendPickPrompt(input: {
-    channelId: string;
-    userId: string;
-    draftId: number;
-    draftName: string;
-  }): Promise<void>;
+export type DraftMessenger = {
+  postStatus(draft: Draft): Promise<void>;
+  updateStatus(draft: Draft): Promise<void>;
 };
 
 type CommandDependencies = {
@@ -58,7 +54,7 @@ type CommandDependencies = {
   cards: CardCatalogService;
   templates: DraftTemplateService;
   draftImages: DraftImageService;
-  notifier: DraftNotifier;
+  messenger: DraftMessenger;
 };
 
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
@@ -682,20 +678,7 @@ async function handleDraft(
       });
       const startedDraft = deps.drafts.start(draft.id);
 
-      for (const draftPlayer of deps.drafts.players(startedDraft.id)) {
-        const matchingPlayer = deps.players.findById(draftPlayer.playerId);
-
-        if (!matchingPlayer || matchingPlayer.guildId !== guildId) {
-          continue;
-        }
-
-        await deps.notifier.sendPickPrompt({
-          channelId: startedDraft.channelId,
-          userId: matchingPlayer.discordUserId,
-          draftId: startedDraft.id,
-          draftName: startedDraft.name,
-        });
-      }
+      await deps.messenger.postStatus(startedDraft);
 
       await interaction.reply(`Started draft: ${startedDraft.name}.`);
       return;
@@ -719,6 +702,8 @@ async function handleDraft(
       const draft = requireDraft(deps, guildId, name);
       requireDraftCreator(draft, interaction.user.id);
       deps.drafts.cancel(draft.id);
+      const cancelledDraft = deps.drafts.findById(draft.id);
+      await deps.messenger.updateStatus(cancelledDraft);
       await interaction.reply(`Cancelled draft: ${draft.name}.`);
       return;
     }

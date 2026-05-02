@@ -803,6 +803,19 @@ export function createDraftService(db: Database.Database) {
         .map(mapDraft);
     },
 
+    listActive(): Draft[] {
+      return db
+        .prepare(
+          `
+          select * from drafts
+          where status = 'active'
+          order by id asc
+        `,
+        )
+        .all()
+        .map(mapDraft);
+    },
+
     join(draftId: number, playerId: number): void {
       const draft = findById(draftId);
 
@@ -896,6 +909,27 @@ export function createDraftService(db: Database.Database) {
 
     exportYdk(draftId: number, playerId: number): string {
       return exportYdk(draftId, playerId);
+    },
+
+    picks(draftId: number): DraftPick[] {
+      findById(draftId);
+
+      return db
+        .prepare(
+          `
+            select * from draft_picks
+            where draft_id = ?
+            order by id asc
+          `,
+        )
+        .all(draftId)
+        .map(mapDraftPick);
+    },
+
+    setStatusMessageId(draftId: number, messageId: string | null): void {
+      findById(draftId);
+
+      db.prepare("update drafts set status_message_id = ? where id = ?").run(messageId, draftId);
     },
 
     cancel(draftId: number): Draft {

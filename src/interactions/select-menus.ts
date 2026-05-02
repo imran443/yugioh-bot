@@ -5,7 +5,7 @@ import {
   TextInputStyle,
   type InteractionReplyOptions,
 } from "discord.js";
-import type { DiscordUserLike, DraftNotifier } from "../commands/handlers.js";
+import type { DiscordUserLike, DraftMessenger } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
@@ -13,12 +13,11 @@ import type { DraftService } from "../services/drafts.js";
 import type { TournamentService } from "../services/tournaments.js";
 
 type SelectMenuDependencies = {
-  players: PlayerRepository;
   tournaments: TournamentService;
+  players: PlayerRepository;
   drafts: DraftService;
   cards: CardCatalogService;
-  draftImages: DraftImageService;
-  notifier: DraftNotifier;
+  messenger: DraftMessenger;
 };
 
 export type SelectMenuInteractionLike = {
@@ -89,26 +88,11 @@ export async function handleSelectMenu(
     const updatedDraft = deps.drafts.findById(draftId);
 
     const advancedPickStep =
-      updatedDraft.currentWaveNumber !== beforePickDraft.currentWaveNumber ||
+      updatedDraft.currentPackRound !== beforePickDraft.currentPackRound ||
       updatedDraft.currentPickStep !== beforePickDraft.currentPickStep;
 
     if (updatedDraft.status === "active" && advancedPickStep) {
-      for (const draftPlayer of deps.drafts.players(draftId)) {
-        const playerOptions = deps.drafts.pickOptions(draftId, draftPlayer.playerId);
-
-        if (playerOptions.length > 0) {
-          const playerRecord = deps.players.findById(draftPlayer.playerId);
-
-          if (playerRecord) {
-            await deps.notifier.sendPickPrompt({
-              channelId: draft.channelId,
-              userId: playerRecord.discordUserId,
-              draftId: draft.id,
-              draftName: draft.name,
-            });
-          }
-        }
-      }
+      await deps.messenger.updateStatus(updatedDraft);
     }
 
     return;
