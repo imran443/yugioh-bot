@@ -13,14 +13,21 @@ export type DraftImageCard = {
   imageUrlSmall?: string;
 };
 
+export type DraftImageCardWithLabel = DraftImageCard & {
+  label: string;
+};
+
 const COLUMNS = 4;
 const ROWS = 2;
 const CARD_WIDTH = 100;
 const CARD_HEIGHT = 145;
 
-function createNumberOverlay(number: number) {
+const CARD_FULL_WIDTH = 240;
+const CARD_FULL_HEIGHT = 350;
+
+function createNumberOverlay(number: number, width: number, height: number) {
   return Buffer.from(`
-    <svg width="${CARD_WIDTH}" height="${CARD_HEIGHT}">
+    <svg width="${width}" height="${height}">
       <rect x="6" y="6" width="26" height="26" rx="13" fill="rgba(0, 0, 0, 0.72)" />
       <text
         x="19"
@@ -65,6 +72,30 @@ export function createDraftImageService({
     }
   };
 
+  const getCachedFullImage = async (card: DraftImageCard) => {
+    await mkdir(cacheDir, { recursive: true });
+
+    const cachePath = join(cacheDir, `${card.ygoprodeckId}-full.png`);
+
+    try {
+      return await readFile(cachePath);
+    } catch {
+      const response = await fetchImpl(card.imageUrl);
+
+      if (!response.ok) {
+        throw new Error(`Card image request failed for ${card.ygoprodeckId}`);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const normalized = await sharp(buffer)
+        .resize(CARD_FULL_WIDTH, CARD_FULL_HEIGHT, { fit: "cover", position: "center" })
+        .png()
+        .toBuffer();
+      await writeFile(cachePath, normalized);
+      return normalized;
+    }
+  };
+
   return {
     async renderNumberedGrid(cards: DraftImageCard[]) {
       if (cards.length !== COLUMNS * ROWS) {
@@ -79,7 +110,7 @@ export function createDraftImageService({
 
           return [
             { input: image, left, top },
-            { input: createNumberOverlay(index + 1), left, top },
+            { input: createNumberOverlay(index + 1, CARD_WIDTH, CARD_HEIGHT), left, top },
           ];
         }),
       );
@@ -100,6 +131,41 @@ export function createDraftImageService({
         filename: "draft-picks.png",
         buffer,
       };
+    },
+
+    async renderCardImages(cards: DraftImageCardWithLabel[]) {
+      const results = await Promise.all(
+        cards.map(async (card) => {
+          const image = await getCachedFullImage(card);
+          const overlay = createNumberOverlay(Number(card.label), CARD_FULL_WIDTH, CARD_FULL_HEIGHT);
+          const buffer = await sharp(image)
+            .composite([{ input: overlay, left: 0, top: 0 }])
+            .png()
+            .toBuffer();
+
+          return {
+            filename: `draft-card-${card.ygoprodeckId}.png`,
+            buffer,
+          };
+        }),
+      );
+
+      return results;
+    },
+
+    async renderPoolCards(cards: DraftImageCard[]) {
+      const results = await Promise.all(
+        cards.map(async (card) => {
+          const buffer = await getCachedFullImage(card);
+
+          return {
+            filename: `draft-card-${card.ygoprodeckId}.png`,
+            buffer,
+          };
+        }),
+      );
+
+      return results;
     },
   };
 }

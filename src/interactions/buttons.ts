@@ -829,22 +829,23 @@ export async function handleButton(
     const catalogCards = deps.cards.findByIds(options.map((card) => card.catalogCardId));
     const cardsById = new Map(catalogCards.map((card) => [card.ygoprodeckId, card]));
 
-    const imageCards = options.map((option) => {
+    const imageCards = options.map((option, index) => {
       const card = cardsById.get(option.catalogCardId);
       return {
         ygoprodeckId: option.catalogCardId,
         imageUrl: card?.imageUrl ?? "",
         imageUrlSmall: card?.imageUrlSmall,
+        label: String(index + 1),
       };
     });
 
-    let gridAttachment: { attachment: Buffer; name: string } | undefined;
+    let cardAttachments: { attachment: Buffer; name: string }[] = [];
 
     try {
-      const grid = await deps.draftImages.renderNumberedGrid(imageCards);
-      gridAttachment = { attachment: grid.buffer, name: grid.filename };
+      const images = await deps.draftImages.renderCardImages(imageCards);
+      cardAttachments = images.map((img) => ({ attachment: img.buffer, name: img.filename }));
     } catch {
-      // fallback to text list
+      // fallback to text-only
     }
 
     const cardList = options
@@ -854,28 +855,175 @@ export async function handleButton(
       })
       .join("\n");
 
-    const content = gridAttachment ? "Pick a card from the grid below:" : ["Pick a card:", cardList].join("\n");
+    const content = cardAttachments.length > 0 ? `Pick a card:\n${cardList}` : ["Pick a card:", cardList].join("\n");
+
+    const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
+    const firstRowOptions = options.slice(0, 5);
+    const secondRowOptions = options.slice(5);
+
+    if (firstRowOptions.length > 0) {
+      buttonRows.push(
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          ...firstRowOptions.map((_, index) =>
+            new ButtonBuilder()
+              .setCustomId(`draft_pick_number:${draftId}:${index + 1}`)
+              .setLabel(`Pick ${index + 1}`)
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ),
+      );
+    }
+
+    if (secondRowOptions.length > 0) {
+      buttonRows.push(
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          ...secondRowOptions.map((_, index) =>
+            new ButtonBuilder()
+              .setCustomId(`draft_pick_number:${draftId}:${index + 6}`)
+              .setLabel(`Pick ${index + 6}`)
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ),
+      );
+    }
 
     await interaction.reply({
       content,
       ephemeral: true,
-      files: gridAttachment ? [gridAttachment] : undefined,
-      components: [
-        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`draft_pick_card:${draftId}`)
-            .setPlaceholder("Select a card")
-            .addOptions(
-              ...options.map((option, index) => {
-                const card = cardsById.get(option.catalogCardId);
-                return {
-                  label: `${index + 1}. ${card?.name ?? "Unknown"}`.slice(0, 100),
-                  value: String(option.id),
-                };
-              }),
-            ),
-        ),
-      ],
+      files: cardAttachments.length > 0 ? cardAttachments : undefined,
+      components: buttonRows,
+    });
+    return;
+  }
+
+  const draftPickNumber = /^draft_pick_number:(\d+):(\d+)$/.exec(interaction.customId);
+
+  if (draftPickNumber) {
+    const draftId = Number(draftPickNumber[1]);
+    const pickNumber = Number(draftPickNumber[2]);
+    const draft = deps.drafts.findById(draftId);
+    const guildId = interaction.guildId ?? draft.guildId;
+
+    if (interaction.guildId && draft.guildId !== interaction.guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    const options = deps.drafts.pickOptions(draftId, player.id);
+
+    if (options.length === 0) {
+      await interaction.reply({ content: "You have no cards to pick right now.", ephemeral: true });
+      return;
+    }
+
+    const optionIndex = pickNumber - 1;
+
+    if (optionIndex < 0 || optionIndex >= options.length) {
+      await interaction.reply({ content: "Invalid pick number.", ephemeral: true });
+      return;
+    }
+
+    const selectedOption = options[optionIndex];
+    const catalogCards = deps.cards.findByIds([selectedOption.catalogCardId]);
+    const cardName = catalogCards[0]?.name ?? "Unknown";
+
+    deps.drafts.pickCard(draftId, player.id, selectedOption.id);
+
+    await interaction.reply({ content: `You picked ${cardName}.`, ephemeral: true });
+    return;
+  }
+
+  const draftPool = /^draft_pool:(\d+)$/.exec(interaction.customId);
+  const draftPoolPage = /^draft_pool_page:(\d+):(\d+)$/.exec(interaction.customId);
+
+  if (draftPool || draftPoolPage) {
+    const draftId = Number((draftPool ?? draftPoolPage)![1]);
+    const page = draftPoolPage ? Number(draftPoolPage[2]) : 1;
+    const draft = deps.drafts.findById(draftId);
+    const guildId = interaction.guildId ?? draft.guildId;
+
+    if (interaction.guildId && draft.guildId !== interaction.guildId) {
+      throw new Error("Draft not found in this server");
+    }
+
+    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
+    const poolCards = deps.drafts.pool(draftId, player.id);
+
+    if (poolCards.length === 0) {
+      await interaction.reply({ content: "Your pool is empty.", ephemeral: true });
+      return;
+    }
+
+    const pageSize = 8;
+    const totalPages = Math.max(1, Math.ceil(poolCards.length / pageSize));
+    const safePage = Math.min(Math.max(1, page), totalPages);
+    const start = (safePage - 1) * pageSize;
+    const end = Math.min(start + pageSize, poolCards.length);
+    const pageCards = poolCards.slice(start, end);
+
+    const catalogCards = deps.cards.findByIds(pageCards.map((c) => c.catalogCardId));
+    const cardsById = new Map(catalogCards.map((card) => [card.ygoprodeckId, card]));
+
+    const imageCards = pageCards.map((poolCard) => {
+      const card = cardsById.get(poolCard.catalogCardId);
+      return {
+        ygoprodeckId: poolCard.catalogCardId,
+        imageUrl: card?.imageUrl ?? "",
+        imageUrlSmall: card?.imageUrlSmall,
+      };
+    });
+
+    let cardAttachments: { attachment: Buffer; name: string }[] = [];
+
+    try {
+      const images = await deps.draftImages.renderPoolCards(imageCards);
+      cardAttachments = images.map((img) => ({ attachment: img.buffer, name: img.filename }));
+    } catch {
+      // fallback to text-only
+    }
+
+    const cardList = pageCards
+      .map((poolCard, index) => {
+        const card = cardsById.get(poolCard.catalogCardId);
+        return `${start + index + 1}. ${card?.name ?? "Unknown"}`;
+      })
+      .join("\n");
+
+    const content = [`Your pool (page ${safePage}/${totalPages}):`, cardList].join("\n");
+
+    const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
+
+    if (totalPages > 1) {
+      const paginationButtons: ButtonBuilder[] = [];
+
+      if (safePage > 1) {
+        paginationButtons.push(
+          new ButtonBuilder()
+            .setCustomId(`draft_pool_page:${draftId}:${safePage - 1}`)
+            .setLabel("Previous")
+            .setStyle(ButtonStyle.Secondary),
+        );
+      }
+
+      if (safePage < totalPages) {
+        paginationButtons.push(
+          new ButtonBuilder()
+            .setCustomId(`draft_pool_page:${draftId}:${safePage + 1}`)
+            .setLabel("Next")
+            .setStyle(ButtonStyle.Secondary),
+        );
+      }
+
+      if (paginationButtons.length > 0) {
+        buttonRows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...paginationButtons));
+      }
+    }
+
+    await interaction.reply({
+      content,
+      ephemeral: true,
+      files: cardAttachments.length > 0 ? cardAttachments : undefined,
+      components: buttonRows,
     });
     return;
   }

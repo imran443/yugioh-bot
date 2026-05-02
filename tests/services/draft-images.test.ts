@@ -80,4 +80,54 @@ describe("draft image service", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("renders individual card images with labels", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "draft-images-"));
+    try {
+      const source = path.join(dir, "card.jpg");
+      await sharp({ create: { width: 300, height: 400, channels: 3, background: "white" } }).jpeg().toFile(source);
+      const images = createDraftImageService({
+        cacheDir: dir,
+        fetch: async () =>
+          ({ ok: true, arrayBuffer: async () => (await readFile(source)).buffer }) as Response,
+      });
+
+      const output = await images.renderCardImages([
+        { ygoprodeckId: 1, imageUrl: "https://example.com/1.jpg", label: "1" },
+        { ygoprodeckId: 2, imageUrl: "https://example.com/2.jpg", label: "2" },
+      ]);
+
+      expect(output).toHaveLength(2);
+      expect(output[0].filename).toBe("draft-card-1.png");
+      expect(output[0].buffer.length).toBeGreaterThan(0);
+      expect(output[1].filename).toBe("draft-card-2.png");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("renders pool card images without labels", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "draft-images-"));
+    try {
+      const source = path.join(dir, "card.jpg");
+      await sharp({ create: { width: 300, height: 400, channels: 3, background: "white" } }).jpeg().toFile(source);
+      const images = createDraftImageService({
+        cacheDir: dir,
+        fetch: async () =>
+          ({ ok: true, arrayBuffer: async () => (await readFile(source)).buffer }) as Response,
+      });
+
+      const output = await images.renderPoolCards([
+        { ygoprodeckId: 1, imageUrl: "https://example.com/1.jpg" },
+        { ygoprodeckId: 2, imageUrl: "https://example.com/2.jpg" },
+      ]);
+
+      expect(output).toHaveLength(2);
+      expect(output[0].filename).toBe("draft-card-1.png");
+      expect(output[0].buffer.length).toBeGreaterThan(0);
+      expect(output[1].filename).toBe("draft-card-2.png");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

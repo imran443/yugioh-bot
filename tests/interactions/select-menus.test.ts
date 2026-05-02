@@ -130,11 +130,11 @@ describe("select menu interactions", () => {
     app.drafts.join(draft.id, kaiba.id);
     seedDraftCatalog(app, 16);
     app.drafts.start(draft.id);
-    const waveCards = app.drafts.currentWaveCards(draft.id);
+    const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
     const { interaction, replies } = fakeSelectMenu({
       customId: `draft_pick_card:${draft.id}`,
       user: { id: "user-7", username: "Yugi" },
-      values: [String(waveCards[0].id)],
+      values: [String(yugiOptions[0].id)],
     });
 
     await handleSelectMenu(interaction, app);
@@ -152,13 +152,14 @@ describe("select menu interactions", () => {
     app.drafts.join(draft.id, kaiba.id);
     seedDraftCatalog(app, 16);
     app.drafts.start(draft.id);
-    const waveCards = app.drafts.currentWaveCards(draft.id);
+    const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
+    const kaibaOptions = app.drafts.pickOptions(draft.id, kaiba.id);
 
     await handleSelectMenu(
       fakeSelectMenu({
         customId: `draft_pick_card:${draft.id}`,
         user: { id: "user-7", username: "Yugi" },
-        values: [String(waveCards[0].id)],
+        values: [String(yugiOptions[0].id)],
       }).interaction,
       app,
     );
@@ -169,7 +170,7 @@ describe("select menu interactions", () => {
       fakeSelectMenu({
         customId: `draft_pick_card:${draft.id}`,
         user: { id: "user-9", username: "Kaiba" },
-        values: [String(waveCards[1].id)],
+        values: [String(kaibaOptions[0].id)],
       }).interaction,
       app,
     );
@@ -188,12 +189,12 @@ describe("select menu interactions", () => {
     app.drafts.join(draft.id, kaiba.id);
     seedDraftCatalog(app, 16);
     app.drafts.start(draft.id);
-    const waveCards = app.drafts.currentWaveCards(draft.id);
+    const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
     const { interaction, replies } = fakeSelectMenu({
       customId: `draft_pick_card:${draft.id}`,
       guildId: null,
       user: { id: "user-7", username: "Yugi" },
-      values: [String(waveCards[0].id)],
+      values: [String(yugiOptions[0].id)],
     });
 
     await handleSelectMenu(interaction, app);
@@ -210,13 +211,13 @@ describe("select menu interactions", () => {
     app.drafts.join(draft.id, kaiba.id);
     seedDraftCatalog(app, 16);
     app.drafts.start(draft.id);
-    const waveCards = app.drafts.currentWaveCards(draft.id);
+    const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
 
     await handleSelectMenu(
       fakeSelectMenu({
         customId: `draft_pick_card:${draft.id}`,
         user: { id: "user-7", username: "Yugi" },
-        values: [String(waveCards[0].id)],
+        values: [String(yugiOptions[0].id)],
       }).interaction,
       app,
     );
@@ -224,7 +225,7 @@ describe("select menu interactions", () => {
     const { interaction, replies } = fakeSelectMenu({
       customId: `draft_pick_card:${draft.id}`,
       user: { id: "user-7", username: "Yugi" },
-      values: [String(waveCards[1].id)],
+      values: [String(yugiOptions[1].id)],
     });
 
     await handleSelectMenu(interaction, app);

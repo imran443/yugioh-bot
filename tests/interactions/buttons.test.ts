@@ -22,6 +22,18 @@ function createFakeDraftImageService() {
     async renderNumberedGrid(_cards: { ygoprodeckId: number; imageUrl: string; imageUrlSmall?: string }[]) {
       return { filename: "draft-picks.png", buffer: Buffer.from("fake-png-buffer") };
     },
+    async renderCardImages(cards: { ygoprodeckId: number; imageUrl: string; label: string }[]) {
+      return cards.map((card) => ({
+        filename: `draft-card-${card.ygoprodeckId}.png`,
+        buffer: Buffer.from(`fake-card-${card.ygoprodeckId}`),
+      }));
+    },
+    async renderPoolCards(cards: { ygoprodeckId: number; imageUrl: string }[]) {
+      return cards.map((card) => ({
+        filename: `draft-card-${card.ygoprodeckId}.png`,
+        buffer: Buffer.from(`fake-card-${card.ygoprodeckId}`),
+      }));
+    },
   };
 }
 
@@ -297,7 +309,7 @@ describe("button interactions", () => {
 
     expect(app.drafts.findById(draft.id)).toMatchObject({
       status: "active",
-      currentWaveNumber: 1,
+      currentPackRound: 1,
       currentPickStep: 1,
     });
     expect(replies[0]).toEqual({ content: "Started draft: cube night.", ephemeral: true });
@@ -324,7 +336,7 @@ describe("button interactions", () => {
     ).rejects.toThrow("Only the draft creator can do that");
   });
 
-  it("shows a draft pick grid with image attachment when image service succeeds", async () => {
+  it("shows draft pick cards with numbered buttons when image service succeeds", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
@@ -341,11 +353,13 @@ describe("button interactions", () => {
 
     expect(replies[0].ephemeral).toBe(true);
     expect(replies[0].files).toBeDefined();
-    expect(replies[0].files!.length).toBe(1);
+    expect(replies[0].files!.length).toBe(8);
     expect(replies[0].content).toContain("Pick a card");
-    expect(JSON.stringify(replies[0])).toContain("draft_pick_card");
-    expect(JSON.stringify(replies[0])).toContain("Card 1");
-    expect(JSON.stringify(replies[0])).toContain("Card 8");
+    expect(replies[0].content).toContain("Card 1");
+    expect(replies[0].content).toContain("Card 8");
+    expect(JSON.stringify(replies[0])).toContain("draft_pick_number");
+    expect(JSON.stringify(replies[0])).toContain("Pick 1");
+    expect(JSON.stringify(replies[0])).toContain("Pick 8");
   });
 
   it("renders draft pick images from exactly 8 current options", async () => {
@@ -367,15 +381,28 @@ describe("button interactions", () => {
     await handleButton(interaction, {
       ...app,
       draftImages: {
-        async renderNumberedGrid(cards: { ygoprodeckId: number; imageUrl: string; imageUrlSmall?: string }[]) {
-          renderedOptionCounts.push(cards.length);
+        async renderNumberedGrid(_cards: { ygoprodeckId: number; imageUrl: string; imageUrlSmall?: string }[]) {
           return { filename: "draft-picks.png", buffer: Buffer.from("fake-png-buffer") };
+        },
+        async renderCardImages(cards: { ygoprodeckId: number; imageUrl: string; label: string }[]) {
+          renderedOptionCounts.push(cards.length);
+          return cards.map((card) => ({
+            filename: `draft-card-${card.ygoprodeckId}.png`,
+            buffer: Buffer.from(`fake-card-${card.ygoprodeckId}`),
+          }));
+        },
+        async renderPoolCards(cards: { ygoprodeckId: number; imageUrl: string }[]) {
+          return cards.map((card) => ({
+            filename: `draft-card-${card.ygoprodeckId}.png`,
+            buffer: Buffer.from(`fake-card-${card.ygoprodeckId}`),
+          }));
         },
       },
     });
 
     expect(renderedOptionCounts).toEqual([8]);
     expect(replies[0].files).toBeDefined();
+    expect(replies[0].files!.length).toBe(8);
   });
 
   it("opens draft pick prompts from direct messages", async () => {
@@ -398,7 +425,7 @@ describe("button interactions", () => {
     expect(replies[0].content).toContain("Pick a card");
   });
 
-  it("falls back to text list when image service throws", async () => {
+  it("falls back to text list with buttons when image service throws", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
@@ -417,7 +444,125 @@ describe("button interactions", () => {
     expect(replies[0].files).toBeUndefined();
     expect(replies[0].content).toContain("Card 1");
     expect(replies[0].content).toContain("Card 8");
-    expect(JSON.stringify(replies[0])).toContain("draft_pick_card");
+    expect(JSON.stringify(replies[0])).toContain("draft_pick_number");
+  });
+
+  it("picks a card via numbered button", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pick_number:${draft.id}:1`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].content).toContain("You picked");
+  });
+
+  it("rejects invalid pick number", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pick_number:${draft.id}:99`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].content).toContain("Invalid pick number");
+  });
+
+  it("shows private pool view with card images", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+
+    // Yugi picks a card so his pool is not empty
+    const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
+    app.drafts.pickCard(draft.id, yugi.id, yugiOptions[0].id);
+
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pool:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, { ...app, draftImages: createFakeDraftImageService() });
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].content).toContain("Your pool");
+    expect(replies[0].files).toBeDefined();
+    expect(replies[0].files!.length).toBe(1);
+  });
+
+  it("shows empty pool message when pool is empty", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 16);
+    app.drafts.start(draft.id);
+
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pool:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].content).toContain("pool is empty");
+  });
+
+  it("paginates pool view with next button", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedDraftCatalog(app, 24);
+    app.drafts.start(draft.id);
+
+    // Yugi picks 9 cards so pool spans 2 pages
+    for (let i = 0; i < 9; i++) {
+      const options = app.drafts.pickOptions(draft.id, yugi.id);
+      if (options.length === 0) break;
+      app.drafts.pickCard(draft.id, yugi.id, options[0].id);
+      // Rotate packs by having Kaiba pick too when needed
+      const kaibaOptions = app.drafts.pickOptions(draft.id, kaiba.id);
+      if (kaibaOptions.length > 0) {
+        app.drafts.pickCard(draft.id, kaiba.id, kaibaOptions[0].id);
+      }
+    }
+
+    const { interaction, replies } = fakeButton({
+      customId: `draft_pool:${draft.id}`,
+      user: { id: "user-7", username: "Yugi" },
+    });
+
+    await handleButton(interaction, { ...app, draftImages: createFakeDraftImageService() });
+
+    expect(replies[0].ephemeral).toBe(true);
+    expect(replies[0].content).toContain("page 1/2");
+    expect(JSON.stringify(replies[0])).toContain("draft_pool_page");
+    expect(JSON.stringify(replies[0])).toContain("Next");
   });
 
   it("lists open events with join buttons", async () => {

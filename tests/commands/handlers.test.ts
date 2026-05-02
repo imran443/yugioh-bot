@@ -238,6 +238,11 @@ describe("command handlers", () => {
       setNames: ["Metal Raiders", "Legend of Blue Eyes White Dragon"],
       includeNames: ["Dark Magician"],
       excludeNames: ["Blue-Eyes White Dragon"],
+      packSize: 8,
+      packsPerPlayer: 5,
+      pickSeconds: 45,
+      alternatePassDirection: true,
+      randomizeSeats: false,
     });
   });
 
@@ -287,6 +292,11 @@ describe("command handlers", () => {
       setNames: [],
       includeNames: [],
       excludeNames: [],
+      packSize: 8,
+      packsPerPlayer: 5,
+      pickSeconds: 45,
+      alternatePassDirection: true,
+      randomizeSeats: false,
     });
   });
 
@@ -328,7 +338,7 @@ describe("command handlers", () => {
 
     expect(app.drafts.findById(draft.id)).toMatchObject({
       status: "active",
-      currentWaveNumber: 1,
+      currentPackRound: 1,
       currentPickStep: 1,
     });
     expect(replies[0]).toBe("Started draft: cube night.");
