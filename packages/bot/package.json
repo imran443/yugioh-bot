@@ -1,0 +1,31 @@
+{
+  "name": "@yugioh-discord-bot/bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p ../shared/tsconfig.build.json && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p ../shared/tsconfig.build.json && tsc --noEmit",
+    "start": "node dist/index.js",
+    "test": "tsc -p ../shared/tsconfig.build.json && vitest run",
+    "test:watch": "vitest",
+    "commands:deploy": "tsx src/deploy-commands.ts",
+    "commands:deploy:prod": "node dist/deploy-commands.js"
+  },
+  "dependencies": {
+    "@yugidraft/shared": "file:../shared",
+    "better-sqlite3": "latest",
+    "discord.js": "latest",
+    "dotenv": "latest",
+    "node-cron": "latest",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "latest",
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}

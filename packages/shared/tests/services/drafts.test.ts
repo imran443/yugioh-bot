@@ -1,0 +1,158 @@
+import Database from "better-sqlite3";
+import { describe, expect, it } from "vitest";
+import { migrate } from "../../src/db/index.js";
+import { createDraftService } from "../../src/services/drafts.js";
+
+function insertPlayer(db: Database.Database, guildId: string, discordUserId: string, displayName: string) {
+  const result = db
+    .prepare(
+      `
+        insert into players (guild_id, discord_user_id, display_name)
+        values (?, ?, ?)
+      `,
+    )
+    .run(guildId, discordUserId, displayName);
+
+  return {
+    id: Number(result.lastInsertRowid),
+    guildId,
+    discordUserId,
+    displayName,
+  };
+}
+
+function setup() {
+  const db = new Database(":memory:");
+  migrate(db);
+
+  return {
+    db,
+    drafts: createDraftService(db),
+  };
+}
+
+function seedCatalogCards(db: Database.Database, count: number) {
+  const insertCard = db.prepare(
+    `
+      insert into card_catalog (
+        ygoprodeck_id,
+        name,
+        type,
+        frame_type,
+        image_url,
+        image_url_small,
+        card_sets_json,
+        cached_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  );
+
+  for (let id = 1; id <= count; id += 1) {
+    insertCard.run(
+      id,
+      `Card ${id}`,
+      "Spellcaster / Normal Monster",
+      "normal",
+      `https://img/full/${id}`,
+      `https://img/small/${id}`,
+      JSON.stringify([{ set_name: "Metal Raiders" }]),
+      "2026-01-01T00:00:00Z",
+    );
+  }
+}
+
+describe("shared draft service", () => {
+  it("creates a pending draft, stores config, and auto-joins the creator", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "cube night",
+      {
+        setNames: ["Battle Pack 3"],
+        includeNames: ["Dark Magician"],
+        excludeNames: ["Pot of Greed"],
+      },
+      "user-1",
+      yugi.id,
+    );
+
+    expect(draft).toEqual({
+      id: expect.any(Number),
+      guildId: "guild-1",
+      channelId: "channel-1",
+      name: "cube night",
+      status: "pending",
+      createdByUserId: "user-1",
+      config: {
+        setNames: ["Battle Pack 3"],
+        includeNames: ["Dark Magician"],
+        excludeNames: ["Pot of Greed"],
+        packSize: 8,
+        packsPerPlayer: 5,
+        pickSeconds: 45,
+        alternatePassDirection: true,
+        randomizeSeats: false,
+      },
+      currentPackRound: 0,
+      currentPickStep: 0,
+      pickDeadlineAt: null,
+      statusMessageId: null,
+      webSlug: expect.any(String),
+    });
+    expect(app.drafts.players(draft.id)).toEqual([{ playerId: yugi.id, displayName: "Yugi" }]);
+  });
+
+  it("starts a draft by seating players and opening one 8-card pack per player", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", { setNames: ["Metal Raiders"] }, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 16);
+
+    const started = app.drafts.start(draft.id, new Date("2026-05-01T00:00:00.000Z"));
+
+    expect(started).toEqual(expect.objectContaining({
+      id: draft.id,
+      status: "active",
+      currentPackRound: 1,
+      currentPickStep: 1,
+      pickDeadlineAt: "2026-05-01T00:00:45.000Z",
+    }));
+    expect(app.drafts.players(draft.id)).toEqual([
+      { playerId: yugi.id, displayName: "Yugi", seatIndex: 0 },
+      { playerId: kaiba.id, displayName: "Kaiba", seatIndex: 1 },
+    ]);
+    expect(app.drafts.currentPackOptions(draft.id, yugi.id)).toHaveLength(8);
+    expect(app.drafts.currentPackOptions(draft.id, kaiba.id)).toHaveLength(8);
+  });
+
+  it("records synchronized pick steps after all players pick", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 16);
+    app.drafts.start(draft.id);
+
+    const yugiPick = app.drafts.currentPackOptions(draft.id, yugi.id)[0];
+    const kaibaPick = app.drafts.currentPackOptions(draft.id, kaiba.id)[0];
+
+    app.drafts.pickCard(draft.id, yugi.id, yugiPick.id);
+    expect(app.drafts.findById(draft.id).currentPickStep).toBe(1);
+
+    app.drafts.pickCard(draft.id, kaiba.id, kaibaPick.id);
+
+    expect(app.drafts.findById(draft.id).currentPickStep).toBe(2);
+    expect(app.drafts.picks(draft.id)).toEqual([
+      expect.objectContaining({ playerId: yugi.id, draftCardId: yugiPick.id, waveNumber: 1, pickStep: 1 }),
+      expect.objectContaining({ playerId: kaiba.id, draftCardId: kaibaPick.id, waveNumber: 1, pickStep: 1 }),
+    ]);
+  });
+});
