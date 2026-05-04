@@ -252,4 +252,16 @@ export function migrate(db: Database.Database) {
     create index if not exists draft_cards_pack_idx
     on draft_cards (draft_pack_id, picked_by_player_id, position);
   `);
+
+  db.exec(`
+    create table if not exists guild_settings (
+      guild_id text primary key not null,
+      announce_draft_created integer not null default 1,
+      announce_draft_started integer not null default 1,
+      announce_draft_completed integer not null default 1,
+      announce_tournament_created integer not null default 1,
+      announce_tournament_completed integer not null default 1,
+      announce_channel_id text
+    );
+  `);
 }
