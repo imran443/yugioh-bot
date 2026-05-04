@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
   const player = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
   const drafts = createDraftService(db);
 
-  const draftId = drafts.createDraft(
+  const draft = drafts.create(
     guildId,
     resolvedChannelId,
     name,
@@ -130,8 +130,6 @@ export async function POST(request: NextRequest) {
     session.user.id,
     player.id,
   );
-
-  const draft = drafts.findById(draftId);
 
   return NextResponse.json(
     {
