@@ -5,6 +5,12 @@ type CardSet = {
   set_name: string;
 };
 
+type YgoprodeckSetInfo = {
+  set_name: string;
+  set_code: string;
+  num_cards: number;
+};
+
 type YgoprodeckCard = {
   id: number;
   name: string;
@@ -170,16 +176,20 @@ export function createCardCatalogService(
       return findByIds(cardsToCache.map((card) => card.id));
     },
 
-    listSets(query?: string): string[] {
+    listSets(query?: string): Array<{ setName: string; setCode: string; cardCount: number }> {
       const hasQuery = query && query.trim().length > 0;
 
       const sql = hasQuery
-        ? `select set_name from card_sets where lower(set_name) like lower(?) order by set_name limit 25`
-        : `select set_name from card_sets order by set_name limit 25`;
+        ? `select set_name, set_code, card_count from card_sets where lower(set_name) like lower(?) order by set_name limit 25`
+        : `select set_name, set_code, card_count from card_sets order by set_name limit 25`;
 
       const rows = hasQuery ? db.prepare(sql).all(`%${query.trim()}%`) : db.prepare(sql).all();
 
-      return (rows as Array<{ set_name: string }>).map((row) => row.set_name);
+      return (rows as Array<{ set_name: string; set_code: string; card_count: number }>).map((row) => ({
+        setName: row.set_name,
+        setCode: row.set_code ?? "",
+        cardCount: row.card_count ?? 0,
+      }));
     },
 
     async syncSets(): Promise<string[]> {
@@ -189,19 +199,20 @@ export function createCardCatalogService(
         throw new Error("YGOPRODeck cardsets request failed");
       }
 
-      const payload = (await response.json()) as Array<{ set_name: string }>;
-      const setNames = payload.map((set) => set.set_name);
+      const payload = (await response.json()) as YgoprodeckSetInfo[];
       const syncedAt = new Date().toISOString();
 
-      const insert = db.prepare(`insert or replace into card_sets (set_name, synced_at) values (?, ?)`);
+      const insert = db.prepare(
+        `insert or replace into card_sets (set_name, set_code, card_count, synced_at) values (?, ?, ?, ?)`
+      );
 
       db.transaction(() => {
-        for (const setName of setNames) {
-          insert.run(setName, syncedAt);
+        for (const set of payload) {
+          insert.run(set.set_name, set.set_code, set.num_cards, syncedAt);
         }
       })();
 
-      return setNames;
+      return payload.map((s) => s.set_name);
     },
 
     findByIds,
