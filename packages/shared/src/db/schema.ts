@@ -215,6 +215,8 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "draft_cards", "draft_pack_id", "integer references draft_packs(id)");
   addColumnIfMissing(db, "draft_cards", "position", "integer");
   addColumnIfMissing(db, "draft_picks", "pick_method", "text not null default 'manual'");
+  addColumnIfMissing(db, "card_sets", "card_count", "integer");
+  addColumnIfMissing(db, "card_sets", "set_code", "text");
 
   db.exec(`
     create unique index if not exists tournaments_current_name_unique
