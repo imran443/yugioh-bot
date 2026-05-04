@@ -1,5 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
+import { createPlayerService } from "@yugidraft/shared/services";
+
+function generateWebSlug(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
+const VALID_FORMATS = ["round_robin", "single_elim"] as const;
 
 export const runtime = "nodejs";
 
@@ -47,4 +57,57 @@ export async function GET() {
       { status: 500 }
     );
   }
+}
+
+export async function POST(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const { name, format } = body as { name: string; format: string };
+
+  if (!name || !format) {
+    return NextResponse.json(
+      { error: "name and format are required" },
+      { status: 400 }
+    );
+  }
+
+  if (!VALID_FORMATS.includes(format as any)) {
+    return NextResponse.json(
+      { error: "format must be round_robin or single_elim" },
+      { status: 400 }
+    );
+  }
+
+  const guildId = env.discordGuildId;
+  if (!guildId) {
+    return NextResponse.json(
+      { error: "Server not configured for tournament creation" },
+      { status: 500 }
+    );
+  }
+
+  const db = getDb();
+  const players = createPlayerService(db);
+  players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
+
+  const result = db.prepare(
+    "insert into tournaments (guild_id, name, format, status, created_by_user_id, web_slug) values (?, ?, ?, 'pending', ?, ?)"
+  ).run(guildId, name, format, session.user.id, generateWebSlug());
+
+  const tournament = db.prepare("select * from tournaments where id = ?").get(Number(result.lastInsertRowid)) as any;
+
+  return NextResponse.json(
+    {
+      id: tournament.id,
+      name: tournament.name,
+      format: tournament.format,
+      status: tournament.status,
+      webSlug: tournament.web_slug,
+    },
+    { status: 201 }
+  );
 }
