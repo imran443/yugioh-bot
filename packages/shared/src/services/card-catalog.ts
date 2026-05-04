@@ -216,6 +216,59 @@ export function createCardCatalogService(
     },
 
     findByIds,
+
+    async getSetPreview(setName: string): Promise<{ name: string; cardCount: number; cached: boolean; sampleCards: CardCatalogCard[] }> {
+      const setRow = db.prepare("select card_count from card_sets where set_name = ?").get(setName) as { card_count: number } | undefined;
+
+      const sampleRows = db.prepare(`
+        select * from card_catalog
+        where ygoprodeck_id in (
+          select cc.ygoprodeck_id
+          from card_catalog cc, json_each(cc.card_sets_json) as je
+          where je.value->>'set_name' = ?
+          limit 6
+        )
+      `).all(setName) as any[];
+
+      if (sampleRows.length > 0 && setRow?.card_count) {
+        return {
+          name: setName,
+          cardCount: setRow.card_count,
+          cached: true,
+          sampleCards: sampleRows.map(mapCard),
+        };
+      }
+
+      const fetched = await fetchCards("cardset", setName);
+      if (fetched.length === 0) {
+        return { name: setName, cardCount: 0, cached: false, sampleCards: [] };
+      }
+
+      const nonExtraDeck = fetched.filter((c) => !isExtraDeckCard(c));
+      const toCache = nonExtraDeck.length > 0 ? nonExtraDeck : fetched;
+      upsertCards(toCache);
+
+      const sample = toCache.slice(0, 6).map((c) => {
+        const [image] = c.card_images;
+        return {
+          ygoprodeckId: c.id,
+          name: c.name,
+          type: c.type,
+          frameType: c.frameType,
+          imageUrl: image?.image_url ?? "",
+          imageUrlSmall: image?.image_url_small ?? "",
+          cardSets: (c.card_sets ?? []).map((cs: any) => cs.set_name ?? cs),
+          cachedAt: new Date().toISOString(),
+        } as CardCatalogCard;
+      });
+
+      return {
+        name: setName,
+        cardCount: fetched.length,
+        cached: false,
+        sampleCards: sample,
+      };
+    },
   };
 }
 
