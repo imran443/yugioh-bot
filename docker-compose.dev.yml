@@ -1,7 +1,10 @@
-# docker-compose.override.yml — local development only
+# docker-compose.dev.yml — local development only
 #
-# Docker Compose automatically merges this file with docker-compose.yml when
-# you run `docker compose up` without specifying -f flags.
+# To use: copy this file to docker-compose.override.yml
+#   cp docker-compose.dev.yml docker-compose.override.yml
+#
+# docker-compose.override.yml is gitignored so it never ships to the VM.
+# Docker Compose automatically merges it when you run `docker compose up`.
 #
 # Changes here:
 #  - Switches the web service to the web-dev Dockerfile target (runs `next dev`)

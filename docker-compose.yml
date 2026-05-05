@@ -1,10 +1,12 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      target: bot
     restart: unless-stopped
     env_file:
       - .env
-    command: sh -c "npm run commands:deploy:prod && npm start"
+    command: sh -c "node packages/bot/dist/deploy-commands.js && node packages/bot/dist/index.js"
     volumes:
       - ./data:/app/data
 
