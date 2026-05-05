@@ -1,0 +1,6 @@
+:80 {
+    handle /socket.io/* {
+        reverse_proxy ws:3001
+    }
+    reverse_proxy web:3000
+}

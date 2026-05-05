@@ -10,11 +10,14 @@
 #    Docker VM boundary for bind mounts)
 #  - Keeps an anonymous volume for .next so the container's build cache is
 #    never clobbered by what's (or isn't) on the host
+#  - Exposes web on :3000 and ws on :3001 for direct dev access (no Caddy needed)
 
 services:
   web:
     build:
       target: web-dev
+    ports:
+      - "3000:3000"
     environment:
       # File-watcher polling — required on macOS Docker Desktop
       WATCHPACK_POLLING: "true"
@@ -33,3 +36,8 @@ services:
       - ./packages/shared/dist:/app/packages/shared/dist
       # Anonymous volume: keeps Next.js .next cache inside the container
       - /app/packages/web/.next
+
+  ws:
+    # Exposes Socket.IO server for direct dev access (bypasses Caddy)
+    ports:
+      - "3001:3001"

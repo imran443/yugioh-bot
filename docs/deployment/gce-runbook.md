@@ -72,6 +72,8 @@ Use this checklist to see where you are.
 - [ ] Repo cloned into `/opt/yugioh-discord-bot`
 - [ ] `/opt/yugioh-discord-bot/.env` created on VM
 - [ ] First manual `docker compose up -d --build` succeeds
+- [ ] `Caddyfile` present at `/opt/yugioh-discord-bot/Caddyfile` (deployed via git)
+- [ ] Port 80 open on GCE firewall
 - [ ] GitHub Actions deploy SSH key created
 - [ ] Deploy public key added to `/home/deploy/.ssh/authorized_keys`
 - [ ] GitHub Actions secrets added
@@ -144,9 +146,9 @@ DISCORD_DEFAULT_CHANNEL_ID=your_default_channel_id
 # Generate with: openssl rand -base64 32
 NEXTAUTH_SECRET=your_generated_secret
 # Use your GCE external IP in production, localhost for local dev
-NEXTAUTH_URL=http://YOUR_GCE_EXTERNAL_IP:3000
-# WebSocket URL (same IP, port 3001)
-NEXT_PUBLIC_WS_URL=http://YOUR_GCE_EXTERNAL_IP:3001
+NEXTAUTH_URL=http://YOUR_GCE_EXTERNAL_IP
+# WebSocket URL — Caddy routes /socket.io/* to the ws container
+NEXT_PUBLIC_WS_URL=http://YOUR_GCE_EXTERNAL_IP
 
 # --- Shared ---
 DATABASE_PATH=./data/bot.sqlite
@@ -156,12 +158,14 @@ REMINDER_TIMEZONE=America/New_York
 
 **Important:** Replace `YOUR_GCE_EXTERNAL_IP` with your VM's static external IP. This file is never committed to git.
 
+> **Note:** Caddy listens on port 80 and routes `/socket.io/*` to the ws container — no port suffix needed for either variable.
+
 ### Discord OAuth2 Redirect URI
 
 In the Discord Developer Portal (OAuth2 → General), add this redirect URI:
 
 ```
-http://YOUR_GCE_EXTERNAL_IP:3000/api/auth/callback/discord
+http://YOUR_GCE_EXTERNAL_IP/api/auth/callback/discord
 ```
 
 Save in nano:
@@ -191,6 +195,14 @@ docker compose ps
 ```
 
 The `bot` service should be `Up`.
+
+## Open Port 80 on GCE Firewall
+
+Port 80 must be open for Caddy to serve HTTP traffic. Run this once from your local machine or Cloud Shell:
+
+```bash
+gcloud compute firewall-rules create allow-http --allow tcp:80 --direction=INGRESS
+```
 
 ## Create GitHub Actions Deploy Key
 
@@ -332,57 +344,31 @@ After the container is up, test in Discord:
 
 Both commands should respond from the live VM-hosted bot.
 
-## Adding HTTPS with Caddy (Optional)
+## Adding HTTPS with a Domain
 
-You can use Caddy two ways:
+Caddy is already running. To add a domain:
 
-### Option A: IP-only with Caddy (no domain required)
-
-Caddy can serve HTTP on your external IP, acting as a reverse proxy without HTTPS. This is useful if you want Caddy's simplicity but don't have a domain yet.
-
-Create `Caddyfile`:
-
-```
-:80 {
-    reverse_proxy web:3000
-}
-```
-
-Then uncomment the `caddy` service in `docker-compose.yml`, remove `ports: "3000:3000"` from the `web` service, and run `docker compose up -d --build`.
-
-### Option B: Domain with automatic HTTPS (recommended for production)
-
-1. Buy a domain and point its A record to your GCE external IP.
-2. Create `Caddyfile`:
-
-```
-yourdomain.com {
-    reverse_proxy web:3000
-}
-```
-
-3. Uncomment the `caddy` service in `docker-compose.yml`.
-4. Remove `ports: "3000:3000"` from the `web` service (Caddy handles it on 80/443).
-5. Update `.env` on the VM:
-
-```
-NEXTAUTH_URL=https://yourdomain.com
-NEXT_PUBLIC_WS_URL=https://yourdomain.com/ws
-```
-
-6. Update Discord Developer Portal redirect URI to `https://yourdomain.com/api/auth/callback/discord`.
-7. Open firewall ports 80 and 443 on GCE:
-
-```bash
-gcloud compute firewall-rules create allow-http --allow tcp:80 --direction=INGRESS
-gcloud compute firewall-rules allow allow-https --allow tcp:443 --direction=INGRESS
-```
-
-8. `docker compose up -d --build` — Caddy provisions HTTPS automatically.
-
-### Current setup (IP-only, no Caddy)
-
-The simplest setup: web app listens on port 3000, accessible at `http://YOUR_IP:3000`. No domain, no HTTPS. This is the default — no Caddyfile needed, no changes to docker-compose.yml.
+1. Point your domain's A record to the GCE external IP.
+2. Edit `Caddyfile` in the repo — replace `:80` with `yourdomain.com`:
+   ```
+   yourdomain.com {
+       handle /socket.io/* {
+           reverse_proxy ws:3001
+       }
+       reverse_proxy web:3000
+   }
+   ```
+3. Update `.env` on the VM:
+   ```
+   NEXTAUTH_URL=https://yourdomain.com
+   NEXT_PUBLIC_WS_URL=https://yourdomain.com
+   ```
+4. Update Discord redirect URI to `https://yourdomain.com/api/auth/callback/discord`.
+5. Open port 443 on GCE firewall:
+   ```bash
+   gcloud compute firewall-rules create allow-https --allow tcp:443 --direction=INGRESS
+   ```
+6. Commit and push — the deploy workflow will push the new Caddyfile. On the VM run `docker compose up -d` to reload Caddy. It provisions HTTPS automatically via Let's Encrypt.
 
 ## After Each Deploy
 
