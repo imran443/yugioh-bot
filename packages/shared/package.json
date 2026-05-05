@@ -15,6 +15,11 @@
     "./types": {
       "types": "./dist/types/index.d.ts",
       "default": "./dist/types/index.js"
+    },
+    "./tournaments": {
+      "types": "./dist/tournaments/index.d.ts",
+      "source": "./src/tournaments/index.ts",
+      "default": "./dist/tournaments/index.js"
     }
   },
   "scripts": {

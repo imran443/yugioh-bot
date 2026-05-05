@@ -5,7 +5,7 @@ import {
   generateRoundRobin,
   generateSingleElimFirstRound,
   type TournamentPairing,
-} from "../tournaments/formats.js";
+} from "@yugidraft/shared/tournaments";
 
 export type TournamentFormat = "round_robin" | "single_elim";
 export type TournamentStatus = "pending" | "active" | "cancelled" | "completed";

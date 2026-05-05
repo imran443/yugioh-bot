@@ -7,3 +7,50 @@ services:
     command: sh -c "npm run commands:deploy:prod && npm start"
     volumes:
       - ./data:/app/data
+
+  ws:
+    # No env_file: ws reads WEB_URL and WS_PORT from environment only.
+    # If ws ever needs secrets, add env_file: [.env] here.
+    build:
+      context: .
+      target: ws
+    restart: unless-stopped
+    environment:
+      - WEB_URL=http://web:3000
+      - WS_PORT=3001
+    command: node packages/ws/dist/server.js
+    volumes:
+      - ./data:/app/data
+
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/bot.sqlite
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - ws
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # To enable HTTPS: add "443:443", replace :80 with your domain in Caddyfile,
+      # and ensure caddy_data volume persists (stores Let's Encrypt certs).
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - ws
+
+volumes:
+  caddy_data:
+  caddy_config:
