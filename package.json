@@ -2,29 +2,16 @@
   "name": "yugioh-discord-bot",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
+  "packageManager": "npm@11.3.0",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
-    "start": "node dist/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "commands:deploy": "tsx src/deploy-commands.ts",
-    "commands:deploy:prod": "node dist/deploy-commands.js"
-  },
-  "dependencies": {
-    "better-sqlite3": "latest",
-    "discord.js": "latest",
-    "dotenv": "latest",
-    "node-cron": "latest",
-    "sharp": "^0.34.5"
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "latest",
-    "@types/node": "latest",
-    "tsx": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "turbo": "latest"
   }
 }

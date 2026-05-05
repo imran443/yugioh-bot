@@ -1,0 +1,138 @@
+import { NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
+import { auth } from "@/lib/auth";
+
+export const runtime = "nodejs";
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const discordUserId = session.user.id;
+    const { id } = await params;
+    const tournamentId = Number(id);
+    const db = getDb();
+
+    const body = (await request.json()) as {
+      tournamentMatchId: number;
+      result: "win" | "loss";
+    };
+
+    if (!body.tournamentMatchId || !body.result) {
+      return NextResponse.json(
+        { error: "Missing tournamentMatchId or result" },
+        { status: 400 }
+      );
+    }
+
+    // Find the tournament match
+    const tournamentMatch = db
+      .prepare("select * from tournament_matches where id = ? and tournament_id = ?")
+      .get(body.tournamentMatchId, tournamentId) as
+      | {
+          id: number;
+          player_one_id: number;
+          player_two_id: number | null;
+          status: string;
+        }
+      | undefined;
+
+    if (!tournamentMatch) {
+      return NextResponse.json({ error: "Match not found" }, { status: 404 });
+    }
+
+    if (tournamentMatch.status !== "open") {
+      return NextResponse.json(
+        { error: "Match is not open for reporting" },
+        { status: 400 }
+      );
+    }
+
+    // Get the guild ID from the tournament
+    const tournament = db
+      .prepare("select guild_id from tournaments where id = ?")
+      .get(tournamentId) as { guild_id: string } | undefined;
+
+    if (!tournament) {
+      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    }
+
+    // Find the reporter's player record
+    const reporter = db
+      .prepare(
+        "select id from players where guild_id = ? and discord_user_id = ?"
+      )
+      .get(tournament.guild_id, discordUserId) as { id: number } | undefined;
+
+    if (!reporter) {
+      return NextResponse.json(
+        { error: "You are not a player in this tournament" },
+        { status: 403 }
+      );
+    }
+
+    // Determine opponent and winner
+    const reporterId = reporter.id;
+    let opponentId: number | null = null;
+
+    if (tournamentMatch.player_one_id === reporterId) {
+      opponentId = tournamentMatch.player_two_id;
+    } else if (tournamentMatch.player_two_id === reporterId) {
+      opponentId = tournamentMatch.player_one_id;
+    } else {
+      return NextResponse.json(
+        { error: "You are not in this match" },
+        { status: 403 }
+      );
+    }
+
+    if (!opponentId) {
+      return NextResponse.json(
+        { error: "Cannot report a bye match" },
+        { status: 400 }
+      );
+    }
+
+    const winnerId = body.result === "win" ? reporterId : opponentId;
+
+    // Insert the match report
+    const matchResult = db
+      .prepare(
+        `
+        insert into matches (
+          guild_id, player_one_id, player_two_id, winner_id,
+          reporter_id, status, source, tournament_id
+        ) values (?, ?, ?, ?, ?, 'pending_approval', 'tournament', ?)
+      `
+      )
+      .run(
+        tournament.guild_id,
+        reporterId,
+        opponentId,
+        winnerId,
+        reporterId,
+        tournamentId
+      );
+
+    const matchId = Number(matchResult.lastInsertRowid);
+
+    // Update tournament match
+    db.prepare(
+      "update tournament_matches set match_id = ?, status = 'pending_approval' where id = ?"
+    ).run(matchId, tournamentMatch.id);
+
+    return NextResponse.json({ success: true, matchId });
+  } catch (error) {
+    console.error("[api/tournaments/id/report] error:", error);
+    return NextResponse.json(
+      { error: "Failed to report match" },
+      { status: 500 }
+    );
+  }
+}

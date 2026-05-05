@@ -1,0 +1,30 @@
+{
+  "name": "@yugioh-discord-bot/ws",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/server.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dotenv": "latest",
+    "socket.io": "^4.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "socket.io-client": "^4.8.0",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}
