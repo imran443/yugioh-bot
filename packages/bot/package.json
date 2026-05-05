@@ -14,7 +14,7 @@
     "commands:deploy:prod": "node dist/deploy-commands.js"
   },
   "dependencies": {
-    "@yugidraft/shared": "file:../shared",
+    "@yugidraft/shared": "*",
     "better-sqlite3": "latest",
     "discord.js": "latest",
     "dotenv": "latest",
