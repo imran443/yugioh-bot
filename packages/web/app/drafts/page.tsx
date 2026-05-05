@@ -1,23 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trophy, Plus } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import Link from "next/link";
-import { TournamentCard, type TournamentCardProps } from "@/components/tournament/tournament-card";
+import { DraftCard, type DraftCardProps } from "@/components/draft/draft-card";
 
-export default function TournamentsPage() {
-  const [tournaments, setTournaments] = useState<TournamentCardProps[]>([]);
+interface DraftsData {
+  active: DraftCardProps[];
+  pending: DraftCardProps[];
+  completed: DraftCardProps[];
+  cancelled: DraftCardProps[];
+}
+
+export default function DraftsPage() {
+  const [data, setData] = useState<DraftsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/tournaments")
+    fetch("/api/drafts")
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to load tournaments");
+        if (!res.ok) throw new Error("Failed to load drafts");
         return res.json();
       })
-      .then((data: TournamentCardProps[]) => {
-        setTournaments(data);
+      .then((d: DraftsData) => {
+        setData(d);
         setLoading(false);
       })
       .catch((err) => {
@@ -50,56 +57,85 @@ export default function TournamentsPage() {
     );
   }
 
-  const active = tournaments.filter((t) => t.status === "active");
-  const pending = tournaments.filter((t) => t.status === "pending");
+  const totalDrafts =
+    (data?.active.length ?? 0) +
+    (data?.pending.length ?? 0) +
+    (data?.completed.length ?? 0) +
+    (data?.cancelled.length ?? 0);
 
   return (
     <main className="min-h-screen bg-bg-deep text-text-primary">
       <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
         <div className="mb-8 flex items-center justify-between">
           <h1 className="font-display text-2xl text-text-primary sm:text-3xl">
-            Tournaments
+            Drafts
           </h1>
           <Link
-            href="/tournaments/new"
+            href="/drafts/new"
             className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 text-sm font-semibold text-white hover:bg-accent-secondary"
           >
             <Plus className="h-4 w-4" />
-            New Tournament
+            New Draft
           </Link>
         </div>
 
-        {tournaments.length === 0 ? (
+        {totalDrafts === 0 ? (
           <div className="rounded-lg border border-border bg-surface p-8 text-center">
-            <Trophy className="mx-auto mb-4 h-12 w-12 text-text-muted" />
-            <p className="text-lg text-text-secondary">No active tournaments</p>
+            <Layers className="mx-auto mb-4 h-12 w-12 text-text-muted" />
+            <p className="text-lg text-text-secondary">No drafts yet</p>
             <p className="mt-2 text-sm text-text-muted">
-              Tournaments created in Discord will appear here
+              Drafts created in Discord will appear here
             </p>
           </div>
         ) : (
           <div className="space-y-8">
-            {active.length > 0 && (
+            {data && data.active.length > 0 && (
               <section>
-                <h2 className="mb-4 font-body text-lg font-semibold text-accent-gold">
+                <h2 className="mb-4 font-body text-lg font-semibold text-accent-success">
                   Active
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {active.map((t) => (
-                    <TournamentCard key={t.id} tournament={t} />
+                  {data.active.map((d) => (
+                    <DraftCard key={d.id} draft={d} />
                   ))}
                 </div>
               </section>
             )}
 
-            {pending.length > 0 && (
+            {data && data.pending.length > 0 && (
               <section>
-                <h2 className="mb-4 font-body text-lg font-semibold text-text-secondary">
+                <h2 className="mb-4 font-body text-lg font-semibold text-accent-gold">
                   Pending
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {pending.map((t) => (
-                    <TournamentCard key={t.id} tournament={t} />
+                  {data.pending.map((d) => (
+                    <DraftCard key={d.id} draft={d} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {data && data.completed.length > 0 && (
+              <section>
+                <h2 className="mb-4 font-body text-lg font-semibold text-text-secondary">
+                  Completed
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {data.completed.map((d) => (
+                    <DraftCard key={d.id} draft={d} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {data && data.cancelled.length > 0 && (
+              <section>
+                <h2 className="mb-4 font-body text-lg font-semibold text-text-muted">
+                  Cancelled
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {data.cancelled.map((d) => (
+                    <DraftCard key={d.id} draft={d} />
                   ))}
                 </div>
               </section>
