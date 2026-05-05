@@ -49,3 +49,36 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+@media (min-width: 768px) {
+  .app-shell-content {
+    margin-left: 14rem;
+    transition: margin-left 200ms ease-out;
+  }
+
+  [data-sidebar-collapsed="true"] .app-shell-content {
+    margin-left: 4rem;
+  }
+
+  [data-sidebar-collapsed="true"] .sidebar-label {
+    display: none;
+  }
+
+  .sidebar-logo-text {
+    display: inline;
+  }
+
+  [data-sidebar-collapsed="true"] .sidebar-logo-text {
+    display: none;
+  }
+
+  .sidebar-nav {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  [data-sidebar-collapsed="true"] .sidebar-nav {
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+}

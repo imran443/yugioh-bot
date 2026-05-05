@@ -1,9 +1,40 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      target: bot
     restart: unless-stopped
     env_file:
       - .env
-    command: sh -c "npm run commands:deploy:prod && npm start"
+    command: >
+      sh -c "node packages/bot/dist/deploy-commands.js && node packages/bot/dist/index.js"
     volumes:
       - ./data:/app/data
+
+  ws:
+    build:
+      context: .
+      target: ws
+    restart: unless-stopped
+    environment:
+      - WEB_URL=http://web:3000
+      - WS_PORT=3001
+    command: node packages/ws/dist/server.js
+    volumes:
+      - ./data:/app/data
+
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/bot.sqlite
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - ws

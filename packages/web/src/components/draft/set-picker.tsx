@@ -92,7 +92,7 @@ export function SetPicker({ selectedSets, onSetsChange }: SetPickerProps) {
             </div>
           )}
           {showResults && results.length > 0 && (
-            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-surface shadow-card">
+            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-[#141929] shadow-card">
               {results.map((set) => (
                 <button
                   key={set.setName}
