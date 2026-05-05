@@ -6,16 +6,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      - NODE_OPTIONS=--max-old-space-size=128
     command: sh -c "node packages/bot/dist/deploy-commands.js && node packages/bot/dist/index.js"
     volumes:
       - ./data:/app/data
-    mem_limit: 256m
 
   ws:
-    # No env_file: ws reads WEB_URL and WS_PORT from environment only.
-    # If ws ever needs secrets, add env_file: [.env] here.
     build:
       context: .
       target: ws
@@ -26,7 +21,6 @@ services:
     command: node packages/ws/dist/server.js
     volumes:
       - ./data:/app/data
-    mem_limit: 128m
     depends_on:
       - bot
 
@@ -39,10 +33,8 @@ services:
       - .env
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite
-      - NODE_OPTIONS=--max-old-space-size=192
     volumes:
       - ./data:/app/data
-    mem_limit: 384m
     depends_on:
       - ws
 
@@ -57,7 +49,6 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    mem_limit: 64m
     depends_on:
       - web
       - ws

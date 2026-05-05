@@ -12,37 +12,37 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy to Google Compute Engine
+    name: Deploy to Production VM
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GCE_HOST: ${{ secrets.GCE_HOST }}
-      GCE_USER: ${{ secrets.GCE_USER }}
-      GCE_SSH_PRIVATE_KEY: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
-      GCE_PORT: ${{ secrets.GCE_PORT || '22' }}
+      VM_HOST: ${{ secrets.VM_HOST }}
+      VM_USER: ${{ secrets.VM_USER }}
+      VM_SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+      VM_PORT: ${{ secrets.VM_PORT || '22' }}
 
     steps:
       - name: Skip deploy when VM secrets are not configured
-        if: ${{ env.GCE_HOST == '' || env.GCE_USER == '' || env.GCE_SSH_PRIVATE_KEY == '' }}
-        run: echo "GCE deploy secrets are not configured yet; skipping deploy."
+        if: ${{ env.VM_HOST == '' || env.VM_USER == '' || env.VM_SSH_PRIVATE_KEY == '' }}
+        run: echo "VM deploy secrets are not configured yet; skipping deploy."
 
       - name: Configure SSH key
-        if: ${{ env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != '' }}
+        if: ${{ env.VM_HOST != '' && env.VM_USER != '' && env.VM_SSH_PRIVATE_KEY != '' }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "$GCE_SSH_PRIVATE_KEY" > ~/.ssh/gce_deploy_key
-          chmod 600 ~/.ssh/gce_deploy_key
+          printf '%s\n' "$VM_SSH_PRIVATE_KEY" > ~/.ssh/vm_deploy_key
+          chmod 600 ~/.ssh/vm_deploy_key
 
       - name: Trust VM host key
-        if: ${{ env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != '' }}
+        if: ${{ env.VM_HOST != '' && env.VM_USER != '' && env.VM_SSH_PRIVATE_KEY != '' }}
         run: |
-          ssh-keyscan -p "$GCE_PORT" -H "$GCE_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "$VM_PORT" -H "$VM_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH
-        if: ${{ env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != '' }}
+        if: ${{ env.VM_HOST != '' && env.VM_USER != '' && env.VM_SSH_PRIVATE_KEY != '' }}
         run: |
-          ssh -i ~/.ssh/gce_deploy_key \
-            -p "$GCE_PORT" \
-            "$GCE_USER@$GCE_HOST" \
-            'cd /opt/yugioh-discord-bot && git fetch --all --prune && git reset --hard origin/main && docker compose build && docker compose down --remove-orphans && sleep 3 && docker compose up -d bot && sleep 10 && docker compose up -d ws && sleep 5 && docker compose up -d web && sleep 5 && docker compose up -d caddy && sleep 5 && docker compose ps && docker compose logs --tail=40'
+          ssh -i ~/.ssh/vm_deploy_key \
+            -p "$VM_PORT" \
+            "$VM_USER@$VM_HOST" \
+            'cd /opt/yugioh-discord-bot && git fetch --all --prune && git reset --hard origin/main && docker compose build && docker compose down --remove-orphans && docker compose up -d && docker compose ps && docker compose logs --tail=40'
