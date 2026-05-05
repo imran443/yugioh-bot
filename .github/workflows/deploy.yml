@@ -45,4 +45,4 @@ jobs:
           ssh -i ~/.ssh/gce_deploy_key \
             -p "$GCE_PORT" \
             "$GCE_USER@$GCE_HOST" \
-            'cd /opt/yugioh-discord-bot && git fetch --all --prune && git reset --hard origin/main && docker compose up -d --build && docker compose ps && docker compose logs --tail=80 bot'
+            'cd /opt/yugioh-discord-bot && git fetch --all --prune && git reset --hard origin/main && docker compose build && docker compose down --remove-orphans && sleep 3 && docker compose up -d bot && sleep 10 && docker compose up -d ws && sleep 5 && docker compose up -d web && sleep 5 && docker compose up -d caddy && sleep 5 && docker compose ps && docker compose logs --tail=40'
