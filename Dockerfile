@@ -1,7 +1,9 @@
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ libvips-dev && rm -rf /var/lib/apt/lists/*
-COPY package*.json ./
+# Use npm 11 to match lockfile version (Node 22 ships npm 10 which has workspace resolution issues)
+RUN npm install -g npm@11
+COPY package*.json turbo.json ./
 COPY packages/bot/package.json ./packages/bot/
 COPY packages/web/package.json ./packages/web/
 COPY packages/ws/package.json ./packages/ws/
@@ -11,6 +13,7 @@ RUN npm ci
 FROM deps AS build
 COPY . .
 RUN npm run build
+RUN npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS bot
 WORKDIR /app
