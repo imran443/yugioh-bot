@@ -32,9 +32,30 @@ services:
       - .env
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite
+    # expose to Caddy or directly; override in compose.override.yml for dev
     ports:
       - "3000:3000"
     volumes:
       - ./data:/app/data
     depends_on:
       - ws
+
+  # Reverse proxy with automatic HTTPS.
+  # Uncomment and configure Caddyfile to enable.
+  # See docs/deployment/gce-runbook.md for setup instructions.
+  # caddy:
+  #   image: caddy:2-alpine
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   depends_on:
+  #     - web
+
+# volumes:
+#   caddy_data:
+#   caddy_config:
