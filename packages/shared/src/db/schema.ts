@@ -215,6 +215,8 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "draft_cards", "draft_pack_id", "integer references draft_packs(id)");
   addColumnIfMissing(db, "draft_cards", "position", "integer");
   addColumnIfMissing(db, "draft_picks", "pick_method", "text not null default 'manual'");
+  addColumnIfMissing(db, "card_sets", "card_count", "integer");
+  addColumnIfMissing(db, "card_sets", "set_code", "text");
 
   db.exec(`
     create unique index if not exists tournaments_current_name_unique
@@ -249,5 +251,17 @@ export function migrate(db: Database.Database) {
 
     create index if not exists draft_cards_pack_idx
     on draft_cards (draft_pack_id, picked_by_player_id, position);
+  `);
+
+  db.exec(`
+    create table if not exists guild_settings (
+      guild_id text primary key not null,
+      announce_draft_created integer not null default 1,
+      announce_draft_started integer not null default 1,
+      announce_draft_completed integer not null default 1,
+      announce_tournament_created integer not null default 1,
+      announce_tournament_completed integer not null default 1,
+      announce_channel_id text
+    );
   `);
 }

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Trophy, Users, Swords, BarChart3, ChevronLeft } from "lucide-react";
+import { Trophy, Users, Swords, BarChart3, ChevronLeft, Play, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -29,6 +29,7 @@ interface TournamentDetail {
   name: string;
   format: string;
   status: string;
+  createdByUserId: string;
   participants: Participant[];
   matches: Match[];
 }
@@ -41,9 +42,23 @@ export default function TournamentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportingMatch, setReportingMatch] = useState<number | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((s) => {
+        if (s?.user?.id) setCurrentUserId(s.user.id);
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchTournament = useCallback(() => {
     if (!id) return;
+    setLoading(true);
     fetch(`/api/tournaments/${id}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load tournament");
@@ -58,6 +73,28 @@ export default function TournamentDetailPage() {
         setLoading(false);
       });
   }, [id]);
+
+  useEffect(() => {
+    fetchTournament();
+  }, [fetchTournament]);
+
+  const handleCancel = async () => {
+    setActionLoading("cancel");
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/tournaments/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to cancel");
+      }
+      setShowCancelConfirm(false);
+      fetchTournament();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to cancel");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -95,8 +132,11 @@ export default function TournamentDetailPage() {
       ? "success"
       : tournament.status === "pending"
         ? "warning"
-        : "default";
+        : tournament.status === "cancelled"
+          ? "danger"
+          : "default";
 
+  const isCreator = currentUserId === tournament.createdByUserId;
   const rounds = Array.from(
     new Set(tournament.matches.map((m) => m.roundNumber))
   ).sort((a, b) => a - b);
@@ -104,7 +144,12 @@ export default function TournamentDetailPage() {
   return (
     <main className="min-h-screen bg-bg-deep text-text-primary">
       <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
-        {/* Header */}
+        {actionError && (
+          <div className="mb-4 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
+            {actionError}
+          </div>
+        )}
+
         <div className="mb-6">
           <Link
             href="/tournaments"
@@ -126,70 +171,157 @@ export default function TournamentDetailPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Link href={`/tournament/${id}/standings`}>
-                <Button variant="secondary" size="sm">
-                  <BarChart3 className="mr-1.5 h-4 w-4" />
-                  Standings
-                </Button>
-              </Link>
+              {tournament.status === "active" && (
+                <Link href={`/tournament/${id}/standings`}>
+                  <Button variant="secondary" size="sm">
+                    <BarChart3 className="mr-1.5 h-4 w-4" />
+                    Standings
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Participants */}
+        {isCreator && (tournament.status === "pending" || tournament.status === "active") && (
+          <div className="mb-6 rounded-xl border border-border bg-surface p-5">
+            {showCancelConfirm ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-text-secondary">
+                  Are you sure you want to cancel this tournament?
+                </p>
+                <div className="flex gap-3">
+                  <Button variant="danger" size="sm" loading={actionLoading === "cancel"} onClick={handleCancel}>
+                    Yes, Cancel
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowCancelConfirm(false)}>
+                    Go Back
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-semibold text-text-primary">
+                    {tournament.status === "pending" ? "Ready to begin?" : "Tournament in progress"}
+                  </p>
+                  <p className="text-sm text-text-secondary">
+                    {tournament.status === "pending"
+                      ? "Start the tournament once all players have joined."
+                      : "You can cancel this tournament if needed."}
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  {tournament.status === "pending" && (
+                    <Button
+                      variant="primary"
+                      loading={actionLoading === "start"}
+                      onClick={async () => {
+                        setActionLoading("start");
+                        setActionError(null);
+                        try {
+                          const res = await fetch(`/api/tournaments/${id}`, { method: "POST" });
+                          if (!res.ok) {
+                            const body = await res.json();
+                            throw new Error(body.error ?? "Failed to start");
+                          }
+                          fetchTournament();
+                        } catch (err) {
+                          setActionError(err instanceof Error ? err.message : "Failed to start");
+                        } finally {
+                          setActionLoading(null);
+                        }
+                      }}
+                    >
+                      <Play className="h-4 w-4" />
+                      Start Tournament
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowCancelConfirm(true)}
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isCreator && tournament.status === "pending" && (
+          <div className="mb-6 rounded-xl border border-border bg-surface p-5 text-center">
+            <p className="text-text-secondary">
+              Waiting for the creator to start this tournament
+            </p>
+          </div>
+        )}
+
+        {tournament.status !== "pending" && tournament.status !== "active" && (
+          <Link href={`/tournament/${id}/standings`}>
+            <Button variant="secondary" size="sm">
+              <BarChart3 className="mr-1.5 h-4 w-4" />
+              Standings
+            </Button>
+          </Link>
+        )}
+
         <section className="mb-8 rounded-xl border border-border bg-surface p-5">
           <h2 className="mb-4 flex items-center gap-2 font-body text-lg font-semibold text-text-primary">
             <Users className="h-5 w-5 text-accent-primary" />
             Participants ({tournament.participants.length})
           </h2>
-          <div className="flex flex-wrap gap-2">
-            {tournament.participants.map((p) => (
-              <span
-                key={p.playerId}
-                className="rounded-full bg-bg-elevated px-3 py-1 text-sm text-text-secondary"
-              >
-                {p.displayName}
-              </span>
-            ))}
-          </div>
-        </section>
-
-        {/* Matches / Bracket */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 font-body text-lg font-semibold text-text-primary">
-            <Swords className="h-5 w-5 text-accent-primary" />
-            Matches
-          </h2>
-
-          {rounds.map((round) => (
-            <div key={round} className="mb-6">
-              <h3 className="mb-3 text-sm font-semibold text-text-muted">
-                Round {round}
-              </h3>
-              <div className="space-y-3">
-                {tournament.matches
-                  .filter((m) => m.roundNumber === round)
-                  .map((match) => (
-                    <MatchCard
-                      key={match.id}
-                      match={match}
-                      tournamentId={id}
-                      isReporting={reportingMatch === match.id}
-                      onReport={() => setReportingMatch(match.id)}
-                      onCancelReport={() => setReportingMatch(null)}
-                      onReported={() => {
-                        setReportingMatch(null);
-                        // Refresh tournament data
-                        fetch(`/api/tournaments/${id}`)
-                          .then((r) => r.json())
-                          .then(setTournament);
-                      }}
-                    />
-                  ))}
-              </div>
+          {tournament.participants.length === 0 ? (
+            <p className="text-sm text-text-secondary">No participants yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {tournament.participants.map((p) => (
+                <span
+                  key={p.playerId}
+                  className="rounded-full bg-bg-elevated px-3 py-1 text-sm text-text-secondary"
+                >
+                  {p.displayName}
+                </span>
+              ))}
             </div>
-          ))}
+          )}
         </section>
+
+        {tournament.matches.length > 0 && (
+          <section>
+            <h2 className="mb-4 flex items-center gap-2 font-body text-lg font-semibold text-text-primary">
+              <Swords className="h-5 w-5 text-accent-primary" />
+              Matches
+            </h2>
+
+            {rounds.map((round) => (
+              <div key={round} className="mb-6">
+                <h3 className="mb-3 text-sm font-semibold text-text-muted">
+                  Round {round}
+                </h3>
+                <div className="space-y-3">
+                  {tournament.matches
+                    .filter((m) => m.roundNumber === round)
+                    .map((match) => (
+                      <MatchCard
+                        key={match.id}
+                        match={match}
+                        tournamentId={id}
+                        isReporting={reportingMatch === match.id}
+                        onReport={() => setReportingMatch(match.id)}
+                        onCancelReport={() => setReportingMatch(null)}
+                        onReported={() => {
+                          setReportingMatch(null);
+                          fetchTournament();
+                        }}
+                      />
+                    ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
       </div>
     </main>
   );
@@ -274,7 +406,7 @@ function MatchCard({
       {isReporting && (
         <div className="mt-4 border-t border-border pt-4">
           <p className="mb-3 text-sm text-text-secondary">
-            Report your result against {match.playerOneName === "You" ? match.playerTwoName : match.playerOneName}:
+            Report your result:
           </p>
           <div className="flex gap-3">
             <Button

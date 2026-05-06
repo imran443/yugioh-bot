@@ -140,8 +140,8 @@ export async function handleAutocomplete(
 
       await interaction.respond(
         sets.map((set) => ({
-          name: set.slice(0, maxAutocompleteChoiceLength),
-          value: set,
+          name: `${set.setName} (${set.setCode})`.slice(0, maxAutocompleteChoiceLength),
+          value: set.setName,
         })),
       );
       return;
@@ -152,8 +152,8 @@ export async function handleAutocomplete(
 
       await interaction.respond(
         sets.map((set) => ({
-          name: set.slice(0, maxAutocompleteChoiceLength),
-          value: set,
+          name: `${set.setName} (${set.setCode})`.slice(0, maxAutocompleteChoiceLength),
+          value: set.setName,
         })),
       );
       return;

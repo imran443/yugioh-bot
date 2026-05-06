@@ -1,7 +1,14 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { Trophy, Layers, Swords } from "lucide-react";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await auth();
+  if (session?.user) {
+    redirect("/dashboard");
+  }
+
   return (
     <main className="min-h-screen bg-bg-deep text-text-primary">
       <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">

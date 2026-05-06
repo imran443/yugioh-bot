@@ -23,6 +23,7 @@ import {
   createCardCatalogService,
   createDraftImageService,
   createDraftService,
+  createGuildSettingsService,
 } from "@yugidraft/shared/services";
 import type { Draft } from "@yugidraft/shared/types";
 import { openDatabase } from "./db/connection.js";
@@ -129,6 +130,7 @@ const deps = {
   cards: createCardCatalogService(db),
   templates: createDraftTemplateService(db),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
+  guildSettings: createGuildSettingsService(db),
   cleanup,
   messenger: {
     async postStatus(draft: Draft) {

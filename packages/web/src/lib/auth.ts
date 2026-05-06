@@ -37,12 +37,15 @@ export const {
     signIn: "/login",
   },
   callbacks: {
-    async jwt({ token }) {
+    async jwt({ token, account, profile }) {
+      if (account && profile?.id) {
+        token.discordId = profile.id as string;
+      }
       return token;
     },
     async session({ session, token }) {
-      if (token.sub && session.user) {
-        session.user.id = token.sub;
+      if (session.user) {
+        session.user.id = (token.discordId as string) ?? token.sub ?? "";
       }
       return session;
     },

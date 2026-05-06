@@ -9,7 +9,11 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "seed": "tsx scripts/seed.ts",
+    "dev:bot": "npm run dev --workspace=@yugioh-discord-bot/bot",
+    "dev:ws": "npm run dev --workspace=@yugioh-discord-bot/ws",
+    "dev:web": "npm run dev --workspace=@yugioh-discord-bot/web"
   },
   "devDependencies": {
     "turbo": "latest"

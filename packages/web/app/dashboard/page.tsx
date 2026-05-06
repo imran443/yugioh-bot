@@ -7,31 +7,12 @@ import {
   Layers,
   Swords,
   TrendingUp,
-  Users,
   ArrowRight,
   Target,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-interface Tournament {
-  id: number;
-  name: string;
-  format: string;
-  status: string;
-  participantCount: number;
-  webSlug?: string;
-}
-
-interface Draft {
-  id: number;
-  name: string;
-  status: string;
-  currentPackRound: number;
-  currentPickStep: number;
-  playerCount: number;
-  webSlug?: string;
-}
+import { TournamentCard, type TournamentCardProps } from "@/components/tournament/tournament-card";
+import { DraftCard, type DraftCardProps } from "@/components/draft/draft-card";
 
 interface Stats {
   wins: number;
@@ -39,8 +20,8 @@ interface Stats {
 }
 
 interface DashboardData {
-  tournaments: Tournament[];
-  drafts: Draft[];
+  tournaments: TournamentCardProps[];
+  drafts: DraftCardProps[];
   stats: Stats;
 }
 
@@ -67,25 +48,17 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
-        <div className="mx-auto max-w-4xl p-6">
-          <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
-          </div>
-        </div>
-      </main>
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
-        <div className="mx-auto max-w-4xl p-6">
-          <div className="rounded-lg border border-accent-cta/20 bg-accent-cta/10 p-6 text-accent-cta">
-            {error}
-          </div>
-        </div>
-      </main>
+      <div className="rounded-lg border border-accent-cta/20 bg-accent-cta/10 p-6 text-accent-cta">
+        {error}
+      </div>
     );
   }
 
@@ -94,8 +67,7 @@ export default function DashboardPage() {
     totalGames > 0 ? Math.round((data!.stats.wins / totalGames) * 100) : 0;
 
   return (
-    <main className="min-h-screen bg-bg-deep text-text-primary">
-      <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-4xl">
         <h1 className="mb-8 font-display text-2xl text-text-primary sm:text-3xl">
           Dashboard
         </h1>
@@ -161,6 +133,12 @@ export default function DashboardPage() {
               <Layers className="h-5 w-5 text-accent-primary" />
               Your Drafts
             </h2>
+            <Link href="/drafts">
+              <Button variant="ghost" size="sm">
+                View All
+                <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </Link>
           </div>
 
           {data?.drafts.length === 0 ? (
@@ -177,9 +155,8 @@ export default function DashboardPage() {
             </div>
           )}
         </section>
-      </div>
-    </main>
-  );
+  </div>
+    );
 }
 
 function StatCard({
@@ -200,89 +177,6 @@ function StatCard({
         </span>
       </div>
       <div className="font-display text-2xl text-text-primary">{value}</div>
-    </div>
-  );
-}
-
-function TournamentCard({ tournament }: { tournament: Tournament }) {
-  const statusVariant =
-    tournament.status === "active"
-      ? "success"
-      : tournament.status === "pending"
-        ? "warning"
-        : "default";
-
-  const formatLabel =
-    tournament.format === "round_robin"
-      ? "Round Robin"
-      : tournament.format === "single_elim"
-        ? "Single Elimination"
-        : tournament.format;
-
-  return (
-    <Link
-      href={`/tournament/${tournament.id}`}
-      className="group block rounded-xl border border-border bg-surface p-5 motion-safe:transition-colors hover:border-accent-primary/30 hover:bg-bg-elevated"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-body text-lg font-semibold text-text-primary">
-            {tournament.name}
-          </h3>
-          <div className="mt-2 flex items-center gap-3">
-            <Badge variant={statusVariant}>{tournament.status}</Badge>
-            <span className="text-sm text-text-muted">{formatLabel}</span>
-          </div>
-        </div>
-        <ArrowRight className="h-5 w-5 shrink-0 text-text-muted motion-safe:transition-transform group-hover:translate-x-1" />
-      </div>
-      <div className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
-        <Users className="h-4 w-4" />
-        <span>{tournament.participantCount} participants</span>
-      </div>
-    </Link>
-  );
-}
-
-function DraftCard({ draft }: { draft: Draft }) {
-  const statusVariant =
-    draft.status === "active"
-      ? "success"
-      : draft.status === "pending"
-        ? "warning"
-        : "default";
-
-  return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-body text-lg font-semibold text-text-primary">
-            {draft.name}
-          </h3>
-          <div className="mt-2 flex items-center gap-3">
-            <Badge variant={statusVariant}>{draft.status}</Badge>
-            {draft.status === "active" && (
-              <span className="text-sm text-text-muted">
-                Pack {draft.currentPackRound}, Pick {draft.currentPickStep}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
-        <Users className="h-4 w-4" />
-        <span>{draft.playerCount} players</span>
-      </div>
-      {draft.webSlug && draft.status === "active" && (
-        <div className="mt-3">
-          <Link
-            href={`/draft/${draft.webSlug}`}
-            className="text-sm font-semibold text-accent-primary hover:text-accent-secondary"
-          >
-            Open Draft Room →
-          </Link>
-        </div>
-      )}
     </div>
   );
 }

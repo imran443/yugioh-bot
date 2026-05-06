@@ -6,14 +6,17 @@
   "exports": {
     "./db": {
       "types": "./dist/db/index.d.ts",
+      "source": "./src/db/index.ts",
       "default": "./dist/db/index.js"
     },
     "./services": {
       "types": "./dist/services/index.d.ts",
+      "source": "./src/services/index.ts",
       "default": "./dist/services/index.js"
     },
     "./types": {
       "types": "./dist/types/index.d.ts",
+      "source": "./src/types/index.ts",
       "default": "./dist/types/index.js"
     },
     "./tournaments": {

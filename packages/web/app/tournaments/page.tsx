@@ -1,22 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Trophy, Plus } from "lucide-react";
 import Link from "next/link";
-import { Trophy, Users, ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-
-interface Tournament {
-  id: number;
-  name: string;
-  format: string;
-  status: string;
-  participantCount: number;
-  webSlug?: string;
-}
+import { TournamentCard, type TournamentCardProps } from "@/components/tournament/tournament-card";
 
 export default function TournamentsPage() {
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [tournaments, setTournaments] = useState<TournamentCardProps[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +16,7 @@ export default function TournamentsPage() {
         if (!res.ok) throw new Error("Failed to load tournaments");
         return res.json();
       })
-      .then((data: Tournament[]) => {
+      .then((data: TournamentCardProps[]) => {
         setTournaments(data);
         setLoading(false);
       })
@@ -70,6 +60,13 @@ export default function TournamentsPage() {
           <h1 className="font-display text-2xl text-text-primary sm:text-3xl">
             Tournaments
           </h1>
+          <Link
+            href="/tournaments/new"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 text-sm font-semibold text-white hover:bg-accent-secondary"
+          >
+            <Plus className="h-4 w-4" />
+            New Tournament
+          </Link>
         </div>
 
         {tournaments.length === 0 ? (
@@ -111,48 +108,5 @@ export default function TournamentsPage() {
         )}
       </div>
     </main>
-  );
-}
-
-function TournamentCard({ tournament }: { tournament: Tournament }) {
-  const statusVariant =
-    tournament.status === "active"
-      ? "success"
-      : tournament.status === "pending"
-        ? "warning"
-        : "default";
-
-  const formatLabel =
-    tournament.format === "round_robin"
-      ? "Round Robin"
-      : tournament.format === "single_elim"
-        ? "Single Elimination"
-        : tournament.format;
-
-  return (
-    <Link
-      href={`/tournament/${tournament.id}`}
-      className="group block rounded-xl border border-border bg-surface p-5 motion-safe:transition-colors hover:border-accent-primary/30 hover:bg-bg-elevated"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-body text-lg font-semibold text-text-primary">
-            {tournament.name}
-          </h3>
-          <div className="mt-2 flex items-center gap-3">
-            <Badge variant={statusVariant}>
-              {tournament.status}
-            </Badge>
-            <span className="text-sm text-text-muted">{formatLabel}</span>
-          </div>
-        </div>
-        <ArrowRight className="h-5 w-5 shrink-0 text-text-muted motion-safe:transition-transform group-hover:translate-x-1" />
-      </div>
-
-      <div className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
-        <Users className="h-4 w-4" />
-        <span>{tournament.participantCount} participants</span>
-      </div>
-    </Link>
   );
 }
