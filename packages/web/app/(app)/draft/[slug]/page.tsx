@@ -124,25 +124,25 @@ export default function DraftDetailPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <div className="mx-auto max-w-4xl p-6">
           <div className="flex items-center justify-center py-20">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (error || !draft) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <div className="mx-auto max-w-4xl p-6">
           <div className="rounded-lg border border-accent-cta/20 bg-accent-cta/10 p-6 text-accent-cta">
             {error ?? "Draft not found"}
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -153,7 +153,7 @@ export default function DraftDetailPage() {
 
   if (draft.status === "pending") {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <DraftManageView
           draft={draft}
           isCreator={isCreator}
@@ -161,13 +161,13 @@ export default function DraftDetailPage() {
           onCancel={handleCancel}
           onUpdate={handleUpdate}
         />
-      </main>
+      </div>
     );
   }
 
   if (draft.status === "active") {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <div className="sticky top-0 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3 sm:hidden">
           <TimerBar />
         </div>
@@ -209,17 +209,17 @@ export default function DraftDetailPage() {
 
           <div className="h-20 sm:hidden" />
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-bg-deep text-text-primary">
+    <div>
       <DraftSummaryView
         draft={draft}
         isParticipant={isParticipant}
         onExportYdk={handleExportYdk}
       />
-    </main>
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Russo_One, Chakra_Petch } from "next/font/google";
-import { AppShell } from "@/components/layout/app-shell";
 import "./globals.css";
 
 const russoOne = Russo_One({
@@ -30,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${russoOne.variable} ${chakraPetch.variable} dark`}>
       <body className="min-h-screen bg-bg-deep text-text-primary antialiased">
-        <AppShell>{children}</AppShell>
+        {children}
       </body>
     </html>
   );

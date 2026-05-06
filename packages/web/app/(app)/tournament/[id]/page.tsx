@@ -98,25 +98,25 @@ export default function TournamentDetailPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <div className="mx-auto max-w-4xl p-6">
           <div className="flex items-center justify-center py-20">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (error || !tournament) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <div className="mx-auto max-w-4xl p-6">
           <div className="rounded-lg border border-accent-cta/20 bg-accent-cta/10 p-6 text-accent-cta">
             {error ?? "Tournament not found"}
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -142,7 +142,7 @@ export default function TournamentDetailPage() {
   ).sort((a, b) => a - b);
 
   return (
-    <main className="min-h-screen bg-bg-deep text-text-primary">
+    <div>
       <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
         {actionError && (
           <div className="mb-4 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
@@ -323,7 +323,7 @@ export default function TournamentDetailPage() {
           </section>
         )}
       </div>
-    </main>
+    </div>
   );
 }
 

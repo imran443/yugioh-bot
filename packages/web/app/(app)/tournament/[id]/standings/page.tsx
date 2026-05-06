@@ -40,30 +40,30 @@ export default function TournamentStandingsPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <div className="mx-auto max-w-3xl p-6">
           <div className="flex items-center justify-center py-20">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className="min-h-screen bg-bg-deep text-text-primary">
+      <div>
         <div className="mx-auto max-w-3xl p-6">
           <div className="rounded-lg border border-accent-cta/20 bg-accent-cta/10 p-6 text-accent-cta">
             {error}
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-bg-deep text-text-primary">
+    <div>
       <div className="mx-auto max-w-3xl p-4 sm:p-6 lg:p-8">
         <Link
           href={`/tournament/${id}`}
@@ -153,6 +153,6 @@ export default function TournamentStandingsPage() {
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
