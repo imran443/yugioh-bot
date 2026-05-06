@@ -1,6 +1,6 @@
-# Yugioh Discord Bot
+# YuGiOh Draft Bot
 
-A Discord bot for tracking Yugioh matches and tournaments, with a web dashboard for creating drafts, managing tournaments, and viewing stats.
+A Discord bot + web dashboard for tracking YuGiOh matches, running drafts, managing tournaments, and viewing stats.
 
 ## Features
 
@@ -16,12 +16,14 @@ A Discord bot for tracking Yugioh matches and tournaments, with a web dashboard 
 - Daily reminders ping a configured channel for unplayed tournament matches
 
 ### Web Dashboard
+- Discord OAuth login (NextAuth.js v5)
 - View active, pending, completed, and cancelled drafts
 - Create new drafts with set picker and config options
 - Create new tournaments with format selection
 - Draft detail pages: manage pending drafts (start, cancel, edit), participate in active drafts, view completed draft summaries and export YDK
 - Tournament detail pages: view participants, matches, standings; start/cancel tournaments (creator only); report match results
 - Guild announcement settings toggles
+- Real-time draft updates via Socket.IO
 
 ## Local Setup
 
@@ -45,8 +47,8 @@ SQLite data is stored in `./data/bot.sqlite` by default.
 | `DISCORD_REMINDER_CHANNEL_ID` | No | Channel for daily tournament reminders |
 | `DISCORD_DEFAULT_CHANNEL_ID` | No | Default channel for web-created drafts/tournaments |
 | `NEXTAUTH_SECRET` | Yes (web) | Generate with `openssl rand -base64 32` |
-| `NEXTAUTH_URL` | Yes (web) | `http://localhost:3000` for local, `http://<IP>:3000` for GCE, `https://yourdomain.com` for production |
-| `NEXT_PUBLIC_WS_URL` | Yes (web) | WebSocket URL: `http://localhost:3001` local, `http://<IP>:3001` or `wss://yourdomain.com/ws` for production |
+| `NEXTAUTH_URL` | Yes (web) | `http://localhost:3000` for local, `http://<VM_IP>` or `https://yourdomain.com` for production |
+| `NEXT_PUBLIC_WS_URL` | Yes (web) | WebSocket URL: `http://localhost:3001` local, `http://<VM_IP>` or `wss://yourdomain.com` for production |
 | `DATABASE_PATH` | No | SQLite file path. Defaults to `./data/bot.sqlite` |
 | `REMINDER_CRON` | No | Cron schedule for daily reminders. Defaults to `0 10 * * *` |
 | `REMINDER_TIMEZONE` | No | Timezone for reminders. Defaults to `America/New_York` |
@@ -69,47 +71,40 @@ docker compose up -d --build
 
 Without the override file, Docker Compose uses the production targets from `docker-compose.yml` which build optimized images for each service.
 
-The Dockerfile uses `corepack` to match the `packageManager` field in `package.json`, ensuring consistent npm versions across local dev and Docker builds. No manual npm version patching needed.
-
-Adding a new workspace package? Add its `package.json` copy line in the Dockerfile `deps` stage — there's a comment marking where.
+The stack runs 4 services:
+- **bot** — Discord bot (deploys commands on startup)
+- **ws** — Socket.IO WebSocket server for real-time draft updates
+- **web** — Next.js 16 dashboard
+- **caddy** — Reverse proxy (HTTP on port 80, auto-HTTPS with a domain)
 
 ## Deployment
 
-### Google Compute Engine (Free Tier)
+### VM Deployment (Hetzner / Any VPS)
 
-The bot runs on a single GCE `e2-micro` VM. GitHub Actions deploys on every push to `main`.
+The app runs on a VM via Docker Compose with Caddy as a reverse proxy. GitHub Actions deploys on every push to `main`.
 
 **Quick setup:**
-1. Create a GCE VM (Debian 12, `e2-micro`, static external IP)
+1. Create a VM (e.g., Hetzner CAX11, 4GB RAM, Ubuntu 24.04)
 2. Install Docker and Git on the VM
-3. Create a `deploy` user with Docker group access
-4. Clone the repo to `/opt/yugioh-discord-bot`
-5. Create `.env` on the VM (see Environment Variables above)
-6. Set Discord redirect URI: `http://<YOUR_IP>:3000/api/auth/callback/discord`
-7. Run `docker compose up -d --build`
-8. Add GitHub Actions secrets (`GCE_HOST`, `GCE_USER`, `GCE_SSH_PRIVATE_KEY`, `GCE_PORT`)
+3. Clone the repo to `/opt/yugioh-bot`
+4. Create `.env` on the VM (see Environment Variables above)
+5. Set Discord OAuth redirect URI: `http://<YOUR_IP>/api/auth/callback/discord`
+6. Run `docker compose up -d --build`
+7. Add GitHub Actions secrets (`VM_HOST`, `VM_USER`, `VM_SSH_PRIVATE_KEY`, `VM_PORT`)
 
-See `docs/deployment/gce-runbook.md` for the full step-by-step guide and `docs/deployment/google-compute-engine.md` for initial VM provisioning.
+See `docs/deployment/vm-runbook.md` for the full step-by-step guide.
 
 ### Adding a Custom Domain (Optional)
 
-For HTTPS with a custom domain, add Caddy as a reverse proxy:
+For HTTPS with a custom domain:
 
-1. Point your domain's A record to the GCE external IP
-2. Create a `Caddyfile` in the project root:
-   ```
-   yourdomain.com {
-       reverse_proxy web:3000
-   }
-   ```
-3. Uncomment the `caddy` service in `docker-compose.yml`
-4. Remove `ports: "3000:3000"` from the `web` service
-5. Update `.env`: `NEXTAUTH_URL=https://yourdomain.com` and `NEXT_PUBLIC_WS_URL=wss://yourdomain.com/ws`
-6. Update Discord redirect URI to `https://yourdomain.com/api/auth/callback/discord`
-7. Open GCE firewall ports 80 and 443
-8. `docker compose up -d --build` — Caddy auto-provisions HTTPS via Let's Encrypt
-
-You can also use Caddy without a domain (HTTP-only on port 80) if you just want a reverse proxy. See `docs/deployment/gce-runbook.md` for details.
+1. Point your domain's A record to the VM IP
+2. Edit `Caddyfile` — replace `:80` with `yourdomain.com`
+3. Add `"443:443"` to the caddy ports in `docker-compose.yml`
+4. Update `.env`: `NEXTAUTH_URL=https://yourdomain.com` and `NEXT_PUBLIC_WS_URL=https://yourdomain.com`
+5. Update Discord redirect URI to `https://yourdomain.com/api/auth/callback/discord`
+6. Open firewall port 443
+7. `docker compose up -d` — Caddy auto-provisions HTTPS via Let's Encrypt
 
 ## Quality Checks
 
