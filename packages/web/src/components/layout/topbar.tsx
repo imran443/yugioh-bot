@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
+import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Menu, LogOut, PanelLeftClose, PanelLeft } from "lucide-react";
@@ -16,7 +17,6 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
   const [session, setSession] = useState<{
     user?: { name?: string | null; image?: string | null };
   } | null>(null);
-  const [csrfToken, setCsrfToken] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -25,30 +25,22 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
       .then((r) => r.json())
       .then(setSession)
       .catch(() => {});
-    fetch("/api/auth/csrf")
-      .then((r) => r.json())
-      .then((d) => setCsrfToken(d.csrfToken))
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    const handleClickOutside = (e: MouseEvent) => {
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(e.target as Node)
       ) {
         setDropdownOpen(false);
       }
-    }
+    };
     if (dropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
-
-  const handleSignout = useCallback(() => {
-    setDropdownOpen(false);
-  }, []);
 
   const pageTitle = pathname.startsWith("/tournament")
     ? "Tournament"
@@ -122,16 +114,17 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
                   {session.user.name}
                 </div>
                 <div className="border-t border-border" />
-                <form action="/api/auth/signout" method="POST" onSubmit={handleSignout}>
-                  <input type="hidden" name="csrfToken" value={csrfToken} />
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary motion-safe:transition-colors"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
-                </form>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    signOut({ callbackUrl: "/login" });
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary motion-safe:transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
               </div>
             )}
           </div>

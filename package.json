@@ -16,6 +16,7 @@
     "dev:web": "npm run dev --workspace=@yugioh-discord-bot/web"
   },
   "devDependencies": {
+    "dotenv": "^17.4.2",
     "turbo": "latest"
   }
 }

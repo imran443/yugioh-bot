@@ -1,10 +1,14 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { config } from "dotenv";
+
+// Load .env from repo root so DISCORD_USER_ID / DISCORD_GUILD_ID are available
+config({ path: join(process.cwd(), ".env") });
 
 const dbPath = process.env.DATABASE_PATH ?? join(process.cwd(), "data", "bot.sqlite");
 const userDiscordId = process.env.DISCORD_USER_ID ?? "123456789012345678";
-const guildId = "987654321098765432";
+const guildId = process.env.DISCORD_GUILD_ID ?? "987654321098765432";
 
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new Database(dbPath);
@@ -177,6 +181,20 @@ db.exec(`
 
   create index if not exists draft_cards_pack_idx
     on draft_cards (draft_pack_id, picked_by_player_id, position);
+`);
+
+// ---------- CLEAN UP PREVIOUS SEED DATA FOR THIS GUILD ----------
+db.exec(`
+  delete from draft_picks where draft_id in (select id from drafts where guild_id = '${guildId}');
+  delete from draft_cards where draft_id in (select id from drafts where guild_id = '${guildId}');
+  delete from draft_packs where draft_id in (select id from drafts where guild_id = '${guildId}');
+  delete from draft_players where draft_id in (select id from drafts where guild_id = '${guildId}');
+  delete from drafts where guild_id = '${guildId}' and name in ('Legendary Draft', 'Retro Draft');
+  delete from tournament_matches where tournament_id in (select id from tournaments where guild_id = '${guildId}' and name in ('Friday Night Fights', 'Weekend Championship'));
+  delete from matches where guild_id = '${guildId}' and tournament_id in (select id from tournaments where guild_id = '${guildId}' and name in ('Friday Night Fights', 'Weekend Championship'));
+  delete from tournament_participants where tournament_id in (select id from tournaments where guild_id = '${guildId}' and name in ('Friday Night Fights', 'Weekend Championship'));
+  delete from tournaments where guild_id = '${guildId}' and name in ('Friday Night Fights', 'Weekend Championship');
+  delete from players where guild_id = '${guildId}' and discord_user_id like 'fake_%';
 `);
 
 // ---------- PLAYERS ----------
