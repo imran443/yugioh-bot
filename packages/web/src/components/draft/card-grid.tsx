@@ -95,14 +95,32 @@ export function CardGrid({ className }: CardGridProps) {
 
   const selectedCard = currentPack.find((c) => c.id === selectedCardId) || null;
 
+  if (currentPack.length === 0) {
+    return (
+      <div className={cn("relative flex min-h-[24rem] flex-col items-center justify-center", className)}>
+        <div className="text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent-primary">
+            Draft feed syncing
+          </p>
+          <h2 className="mt-2 font-display text-xl text-text-primary sm:text-2xl">
+            Waiting for pack...
+          </h2>
+          <p className="mt-2 text-sm text-text-secondary">
+            The current pack will appear here once the draft state arrives.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("relative", className)}>
       <div
         className={cn(
-          "grid gap-3",
-          "grid-cols-2",
-          "sm:grid-cols-3",
-          "lg:grid-cols-4"
+          "grid gap-4",
+          "grid-cols-[repeat(2,minmax(180px,1fr))]",
+          "sm:grid-cols-[repeat(3,minmax(180px,1fr))]",
+          "xl:grid-cols-[repeat(4,minmax(180px,1fr))]"
         )}
         role="listbox"
         aria-label="Current pack cards"
@@ -118,7 +136,7 @@ export function CardGrid({ className }: CardGridProps) {
               aria-selected={isHighlighted}
               tabIndex={0}
               className={cn(
-                "group relative flex flex-col items-center rounded-lg border bg-surface p-2 motion-safe:transition-all",
+                "group relative flex flex-col items-center rounded-xl border bg-surface p-2.5 motion-safe:transition-all",
                 "hover:shadow-card hover:border-accent-primary/50",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary",
                 isHighlighted
@@ -145,7 +163,7 @@ export function CardGrid({ className }: CardGridProps) {
               </span>
 
               {/* Card image or placeholder */}
-              <div className="relative mb-2 aspect-[3/4] w-full overflow-hidden rounded-md bg-bg-elevated">
+              <div className="relative mb-3 aspect-[3/4] w-full overflow-hidden rounded-lg bg-bg-elevated">
                 {hasImageError ? (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-text-secondary">
                     <span className="text-xs">No image</span>
@@ -163,7 +181,7 @@ export function CardGrid({ className }: CardGridProps) {
               </div>
 
               {/* Card name */}
-              <span className="w-full truncate text-center text-sm font-semibold text-text-primary">
+              <span className="w-full truncate text-left text-sm font-semibold text-text-primary sm:text-[0.95rem]">
                 {card.name}
               </span>
             </button>

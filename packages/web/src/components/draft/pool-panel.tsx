@@ -41,19 +41,26 @@ export function PoolPanel({ className }: PoolPanelProps) {
 
   const panelContent = (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between rounded-xl border border-border bg-bg-elevated/40 px-3 py-2">
+        <span className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+          Drafted so far
+        </span>
+        <span className="font-display text-xl text-text-primary">{myPool.length}</span>
+      </div>
+
       {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-2">
+      <div className="grid grid-cols-3 gap-1.5">
+        <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-1.5">
           <Swords className="mb-1 h-4 w-4 text-accent-primary" aria-hidden="true" />
           <span className="font-display text-lg text-text-primary">{monsterCount}</span>
           <span className="text-xs text-text-secondary">Monsters</span>
         </div>
-        <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-2">
+        <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-1.5">
           <Scroll className="mb-1 h-4 w-4 text-accent-gold" aria-hidden="true" />
           <span className="font-display text-lg text-text-primary">{spellCount}</span>
           <span className="text-xs text-text-secondary">Spells</span>
         </div>
-        <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-2">
+        <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-1.5">
           <ShieldAlert
             className="mb-1 h-4 w-4 text-accent-cta"
             aria-hidden="true"
@@ -61,15 +68,6 @@ export function PoolPanel({ className }: PoolPanelProps) {
           <span className="font-display text-lg text-text-primary">{trapCount}</span>
           <span className="text-xs text-text-secondary">Traps</span>
         </div>
-      </div>
-
-      {/* Total */}
-      <div className="flex items-center justify-between rounded-lg border border-border bg-bg-elevated/50 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-text-secondary" aria-hidden="true" />
-          <span className="text-sm text-text-secondary">Total cards</span>
-        </div>
-        <span className="font-display text-lg text-text-primary">{myPool.length}</span>
       </div>
 
       {/* Actions */}
@@ -101,12 +99,12 @@ export function PoolPanel({ className }: PoolPanelProps) {
   return (
     <>
       {/* Desktop/Tablet panel */}
-      <div
-        className={cn(
-          "hidden rounded-xl border border-border bg-surface p-4 shadow-card sm:block",
-          className
-        )}
-      >
+        <div
+          className={cn(
+            "hidden rounded-xl border border-border bg-surface p-3 sm:block",
+            className
+          )}
+        >
         <h3 className="mb-3 font-display text-lg text-text-primary">Your Pool</h3>
         {panelContent}
       </div>

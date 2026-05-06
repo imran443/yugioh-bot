@@ -28,6 +28,8 @@ interface DraftData {
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
+  currentPackRound?: number;
+  currentPickStep?: number;
   config: {
     packSize?: number;
     packsPerPlayer?: number;
@@ -37,6 +39,45 @@ interface DraftData {
   players: DraftPlayer[];
   playerCount: number;
   isParticipant: boolean;
+  currentPack?: Array<{
+    id: number;
+    name: string;
+    type: string;
+    frameType: string;
+    attribute?: string;
+    level?: number;
+    effectText: string;
+    atk?: number;
+    def?: number;
+    imageUrl: string;
+    imageUrlSmall: string;
+  }>;
+  myPool?: Array<{
+    id: number;
+    name: string;
+    type: string;
+    frameType: string;
+    attribute?: string;
+    level?: number;
+    effectText: string;
+    atk?: number;
+    def?: number;
+    imageUrl: string;
+    imageUrlSmall: string;
+  }>;
+  seats?: Array<{
+    seatIndex: number;
+    playerId: number;
+    displayName: string;
+    hasPicked: boolean;
+    isCurrentPlayer: boolean;
+  }>;
+  packRound?: number;
+  pickStep?: number;
+  timerSeconds?: number;
+  isMyTurn?: boolean;
+  completed?: boolean;
+  pickSeconds?: number;
 }
 
 export default function DraftDetailPage() {
@@ -73,13 +114,27 @@ export default function DraftDetailPage() {
         throw new Error("Failed to load draft");
       }
       const data = await res.json();
+      if (data.status === "active") {
+        setFromServer({
+          slug,
+          packRound: data.packRound ?? data.currentPackRound ?? 1,
+          pickStep: data.pickStep ?? data.currentPickStep ?? 1,
+          currentPack: data.currentPack ?? [],
+          myPool: data.myPool ?? [],
+          seats: data.seats ?? [],
+          timerSeconds: data.timerSeconds ?? 0,
+          isMyTurn: data.isMyTurn ?? false,
+          completed: data.completed ?? false,
+          pickSeconds: data.pickSeconds ?? data.config?.pickSeconds ?? 60,
+        });
+      }
       setDraft(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load draft");
     } finally {
       setLoading(false);
     }
-  }, [slug, router]);
+  }, [setFromServer, slug, router]);
 
   useEffect(() => {
     fetchDraft();
@@ -187,28 +242,53 @@ export default function DraftDetailPage() {
             <SeatList />
           </div>
 
-          <div className="flex flex-col gap-6 sm:flex-row sm:gap-8 lg:gap-8">
-            <aside className="hidden w-64 shrink-0 flex-col gap-4 lg:flex">
+          <div className="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)_17.5rem]">
+            <aside className="hidden flex-col gap-4 xl:flex">
               <TimerBar />
               <SeatList />
             </aside>
 
-            <section className="min-w-0 flex-1">
-              <div className="mb-4 flex items-center justify-between">
-                <h1 className="font-display text-xl text-text-primary sm:text-2xl">
+            <section className="min-w-0">
+              <div className="mb-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-text-muted">
+                  Live Draft Room
+                </p>
+                <h1 className="mt-1 font-display text-2xl leading-tight text-text-primary sm:text-3xl">
                   {draft.name}
                 </h1>
+
+                {draft.config.setNames && draft.config.setNames.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {draft.config.setNames.map((setName) => (
+                      <span
+                        key={setName}
+                        className="rounded-full border border-accent-primary/25 bg-accent-primary/10 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-accent-primary"
+                      >
+                        {setName}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border/50 pt-3 text-sm text-text-secondary">
+                  <span className="font-medium text-text-primary">
+                    Pack {draft.packRound ?? draft.currentPackRound ?? 1} · Pick {draft.pickStep ?? draft.currentPickStep ?? 1}
+                  </span>
+                  <span>{draft.currentPack?.length ?? 0} cards in pack</span>
+                  <span>{draft.playerCount} players</span>
+                  <span>{draft.pickSeconds ?? draft.config.pickSeconds ?? 60}s timer</span>
+                </div>
               </div>
               <CardGrid />
             </section>
 
-            <aside className="hidden w-full shrink-0 flex-col gap-4 sm:flex sm:w-64 lg:hidden">
+            <aside className="hidden w-full shrink-0 flex-col gap-4 sm:flex xl:hidden">
               <TimerBar />
               <SeatList />
               <PoolPanel />
             </aside>
 
-            <aside className="hidden w-64 shrink-0 lg:block">
+            <aside className="hidden xl:block">
               <PoolPanel />
             </aside>
           </div>
