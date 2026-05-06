@@ -4,6 +4,7 @@ services:
       context: .
       target: bot
     restart: unless-stopped
+    user: "${UID}:${GID}"
     env_file:
       - .env
     command: sh -c "node packages/bot/dist/deploy-commands.js && node packages/bot/dist/index.js"
@@ -15,6 +16,7 @@ services:
       context: .
       target: ws
     restart: unless-stopped
+    user: "${UID}:${GID}"
     environment:
       - WEB_URL=http://web:3000
       - WS_PORT=3001
@@ -29,6 +31,7 @@ services:
       context: .
       target: web
     restart: unless-stopped
+    user: "${UID}:${GID}"
     env_file:
       - .env
     environment:

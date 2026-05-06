@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { signOut } from "next-auth/react";
+import { handleSignOut } from "@/lib/actions";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Menu, LogOut, PanelLeftClose, PanelLeft } from "lucide-react";
@@ -42,17 +42,19 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
-  const pageTitle = pathname.startsWith("/tournament")
-    ? "Tournament"
-    : pathname.startsWith("/draft")
-      ? "Draft"
-      : pathname === "/dashboard"
-        ? "Dashboard"
-        : pathname === "/tournaments"
-          ? "Tournaments"
-          : pathname === "/login"
-            ? "Sign In"
-            : "Yu-Gi-Oh! TM";
+  let pageTitle = "Yu-Gi-Oh! TM";
+
+  if (pathname === "/dashboard") {
+    pageTitle = "Dashboard";
+  } else if (pathname === "/tournaments") {
+    pageTitle = "Tournaments";
+  } else if (pathname.startsWith("/tournament")) {
+    pageTitle = "Tournament";
+  } else if (pathname.startsWith("/draft")) {
+    pageTitle = "Draft";
+  } else if (pathname === "/login") {
+    pageTitle = "Sign In";
+  }
 
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center border-b border-border bg-bg-surface px-4">
@@ -118,7 +120,7 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
                   type="button"
                   onClick={() => {
                     setDropdownOpen(false);
-                    signOut({ callbackUrl: "/login" });
+                    void handleSignOut();
                   }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary motion-safe:transition-colors"
                 >

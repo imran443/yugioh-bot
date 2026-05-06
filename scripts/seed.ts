@@ -259,7 +259,7 @@ const t1 = db
     `insert into tournaments (guild_id, name, format, status, created_by_user_id, started_at, web_slug)
      values (?, ?, ?, ?, ?, datetime('now'), ?)`
   )
-  .run(guildId, "Friday Night Fights", "round_robin", "active", me.id, "fnf-2026");
+  .run(guildId, "Friday Night Fights", "round_robin", "active", me.discord_user_id, "fnf-2026");
 const t1Id = Number(t1.lastInsertRowid);
 
 // participants
@@ -298,7 +298,7 @@ const t2 = db
     `insert into tournaments (guild_id, name, format, status, created_by_user_id, web_slug)
      values (?, ?, ?, ?, ?, ?)`
   )
-  .run(guildId, "Weekend Championship", "single_elim", "pending", me.id, "weekend-champ");
+  .run(guildId, "Weekend Championship", "single_elim", "pending", me.discord_user_id, "weekend-champ");
 const t2Id = Number(t2.lastInsertRowid);
 
 [me, ...others].forEach((p) => {
@@ -316,8 +316,17 @@ const d1 = db
     "draft-channel-1",
     "Legendary Draft",
     "active",
-    me.id,
-    JSON.stringify({ pickSeconds: 60, packSize: 5, packsPerPlayer: 3 }),
+    me.discord_user_id,
+    JSON.stringify({
+      pickSeconds: 60,
+      packSize: 5,
+      packsPerPlayer: 3,
+      setNames: [
+        "Legend of Blue Eyes White Dragon",
+        "Metal Raiders",
+        "Spell Ruler",
+      ],
+    }),
     1,
     1,
     "legendary-draft"
@@ -366,8 +375,17 @@ const d2 = db
     "draft-channel-2",
     "Retro Draft",
     "completed",
-    me.id,
-    JSON.stringify({ pickSeconds: 45, packSize: 3, packsPerPlayer: 2 }),
+    me.discord_user_id,
+    JSON.stringify({
+      pickSeconds: 45,
+      packSize: 3,
+      packsPerPlayer: 2,
+      setNames: [
+        "Legend of Blue Eyes White Dragon",
+        "Metal Raiders",
+        "Spell Ruler",
+      ],
+    }),
     2,
     6,
     "retro-draft"

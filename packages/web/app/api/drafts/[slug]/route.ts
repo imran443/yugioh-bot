@@ -1,9 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { createDraftService } from "@yugidraft/shared/services";
+import { createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
 
 export const runtime = "nodejs";
+
+function getTimerSeconds(pickDeadlineAt: string | null | undefined): number {
+  if (!pickDeadlineAt) {
+    return 0;
+  }
+
+  const remainingMs = new Date(pickDeadlineAt).getTime() - Date.now();
+  return Math.max(0, Math.ceil(remainingMs / 1000));
+}
+
+function mapDraftCardDetails(
+  db: ReturnType<typeof getDb>,
+  cards: Array<{ draftCardId: number; catalogCardId: number }>
+) {
+  if (cards.length === 0) {
+    return [];
+  }
+
+  const catalog = createCardCatalogService(db);
+  const catalogCards = catalog.findByIds(cards.map((card) => card.catalogCardId));
+
+  return cards.map((card, index) => {
+    const catalogCard = catalogCards[index];
+
+    return {
+      id: card.draftCardId,
+      name: catalogCard?.name ?? `Card ${card.catalogCardId}`,
+      type: catalogCard?.type ?? "Unknown",
+      frameType: catalogCard?.frameType ?? "normal",
+      attribute: undefined,
+      level: undefined,
+      effectText: "",
+      atk: undefined,
+      def: undefined,
+      imageUrl: catalogCard?.imageUrl ?? "",
+      imageUrlSmall: catalogCard?.imageUrlSmall ?? catalogCard?.imageUrl ?? "",
+    };
+  });
+}
 
 export async function GET(
   _request: Request,
@@ -17,6 +56,7 @@ export async function GET(
 
     const { slug } = await params;
     const db = getDb();
+    const drafts = createDraftService(db);
 
     const draft = db
       .prepare(
@@ -50,6 +90,8 @@ export async function GET(
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
     }
 
+    const draftModel = drafts.findById(draft.id);
+
     const players = db
       .prepare(
         `
@@ -78,6 +120,50 @@ export async function GET(
       ? players.some((p: any) => p.playerId === currentPlayer.id)
       : false;
 
+    const pickedPlayerIds = new Set(
+      db
+        .prepare(
+          `
+            select player_id from draft_picks
+            where draft_id = ? and wave_number = ? and pick_step = ?
+          `
+        )
+        .all(draft.id, draftModel.currentPackRound, draftModel.currentPickStep)
+        .map((row: any) => row.player_id as number)
+    );
+
+    const seats = players
+      .map((player, index) => ({
+        seatIndex: player.seatIndex ?? index,
+        playerId: player.playerId,
+        displayName: player.displayName,
+        hasPicked: pickedPlayerIds.has(player.playerId),
+        isCurrentPlayer: currentPlayer ? player.playerId === currentPlayer.id : false,
+      }))
+      .sort((a, b) => a.seatIndex - b.seatIndex);
+
+    const currentPackCards =
+      draft.status === "active" && currentPlayer
+        ? drafts.currentPackOptions(draft.id, currentPlayer.id).map((card) => ({
+            draftCardId: card.id,
+            catalogCardId: card.catalogCardId,
+          }))
+        : [];
+
+    const myPoolCards =
+      currentPlayer && isParticipant
+        ? drafts.pool(draft.id, currentPlayer.id).map((card) => ({
+            draftCardId: card.draftCardId,
+            catalogCardId: card.catalogCardId,
+          }))
+        : [];
+
+    const currentPack = mapDraftCardDetails(db, currentPackCards);
+    const myPool = mapDraftCardDetails(db, myPoolCards);
+    const timerSeconds = getTimerSeconds(draft.pick_deadline_at);
+    const pickSeconds = draftModel.config.pickSeconds ?? 45;
+    const isMyTurn = draft.status === "active" && currentPack.length > 0;
+
     return NextResponse.json({
       id: draft.id,
       guildId: draft.guild_id,
@@ -85,9 +171,9 @@ export async function GET(
       name: draft.name,
       status: draft.status,
       createdByUserId: draft.created_by_user_id,
-      config: JSON.parse(draft.config_json),
-      currentPackRound: draft.current_wave_number ?? 0,
-      currentPickStep: draft.current_pick_step ?? 0,
+      config: draftModel.config,
+      currentPackRound: draftModel.currentPackRound,
+      currentPickStep: draftModel.currentPickStep,
       pickDeadlineAt: draft.pick_deadline_at ?? undefined,
       statusMessageId: draft.status_message_id ?? undefined,
       webSlug: draft.web_slug ?? undefined,
@@ -97,6 +183,15 @@ export async function GET(
       playerCount: draft.player_count,
       players,
       isParticipant,
+      currentPack,
+      myPool,
+      seats,
+      packRound: draftModel.currentPackRound,
+      pickStep: draftModel.currentPickStep,
+      timerSeconds,
+      isMyTurn,
+      completed: draft.status === "completed",
+      pickSeconds,
     });
   } catch (error) {
     console.error("[api/drafts/[slug]] error:", error);

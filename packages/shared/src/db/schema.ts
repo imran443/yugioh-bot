@@ -145,6 +145,11 @@ export function migrate(db: Database.Database) {
       status text not null,
       metadata_json text not null default '{}'
     );
+
+    create table if not exists card_sets (
+      set_name text primary key not null,
+      synced_at text not null
+    );
   `);
 
   const tournamentSchema = db
@@ -235,11 +240,6 @@ export function migrate(db: Database.Database) {
       created_by_user_id text not null,
       created_at text not null default current_timestamp,
       unique (guild_id, name)
-    );
-
-    create table if not exists card_sets (
-      set_name text primary key not null,
-      synced_at text not null
     );
 
     create index if not exists draft_cards_unpicked_by_draft_wave
