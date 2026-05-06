@@ -52,10 +52,13 @@ export const {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const isPublicRoute =
-        nextUrl.pathname === "/login" || nextUrl.pathname.startsWith("/api/auth");
+        nextUrl.pathname === "/login" ||
+        nextUrl.pathname.startsWith("/api/auth") ||
+        nextUrl.pathname.startsWith("/_next") ||
+        nextUrl.pathname === "/favicon.ico";
 
       if (!isLoggedIn && !isPublicRoute) {
-        return false;
+        return Response.redirect(new URL("/login", nextUrl));
       }
 
       return true;
