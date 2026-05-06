@@ -242,7 +242,7 @@ export default function DraftDetailPage() {
             <SeatList />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)_17.5rem]">
+          <div className="grid gap-8 xl:grid-cols-[15rem_minmax(0,1fr)_17.5rem]">
             <aside className="hidden flex-col gap-4 xl:flex">
               <TimerBar />
               <SeatList />

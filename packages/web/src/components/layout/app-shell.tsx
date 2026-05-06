@@ -25,7 +25,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         onClose={() => setDrawerOpen(false)}
       />
       <main className="app-shell-content">
-        <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+        <div className="mx-auto p-4 sm:p-6 lg:p-8">
           {children}
         </div>
       </main>
