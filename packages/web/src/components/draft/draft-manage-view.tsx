@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Clock, Layers, Package, User, Users, X } from "lucide-react";
+import { Clock, Layers, Package, Pencil, User, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SetPicker } from "./set-picker";
 
 interface DraftManageViewProps {
   draft: {
@@ -64,6 +65,15 @@ export function DraftManageView({
   const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Config edit mode
+  const [isEditingConfig, setIsEditingConfig] = React.useState(false);
+  const [editSetNames, setEditSetNames] = React.useState<string[]>(draft.config.setNames ?? []);
+  const [editPackSize, setEditPackSize] = React.useState(draft.config.packSize ?? 8);
+  const [editPacksPerPlayer, setEditPacksPerPlayer] = React.useState(draft.config.packsPerPlayer ?? 5);
+  const [editPickSeconds, setEditPickSeconds] = React.useState(draft.config.pickSeconds ?? 45);
+  const [editError, setEditError] = React.useState<string | null>(null);
+  const [configSaving, setConfigSaving] = React.useState(false);
+
   const handleSaveName = async () => {
     const trimmed = nameValue.trim();
     if (!trimmed) return;
@@ -113,6 +123,62 @@ export function DraftManageView({
       setError(err instanceof Error ? err.message : "Failed to join draft");
     } finally {
       setJoining(false);
+    }
+  };
+
+  const handleStartEditConfig = () => {
+    setEditSetNames(draft.config.setNames ?? []);
+    setEditPackSize(draft.config.packSize ?? 8);
+    setEditPacksPerPlayer(draft.config.packsPerPlayer ?? 5);
+    setEditPickSeconds(draft.config.pickSeconds ?? 45);
+    setEditError(null);
+    setIsEditingConfig(true);
+  };
+
+  const handleCancelEditConfig = () => {
+    setIsEditingConfig(false);
+    setEditSetNames(draft.config.setNames ?? []);
+    setEditPackSize(draft.config.packSize ?? 8);
+    setEditPacksPerPlayer(draft.config.packsPerPlayer ?? 5);
+    setEditPickSeconds(draft.config.pickSeconds ?? 45);
+    setEditError(null);
+  };
+
+  const handleSaveConfig = async () => {
+    setEditError(null);
+
+    if (editSetNames.length < 1) {
+      setEditError("Select at least one card set");
+      return;
+    }
+    if (!Number.isInteger(editPackSize) || editPackSize < 1 || editPackSize > 45) {
+      setEditError("Pack size must be an integer between 1 and 45");
+      return;
+    }
+    if (!Number.isInteger(editPacksPerPlayer) || editPacksPerPlayer < 1 || editPacksPerPlayer > 10) {
+      setEditError("Packs per player must be an integer between 1 and 10");
+      return;
+    }
+    if (!Number.isInteger(editPickSeconds) || editPickSeconds < 10 || editPickSeconds > 300) {
+      setEditError("Pick timer must be an integer between 10 and 300 seconds");
+      return;
+    }
+
+    setConfigSaving(true);
+    try {
+      await onUpdate({
+        config: {
+          setNames: editSetNames,
+          packSize: editPackSize,
+          packsPerPlayer: editPacksPerPlayer,
+          pickSeconds: editPickSeconds,
+        },
+      });
+      setIsEditingConfig(false);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to save configuration");
+    } finally {
+      setConfigSaving(false);
     }
   };
 
@@ -311,53 +377,135 @@ export function DraftManageView({
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-6">
-        <h2 className="mb-4 font-display text-lg text-text-primary">
-          <Layers className="mr-2 inline h-5 w-5 text-accent-primary" />
-          Configuration
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
-            <span className="block text-xs text-text-muted">
-              <Package className="mr-1 inline h-3.5 w-3.5" />
-              Pack Size
-            </span>
-            <span className="mt-1 block text-lg font-semibold text-text-primary">
-              {draft.config.packSize ?? "—"}
-            </span>
-          </div>
-          <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
-            <span className="block text-xs text-text-muted">
-              <Package className="mr-1 inline h-3.5 w-3.5" />
-              Packs/Player
-            </span>
-            <span className="mt-1 block text-lg font-semibold text-text-primary">
-              {draft.config.packsPerPlayer ?? "—"}
-            </span>
-          </div>
-          <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
-            <span className="block text-xs text-text-muted">
-              <Clock className="mr-1 inline h-3.5 w-3.5" />
-              Pick Timer
-            </span>
-            <span className="mt-1 block text-lg font-semibold text-text-primary">
-              {draft.config.pickSeconds ? `${draft.config.pickSeconds}s` : "—"}
-            </span>
-          </div>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display text-lg text-text-primary">
+            <Layers className="mr-2 inline h-5 w-5 text-accent-primary" />
+            Configuration
+          </h2>
+          {isCreator && !isEditingConfig && (
+            <Button variant="secondary" size="sm" onClick={handleStartEditConfig}>
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Edit Configuration
+            </Button>
+          )}
         </div>
-        {draft.config.setNames && draft.config.setNames.length > 0 && (
-          <div className="mt-4">
-            <span className="mb-2 block text-xs text-text-muted">Sets</span>
-            <div className="flex flex-wrap gap-2">
-              {draft.config.setNames.map((setName) => (
-                <span
-                  key={setName}
-                  className="rounded-lg border border-border bg-bg-elevated/50 px-2.5 py-1 text-sm text-text-secondary"
-                >
-                  {setName}
-                </span>
-              ))}
+
+        {isEditingConfig ? (
+          <div className="space-y-5">
+            {editError && (
+              <div className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
+                {editError}
+              </div>
+            )}
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-text-primary">
+                Sets <span className="text-text-secondary">(select at least one)</span>
+              </label>
+              <SetPicker selectedSets={editSetNames} onSetsChange={setEditSetNames} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="edit-pack-size" className="mb-1 block text-sm font-medium text-text-primary">
+                  Pack Size
+                </label>
+                <input
+                  id="edit-pack-size"
+                  type="number"
+                  value={editPackSize}
+                  onChange={(e) => setEditPackSize(Math.max(1, parseInt(e.target.value) || 1))}
+                  min={1}
+                  max={45}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-packs-per-player" className="mb-1 block text-sm font-medium text-text-primary">
+                  Packs/Player
+                </label>
+                <input
+                  id="edit-packs-per-player"
+                  type="number"
+                  value={editPacksPerPlayer}
+                  onChange={(e) => setEditPacksPerPlayer(Math.max(1, parseInt(e.target.value) || 1))}
+                  min={1}
+                  max={10}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-pick-seconds" className="mb-1 block text-sm font-medium text-text-primary">
+                  Pick Timer (s)
+                </label>
+                <input
+                  id="edit-pick-seconds"
+                  type="number"
+                  value={editPickSeconds}
+                  onChange={(e) => setEditPickSeconds(Math.max(10, parseInt(e.target.value) || 45))}
+                  min={10}
+                  max={300}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="primary" size="sm" loading={configSaving} onClick={handleSaveConfig}>
+                Save Configuration
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleCancelEditConfig} disabled={configSaving}>
+                Cancel
+              </Button>
             </div>
           </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
+                <span className="block text-xs text-text-muted">
+                  <Package className="mr-1 inline h-3.5 w-3.5" />
+                  Pack Size
+                </span>
+                <span className="mt-1 block text-lg font-semibold text-text-primary">
+                  {draft.config.packSize ?? "—"}
+                </span>
+              </div>
+              <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
+                <span className="block text-xs text-text-muted">
+                  <Package className="mr-1 inline h-3.5 w-3.5" />
+                  Packs/Player
+                </span>
+                <span className="mt-1 block text-lg font-semibold text-text-primary">
+                  {draft.config.packsPerPlayer ?? "—"}
+                </span>
+              </div>
+              <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
+                <span className="block text-xs text-text-muted">
+                  <Clock className="mr-1 inline h-3.5 w-3.5" />
+                  Pick Timer
+                </span>
+                <span className="mt-1 block text-lg font-semibold text-text-primary">
+                  {draft.config.pickSeconds ? `${draft.config.pickSeconds}s` : "—"}
+                </span>
+              </div>
+            </div>
+            {draft.config.setNames && draft.config.setNames.length > 0 && (
+              <div className="mt-4">
+                <span className="mb-2 block text-xs text-text-muted">Sets</span>
+                <div className="flex flex-wrap gap-2">
+                  {draft.config.setNames.map((setName) => (
+                    <span
+                      key={setName}
+                      className="rounded-lg border border-border bg-bg-elevated/50 px-2.5 py-1 text-sm text-text-secondary"
+                    >
+                      {setName}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

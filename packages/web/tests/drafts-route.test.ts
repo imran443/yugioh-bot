@@ -61,23 +61,13 @@ describe("GET /api/drafts/[slug]", () => {
 
     const payload = await response.json();
 
-    expect(payload.status).toBe("active");
+    expect(payload.status).toBe("pending");
     expect(payload.config.setNames).toBeDefined();
-    expect(payload.currentPack).toBeDefined();
-    expect(Array.isArray(payload.currentPack)).toBe(true);
-    expect(payload.currentPack.length).toBeGreaterThan(0);
-    expect(payload.currentPack[0]).toMatchObject({
-      id: expect.any(Number),
-      name: expect.any(String),
-      type: expect.any(String),
-      frameType: expect.any(String),
-      imageUrl: expect.any(String),
-      imageUrlSmall: expect.any(String),
-    });
-    expect(payload.seats).toBeDefined();
-    expect(Array.isArray(payload.seats)).toBe(true);
-    expect(payload.seats.length).toBeGreaterThan(0);
+    expect(Array.isArray(payload.config.setNames)).toBe(true);
+    expect(payload.config.setNames.length).toBeGreaterThan(0);
+    expect(payload.players).toBeDefined();
+    expect(Array.isArray(payload.players)).toBe(true);
+    expect(payload.players.length).toBeGreaterThan(0);
     expect(payload.pickSeconds).toBeGreaterThan(0);
-    expect(typeof payload.isMyTurn).toBe("boolean");
   });
 });

@@ -249,7 +249,11 @@ cards.forEach((c) => {
     c.frame,
     `https://images.ygoprodeck.com/images/cards/${c.id}.jpg`,
     `https://images.ygoprodeck.com/images/cards_small/${c.id}.jpg`,
-    "[]"
+    JSON.stringify([
+      { set_name: "Legend of Blue Eyes White Dragon" },
+      { set_name: "Metal Raiders" },
+      { set_name: "Spell Ruler" },
+    ])
   );
 });
 
@@ -305,17 +309,17 @@ const t2Id = Number(t2.lastInsertRowid);
   db.prepare("insert or ignore into tournament_participants (tournament_id, player_id) values (?, ?)").run(t2Id, p.id);
 });
 
-// ---------- DRAFT 1: ACTIVE ----------
+// ---------- DRAFT 1: PENDING ----------
 const d1 = db
   .prepare(
-    `insert into drafts (guild_id, channel_id, name, status, created_by_user_id, config_json, current_wave_number, current_pick_step, started_at, web_slug)
-     values (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+    `insert into drafts (guild_id, channel_id, name, status, created_by_user_id, config_json, current_wave_number, current_pick_step, web_slug)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   .run(
     guildId,
     "draft-channel-1",
     "Legendary Draft",
-    "active",
+    "pending",
     me.discord_user_id,
     JSON.stringify({
       pickSeconds: 60,
@@ -327,8 +331,8 @@ const d1 = db
         "Spell Ruler",
       ],
     }),
-    1,
-    1,
+    0,
+    0,
     "legendary-draft"
   );
 const d1Id = Number(d1.lastInsertRowid);
@@ -337,31 +341,6 @@ const d1Id = Number(d1.lastInsertRowid);
   db.prepare(
     `insert into draft_players (draft_id, player_id, seat_index) values (?, ?, ?)`
   ).run(d1Id, p.id, i);
-});
-
-// packs for active draft (1 pack per player, round 1)
-const packIds: number[] = [];
-[me, ...others].forEach((_, seatIdx) => {
-  const pk = db
-    .prepare(
-      `insert into draft_packs (draft_id, pack_round, origin_seat_index, current_holder_seat_index, pass_direction)
-       values (?, ?, ?, ?, ?)`
-    )
-    .run(d1Id, 1, seatIdx, seatIdx, 1);
-  packIds.push(Number(pk.lastInsertRowid));
-});
-
-// draft cards (5 cards per pack, wave 1)
-let cardIdx = 0;
-packIds.forEach((packId) => {
-  for (let pos = 0; pos < 5; pos++) {
-    const catalogId = cards[cardIdx % cards.length].id;
-    db.prepare(
-      `insert into draft_cards (draft_id, wave_number, draft_pack_id, catalog_card_id, position)
-       values (?, ?, ?, ?, ?)`
-    ).run(d1Id, 1, packId, catalogId, pos);
-    cardIdx++;
-  }
 });
 
 // ---------- DRAFT 2: COMPLETED ----------

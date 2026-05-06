@@ -34,15 +34,63 @@ export function CardGrid({ className }: CardGridProps) {
   const setSelectedCard = useDraftStore((s) => s.setSelectedCard);
   const setHighlightedIndex = useDraftStore((s) => s.setHighlightedIndex);
   const pickCard = useDraftStore((s) => s.pickCard);
+  const setFromServer = useDraftStore((s) => s.setFromServer);
   const isMyTurn = useDraftStore((s) => s.isMyTurn);
+  const slug = useDraftStore((s) => s.slug);
 
   const [hoveredCard, setHoveredCard] = React.useState<DraftCardDetail | null>(null);
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
   const [imageErrors, setImageErrors] = React.useState<Set<number>>(new Set());
+  const [picking, setPicking] = React.useState(false);
 
   const handleImageError = (cardId: number) => {
     setImageErrors((prev) => new Set(prev).add(cardId));
   };
+
+  const fetchPick = React.useCallback(
+    async (cardId: number) => {
+      if (!slug) return;
+      try {
+        const res = await fetch(`/api/drafts/${slug}/pick`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cardId }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Pick failed: ${res.status}`);
+        }
+
+        const data = await res.json();
+        setFromServer(data);
+      } catch (err) {
+        console.error("Pick error:", err);
+        // Refetch full draft state to restore consistency
+        try {
+          const refresh = await fetch(`/api/drafts/${slug}`);
+          if (refresh.ok) {
+            const fresh = await refresh.json();
+            setFromServer(fresh);
+          }
+        } catch (refreshErr) {
+          console.error("Failed to refresh draft state:", refreshErr);
+        }
+      } finally {
+        setPicking(false);
+      }
+    },
+    [slug, setFromServer]
+  );
+
+  const handleConfirmPick = React.useCallback(
+    (cardId: number) => {
+      if (picking) return;
+      setPicking(true);
+      pickCard(cardId); // optimistic local update
+      fetchPick(cardId); // persist to server
+    },
+    [picking, pickCard, fetchPick]
+  );
 
   // Keyboard shortcuts: 1-8 / Numpad1-8 to highlight, Enter to confirm, Escape to dismiss
   React.useEffect(() => {
@@ -70,7 +118,7 @@ export function CardGrid({ className }: CardGridProps) {
         if (idx >= 0 && idx < state.currentPack.length) {
           const card = state.currentPack[idx];
           if (card) {
-            state.pickCard(card.id);
+            handleConfirmPick(card.id);
             setHoveredCard(null);
             setHoveredIndex(null);
           }
@@ -86,7 +134,7 @@ export function CardGrid({ className }: CardGridProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [handleConfirmPick]);
 
   const handleCardClick = (card: DraftCardDetail, index: number) => {
     setSelectedCard(card.id);
@@ -241,7 +289,7 @@ export function CardGrid({ className }: CardGridProps) {
           <CardPreview
             card={selectedCard}
             onPick={() => {
-              pickCard(selectedCard.id);
+              handleConfirmPick(selectedCard.id);
               setSelectedCard(null);
             }}
             onBack={() => setSelectedCard(null)}
