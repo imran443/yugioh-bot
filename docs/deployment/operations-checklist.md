@@ -18,8 +18,8 @@
 
 ## Deploy Smoke Test
 
-- Run `docker compose up -d --build`.
-- Run `docker compose logs -f` and confirm all 4 services start.
+- Run `docker compose -f docker-compose.yml up -d --build`.
+- Run `docker compose -f docker-compose.yml logs -f` and confirm all 4 services start.
 - Visit `http://<IP>` and confirm the web dashboard loads.
 - Click "Sign in with Discord" and confirm OAuth works.
 - In Discord, run `/stats` and confirm the bot responds.
@@ -28,7 +28,7 @@
 
 ## Ongoing Operations
 
-- Review logs after each deploy: `docker compose logs --tail=50`
+- Review logs after each deploy: `docker compose -f docker-compose.yml logs --tail=50`
 - Back up `./data/bot.sqlite` daily.
 - Copy backups off the VM periodically.
 - Keep the host OS patched: `apt update && apt upgrade -y`

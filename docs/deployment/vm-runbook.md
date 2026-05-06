@@ -33,11 +33,11 @@ Remote deploy command used by the workflow:
 cd /opt/yugioh-bot && \
 git fetch --all --prune && \
 git reset --hard origin/main && \
-docker compose build && \
-docker compose down --remove-orphans && \
-docker compose up -d && \
-docker compose ps && \
-docker compose logs --tail=40
+docker compose -f docker-compose.yml build && \
+docker compose -f docker-compose.yml down --remove-orphans && \
+docker compose -f docker-compose.yml up -d && \
+docker compose -f docker-compose.yml ps && \
+docker compose -f docker-compose.yml logs --tail=40
 ```
 
 ## VM Setup (Hetzner CAX11 or similar)
@@ -102,7 +102,7 @@ REMINDER_TIMEZONE=America/New_York
 ### Build & Run
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.yml up -d --build
 ```
 
 First build takes 3-5 minutes.
@@ -110,8 +110,8 @@ First build takes 3-5 minutes.
 ### Verify
 
 ```bash
-docker compose ps
-docker compose logs -f
+docker compose -f docker-compose.yml ps
+docker compose -f docker-compose.yml logs -f
 ```
 
 Open `http://YOUR_VM_IP` in a browser.
@@ -154,23 +154,23 @@ Run from `/opt/yugioh-bot` on the VM.
 
 ```bash
 # View status
-docker compose ps
+docker compose -f docker-compose.yml ps
 
 # View logs
-docker compose logs --tail=200
+docker compose -f docker-compose.yml logs --tail=200
 
 # Follow logs
-docker compose logs -f
+docker compose -f docker-compose.yml logs -f
 
 # Restart a service
-docker compose restart bot
+docker compose -f docker-compose.yml restart bot
 
 # Manual update
 git fetch --all --prune && git reset --hard origin/main
-docker compose up -d --build
+docker compose -f docker-compose.yml up -d --build
 
 # Stop all
-docker compose down
+docker compose -f docker-compose.yml down
 ```
 
 ## Adding HTTPS with a Domain
@@ -187,7 +187,7 @@ docker compose down
    ```bash
    ufw allow 443/tcp
    ```
-6. Restart: `docker compose up -d` — Caddy provisions HTTPS via Let's Encrypt automatically.
+6. Restart: `docker compose -f docker-compose.yml up -d` — Caddy provisions HTTPS via Let's Encrypt automatically.
 
 ## VM Setup Checklist
 
@@ -197,7 +197,7 @@ docker compose down
 - [ ] Docker and Docker Compose installed
 - [ ] Repo cloned to `/opt/yugioh-bot`
 - [ ] `.env` created with all values
-- [ ] First `docker compose up -d --build` succeeds
+- [ ] First `docker compose -f docker-compose.yml up -d --build` succeeds
 - [ ] `http://YOUR_VM_IP` loads in browser
 - [ ] Discord OAuth redirect added
 - [ ] GitHub Actions secrets configured

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { env } from "@/lib/env";
 import { createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
 
 function getTimerSeconds(pickDeadlineAt: string | null | undefined): number {
@@ -44,6 +45,7 @@ function mapDraftCardDetails(
 export async function buildDraftResponse(slug: string, userId: string) {
   const db = getDb();
   const drafts = createDraftService(db);
+  const guildId = env.discordGuildId;
 
   const draft = db
     .prepare(
@@ -67,11 +69,11 @@ export async function buildDraftResponse(slug: string, userId: string) {
           count(dp.player_id) as player_count
         from drafts d
         left join draft_players dp on dp.draft_id = d.id
-        where d.web_slug = ?
+        where d.web_slug = ? and d.guild_id = ?
         group by d.id
       `
     )
-    .get(slug) as any;
+    .get(slug, guildId) as any;
 
   if (!draft) {
     return null;
@@ -150,6 +152,9 @@ export async function buildDraftResponse(slug: string, userId: string) {
   const timerSeconds = getTimerSeconds(draft.pick_deadline_at);
   const pickSeconds = draftModel.config.pickSeconds ?? 45;
   const isMyTurn = draft.status === "active" && currentPack.length > 0;
+  const participantPickCount = currentPlayer && isParticipant
+    ? players.find((player) => player.playerId === currentPlayer.id)?.pickCount
+    : undefined;
 
   return {
     id: draft.id,
@@ -169,6 +174,7 @@ export async function buildDraftResponse(slug: string, userId: string) {
     endedAt: draft.ended_at ?? undefined,
     playerCount: draft.player_count,
     players,
+    participantPickCount,
     isParticipant,
     currentPack,
     myPool,

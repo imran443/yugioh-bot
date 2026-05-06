@@ -1,7 +1,17 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "dotenv";
+
+type SnapshotCard = {
+  ygoprodeckId: number;
+  name: string;
+  type: string;
+  frameType: string;
+  imageUrl: string;
+  imageUrlSmall: string;
+  cardSets: Array<{ set_name: string }>;
+};
 
 // Load .env from repo root so DISCORD_USER_ID / DISCORD_GUILD_ID are available
 config({ path: join(process.cwd(), ".env") });
@@ -9,6 +19,10 @@ config({ path: join(process.cwd(), ".env") });
 const dbPath = process.env.DATABASE_PATH ?? join(process.cwd(), "data", "bot.sqlite");
 const userDiscordId = process.env.DISCORD_USER_ID ?? "123456789012345678";
 const guildId = process.env.DISCORD_GUILD_ID ?? "987654321098765432";
+const draftCatalogSnapshotPath = join(process.cwd(), "scripts", "data", "draft-catalog-legendary.json");
+const draftCatalogSnapshot = JSON.parse(
+  readFileSync(draftCatalogSnapshotPath, "utf8")
+) as { cards: SnapshotCard[] };
 
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = new Database(dbPath);
@@ -195,6 +209,7 @@ db.exec(`
   delete from tournament_participants where tournament_id in (select id from tournaments where guild_id = '${guildId}' and name in ('Friday Night Fights', 'Weekend Championship'));
   delete from tournaments where guild_id = '${guildId}' and name in ('Friday Night Fights', 'Weekend Championship');
   delete from players where guild_id = '${guildId}' and discord_user_id like 'fake_%';
+  delete from card_catalog;
 `);
 
 // ---------- PLAYERS ----------
@@ -217,43 +232,29 @@ const me = players.find((p) => p.discord_user_id === userDiscordId)!;
 const others = players.filter((p) => p.discord_user_id !== userDiscordId);
 
 // ---------- CARD CATALOG ----------
-const cards = [
-  { id: 89631139, name: "Blue-Eyes White Dragon", type: "Normal Monster", frame: "normal" },
-  { id: 46986414, name: "Dark Magician", type: "Normal Monster", frame: "normal" },
-  { id: 55878038, name: "Red-Eyes Black Dragon", type: "Normal Monster", frame: "normal" },
-  { id: 38033121, name: "Dark Magician Girl", type: "Effect Monster", frame: "effect" },
-  { id: 4206964, name: "Exodia the Forbidden One", type: "Effect Monster", frame: "effect" },
-  { id: 33396948, name: "Exodia the Forbidden One", type: "Effect Monster", frame: "effect" }, // duplicate name diff id - ignore, use real ones
-  { id: 7902349, name: "Left Arm of the Forbidden One", type: "Effect Monster", frame: "effect" },
-  { id: 44519536, name: "Left Leg of the Forbidden One", type: "Effect Monster", frame: "effect" },
-  { id: 70903634, name: "Right Arm of the Forbidden One", type: "Effect Monster", frame: "effect" },
-  { id: 8124921, name: "Right Leg of the Forbidden One", type: "Effect Monster", frame: "effect" },
-  { id: 4031928, name: "Change of Heart", type: "Spell Card", frame: "spell" },
-  { id: 12580477, name: "Raigeki", type: "Spell Card", frame: "spell" },
-  { id: 44095763, name: "Mirror Force", type: "Trap Card", frame: "trap" },
-  { id: 83764718, name: "Monster Reborn", type: "Spell Card", frame: "spell" },
-  { id: 23171610, name: "Pot of Greed", type: "Spell Card", frame: "spell" },
-];
-
 const insertCard = db.prepare(
-  `insert or ignore into card_catalog
+  `insert into card_catalog
    (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
-   values (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+   values (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+   on conflict(ygoprodeck_id) do update set
+     name = excluded.name,
+     type = excluded.type,
+     frame_type = excluded.frame_type,
+     image_url = excluded.image_url,
+     image_url_small = excluded.image_url_small,
+     card_sets_json = excluded.card_sets_json,
+     cached_at = excluded.cached_at`
 );
 
-cards.forEach((c) => {
+draftCatalogSnapshot.cards.forEach((card) => {
   insertCard.run(
-    c.id,
-    c.name,
-    c.type,
-    c.frame,
-    `https://images.ygoprodeck.com/images/cards/${c.id}.jpg`,
-    `https://images.ygoprodeck.com/images/cards_small/${c.id}.jpg`,
-    JSON.stringify([
-      { set_name: "Legend of Blue Eyes White Dragon" },
-      { set_name: "Metal Raiders" },
-      { set_name: "Spell Ruler" },
-    ])
+    card.ygoprodeckId,
+    card.name,
+    card.type,
+    card.frameType,
+    card.imageUrl,
+    card.imageUrlSmall,
+    JSON.stringify(card.cardSets)
   );
 });
 

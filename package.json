@@ -11,6 +11,8 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "seed": "tsx scripts/seed.ts",
+    "reset:test-data": "npm run seed && docker compose restart web bot",
+    "snapshot:draft-catalog": "tsx scripts/generate-draft-catalog-snapshot.ts",
     "dev:bot": "npm run dev --workspace=@yugioh-discord-bot/bot",
     "dev:ws": "npm run dev --workspace=@yugioh-discord-bot/ws",
     "dev:web": "npm run dev --workspace=@yugioh-discord-bot/web"

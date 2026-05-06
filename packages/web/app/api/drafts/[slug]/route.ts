@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "./helpers";
 
@@ -45,10 +46,11 @@ export async function DELETE(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, created_by_user_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; created_by_user_id: string; status: string } | undefined;
+      .prepare("select id, created_by_user_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; created_by_user_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
@@ -92,10 +94,11 @@ export async function PUT(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, created_by_user_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; created_by_user_id: string; status: string } | undefined;
+      .prepare("select id, created_by_user_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; created_by_user_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
@@ -164,10 +167,11 @@ export async function POST(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, created_by_user_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; created_by_user_id: string; status: string } | undefined;
+      .prepare("select id, created_by_user_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; created_by_user_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });

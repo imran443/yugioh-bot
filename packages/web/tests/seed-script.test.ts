@@ -57,6 +57,18 @@ describe("seed script", () => {
       )
       .all(guildId) as Array<{ name: string; config_json: string }>;
 
+    const mirrorForce = db
+      .prepare("select ygoprodeck_id, image_url, image_url_small from card_catalog where name = 'Mirror Force'")
+      .get() as { ygoprodeck_id: number; image_url: string; image_url_small: string };
+
+    const catalogCount = db
+      .prepare("select count(*) as count from card_catalog")
+      .get() as { count: number };
+
+    const mysticalSpaceTyphoon = db
+      .prepare("select name, image_url, image_url_small from card_catalog where name = 'Mystical Space Typhoon'")
+      .get() as { name: string; image_url: string; image_url_small: string } | undefined;
+
     expect(tournamentOwners).toEqual([{ created_by_user_id: discordUserId }]);
     expect(draftOwners).toEqual([{ created_by_user_id: discordUserId }]);
     expect(draftConfigs.map((draft) => ({
@@ -80,5 +92,16 @@ describe("seed script", () => {
         ],
       },
     ]);
-  });
+    expect(mirrorForce).toEqual({
+      ygoprodeck_id: 44095762,
+      image_url: "https://images.ygoprodeck.com/images/cards/44095762.jpg",
+      image_url_small: "https://images.ygoprodeck.com/images/cards_small/44095762.jpg",
+    });
+    expect(catalogCount.count).toBeGreaterThan(100);
+    expect(mysticalSpaceTyphoon).toEqual({
+      name: "Mystical Space Typhoon",
+      image_url: expect.stringContaining("https://images.ygoprodeck.com/images/cards/"),
+      image_url_small: expect.stringContaining("https://images.ygoprodeck.com/images/cards_small/"),
+    });
+  }, 15000);
 });

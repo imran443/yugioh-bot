@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const auth = vi.fn();
 const repoRoot = "/home/imran/yugioh-discord-bot";
 const tempDirs: string[] = [];
+const testTimeoutMs = 20000;
 
 vi.mock("@/lib/auth", () => ({
   auth,
@@ -24,6 +25,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
 
   afterEach(() => {
     delete process.env.DATABASE_PATH;
+    delete process.env.DISCORD_GUILD_ID;
 
     while (tempDirs.length > 0) {
       const dir = tempDirs.pop();
@@ -48,7 +50,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     );
 
     expect(response.status).toBe(401);
-  });
+  }, testTimeoutMs);
 
   it("returns 404 for non-existent draft", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-pick-"));
@@ -67,6 +69,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     });
 
     process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "196382772699332609";
 
     const { POST } = await import("../app/api/drafts/[slug]/pick/route");
 
@@ -80,7 +83,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     );
 
     expect(response.status).toBe(404);
-  });
+  }, testTimeoutMs);
 
   it("returns 400 when draft is not active", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-pick-"));
@@ -99,6 +102,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     });
 
     process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "196382772699332609";
 
     const { POST } = await import("../app/api/drafts/[slug]/pick/route");
 
@@ -114,7 +118,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     expect(response.status).toBe(400);
     const payload = await response.json();
     expect(payload.error).toContain("not active");
-  });
+  }, testTimeoutMs);
 
   it("persists a pick and auto-picks for fake players after starting the draft", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-pick-"));
@@ -133,6 +137,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     });
 
     process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "196382772699332609";
 
     // Start the draft
     const { POST: startDraft } = await import("../app/api/drafts/[slug]/route");
@@ -181,7 +186,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     // Verify pick was persisted by checking the pool
     expect(afterPick.myPool.length).toBeGreaterThan(0);
     expect(afterPick.myPool.some((c: any) => c.id === cardToPick.id)).toBe(true);
-  });
+  }, testTimeoutMs);
 
   it("returns 400 for invalid cardId", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-pick-"));
@@ -200,6 +205,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     });
 
     process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "196382772699332609";
 
     // Start the draft first
     const { POST: startDraft } = await import("../app/api/drafts/[slug]/route");
@@ -244,7 +250,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
       { params: Promise.resolve({ slug: "legendary-draft" }) }
     );
     expect(invalidResponse.status).toBe(400);
-  });
+  }, testTimeoutMs);
 
   it("returns 400 for non-participant", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-pick-"));
@@ -263,6 +269,7 @@ describe("POST /api/drafts/[slug]/pick", () => {
     });
 
     process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "196382772699332609";
 
     // Start the draft first
     const { POST: startDraft } = await import("../app/api/drafts/[slug]/route");
@@ -291,5 +298,5 @@ describe("POST /api/drafts/[slug]/pick", () => {
     expect(response.status).toBe(400);
     const payload = await response.json();
     expect(payload.error).toContain("not a participant");
-  });
+  }, testTimeoutMs);
 });

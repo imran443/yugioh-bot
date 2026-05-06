@@ -29,6 +29,7 @@ interface DraftSummaryViewProps {
       joinedAt: string;
     }>;
     playerCount: number;
+    participantPickCount?: number;
   };
   isParticipant: boolean;
   onExportYdk: () => Promise<string>;
@@ -53,6 +54,8 @@ export function DraftSummaryView({
   const [error, setError] = React.useState<string | null>(null);
 
   const isCompleted = draft.status === "completed";
+  const participantPickCount = draft.participantPickCount ?? 0;
+  const canExportYdk = isCompleted && isParticipant && participantPickCount >= 40;
   const statusLabel = isCompleted ? "Completed" : "Cancelled";
   const statusVariant = isCompleted ? ("success" as const) : ("danger" as const);
 
@@ -108,7 +111,7 @@ export function DraftSummaryView({
               )}
             </div>
           </div>
-          {isCompleted && isParticipant && (
+          {canExportYdk && (
             <Button
               variant="primary"
               size="sm"
@@ -120,6 +123,11 @@ export function DraftSummaryView({
             </Button>
           )}
         </div>
+        {isCompleted && isParticipant && !canExportYdk && (
+          <p className="mt-4 text-sm text-text-secondary">
+            YDK export requires 40 picks. This draft completed with {participantPickCount}.
+          </p>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-6">

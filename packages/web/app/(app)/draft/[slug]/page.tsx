@@ -10,6 +10,8 @@ import { SeatList } from "@/components/draft/seat-list";
 import { PoolPanel } from "@/components/draft/pool-panel";
 import { useDraftStore } from "@/lib/stores/draft-store";
 import { useDraftWebsocket } from "@/lib/hooks/use-draft-websocket";
+import { useDraftCountdown } from "@/lib/hooks/use-draft-countdown";
+import { useDraftExpiryResync } from "@/lib/hooks/use-draft-expiry-resync";
 
 interface DraftPlayer {
   playerId: number;
@@ -38,6 +40,7 @@ interface DraftData {
   };
   players: DraftPlayer[];
   playerCount: number;
+  participantPickCount?: number;
   isParticipant: boolean;
   currentPack?: Array<{
     id: number;
@@ -92,6 +95,8 @@ export default function DraftDetailPage() {
 
   const setFromServer = useDraftStore((s) => s.setFromServer);
   useDraftWebsocket(slug);
+  useDraftCountdown();
+  useDraftExpiryResync(slug);
 
   useEffect(() => {
     fetch("/api/auth/session")

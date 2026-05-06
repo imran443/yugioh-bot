@@ -61,15 +61,21 @@ SQLite data is stored in `./data/bot.sqlite` by default.
 docker compose up -d --build
 ```
 
-The `docker-compose.override.yml` is auto-merged for local dev. It switches the web service to a dev target with HMR and bind-mounts source directories.
+The tracked `docker-compose.override.yml` is auto-merged for local dev. It switches the web service to the `web-dev` target, enables polling-based file watching, and bind-mounts the source directories needed for HMR.
+
+To reset local draft test data and reopen the SQLite-backed services against a fresh seed, run:
+
+```bash
+npm run reset:test-data
+```
 
 ### Production
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.yml up -d --build
 ```
 
-Without the override file, Docker Compose uses the production targets from `docker-compose.yml` which build optimized images for each service.
+Production should always use the base file explicitly so local dev overrides are not loaded.
 
 The stack runs 4 services:
 - **bot** — Discord bot (deploys commands on startup)
@@ -89,7 +95,7 @@ The app runs on a VM via Docker Compose with Caddy as a reverse proxy. GitHub Ac
 3. Clone the repo to `/opt/yugioh-bot`
 4. Create `.env` on the VM (see Environment Variables above)
 5. Set Discord OAuth redirect URI: `http://<YOUR_IP>/api/auth/callback/discord`
-6. Run `docker compose up -d --build`
+6. Run `docker compose -f docker-compose.yml up -d --build`
 7. Add GitHub Actions secrets (`VM_HOST`, `VM_USER`, `VM_SSH_PRIVATE_KEY`, `VM_PORT`)
 
 See `docs/deployment/vm-runbook.md` for the full step-by-step guide.
@@ -104,7 +110,7 @@ For HTTPS with a custom domain:
 4. Update `.env`: `NEXTAUTH_URL=https://yourdomain.com` and `NEXT_PUBLIC_WS_URL=https://yourdomain.com`
 5. Update Discord redirect URI to `https://yourdomain.com/api/auth/callback/discord`
 6. Open firewall port 443
-7. `docker compose up -d` — Caddy auto-provisions HTTPS via Let's Encrypt
+7. `docker compose -f docker-compose.yml up -d` — Caddy auto-provisions HTTPS via Let's Encrypt
 
 ## Quality Checks
 

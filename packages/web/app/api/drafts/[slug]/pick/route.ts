@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "../helpers";
 
@@ -25,10 +26,11 @@ export async function POST(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, guild_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; guild_id: string; status: string } | undefined;
+      .prepare("select id, guild_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; guild_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
