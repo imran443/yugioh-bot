@@ -32,6 +32,7 @@ interface TournamentDetail {
   createdByUserId: string;
   participants: Participant[];
   matches: Match[];
+  isParticipant: boolean;
 }
 
 export default function TournamentDetailPage() {
@@ -120,26 +121,61 @@ export default function TournamentDetailPage() {
     );
   }
 
-  const formatLabel =
-    tournament.format === "round_robin"
-      ? "Round Robin"
-      : tournament.format === "single_elim"
-        ? "Single Elimination"
-        : tournament.format;
+  function getFormatLabel(format: string): string {
+    if (format === "round_robin") return "Round Robin";
+    if (format === "single_elim") return "Single Elimination";
+    return format;
+  }
 
-  const statusVariant =
-    tournament.status === "active"
-      ? "success"
-      : tournament.status === "pending"
-        ? "warning"
-        : tournament.status === "cancelled"
-          ? "danger"
-          : "default";
+  function getStatusVariant(status: string): "default" | "danger" | "success" | "warning" {
+    if (status === "active") return "success";
+    if (status === "pending") return "warning";
+    if (status === "cancelled") return "danger";
+    return "default";
+  }
+
+  const formatLabel = getFormatLabel(tournament.format);
+  const statusVariant = getStatusVariant(tournament.status);
 
   const isCreator = currentUserId === tournament.createdByUserId;
+  const isParticipant = tournament.isParticipant;
   const rounds = Array.from(
     new Set(tournament.matches.map((m) => m.roundNumber))
   ).sort((a, b) => a - b);
+
+  async function handleJoin() {
+    setActionLoading("join");
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/tournaments/${id}/join`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to join tournament");
+      }
+      fetchTournament();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to join tournament");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleStart() {
+    setActionLoading("start");
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/tournaments/${id}`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to start");
+      }
+      fetchTournament();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to start");
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   return (
     <div>
@@ -216,22 +252,7 @@ export default function TournamentDetailPage() {
                     <Button
                       variant="primary"
                       loading={actionLoading === "start"}
-                      onClick={async () => {
-                        setActionLoading("start");
-                        setActionError(null);
-                        try {
-                          const res = await fetch(`/api/tournaments/${id}`, { method: "POST" });
-                          if (!res.ok) {
-                            const body = await res.json();
-                            throw new Error(body.error ?? "Failed to start");
-                          }
-                          fetchTournament();
-                        } catch (err) {
-                          setActionError(err instanceof Error ? err.message : "Failed to start");
-                        } finally {
-                          setActionLoading(null);
-                        }
-                      }}
+                      onClick={handleStart}
                     >
                       <Play className="h-4 w-4" />
                       Start Tournament
@@ -250,11 +271,29 @@ export default function TournamentDetailPage() {
           </div>
         )}
 
-        {!isCreator && tournament.status === "pending" && (
+        {!isCreator && tournament.status === "pending" && isParticipant && (
           <div className="mb-6 rounded-xl border border-border bg-surface p-5 text-center">
             <p className="text-text-secondary">
-              Waiting for the creator to start this tournament
+              You have joined this tournament. Waiting for the creator to start.
             </p>
+          </div>
+        )}
+
+        {!isCreator && tournament.status === "pending" && !isParticipant && (
+          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-text-primary">Want to compete?</p>
+              <p className="text-sm text-text-secondary">
+                Join this tournament to participate when it starts.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              loading={actionLoading === "join"}
+              onClick={handleJoin}
+            >
+              Join Tournament
+            </Button>
           </div>
         )}
 
@@ -347,14 +386,15 @@ function MatchCard({
   const isPendingApproval = match.status === "pending_approval";
   const isOpen = match.status === "open";
 
-  const statusBadge =
-    isBye || isCompleted ? (
-      <Badge variant="success">Completed</Badge>
-    ) : isPendingApproval ? (
-      <Badge variant="warning">Pending Approval</Badge>
-    ) : (
-      <Badge variant="default">Open</Badge>
-    );
+  function getStatusBadge() {
+    if (isBye || isCompleted) {
+      return <Badge variant="success">Completed</Badge>;
+    }
+    if (isPendingApproval) {
+      return <Badge variant="warning">Pending Approval</Badge>;
+    }
+    return <Badge variant="default">Open</Badge>;
+  }
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
@@ -394,7 +434,7 @@ function MatchCard({
         </div>
 
         <div className="flex items-center gap-3">
-          {statusBadge}
+          {getStatusBadge()}
           {isOpen && !isReporting && (
             <Button variant="primary" size="sm" onClick={onReport}>
               Report

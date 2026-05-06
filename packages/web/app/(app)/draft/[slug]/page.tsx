@@ -36,6 +36,7 @@ interface DraftData {
   };
   players: DraftPlayer[];
   playerCount: number;
+  isParticipant: boolean;
 }
 
 export default function DraftDetailPage() {
@@ -147,9 +148,16 @@ export default function DraftDetailPage() {
   }
 
   const isCreator = currentUserId === draft.createdByUserId;
-  const isParticipant = draft.players.some(
-    (p) => String(p.playerId) === currentUserId
-  );
+  const isParticipant = draft.isParticipant;
+
+  const handleJoin = async () => {
+    const res = await fetch(`/api/drafts/${slug}/join`, { method: "POST" });
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error ?? "Failed to join draft");
+    }
+    await fetchDraft();
+  };
 
   if (draft.status === "pending") {
     return (
@@ -157,9 +165,11 @@ export default function DraftDetailPage() {
         <DraftManageView
           draft={draft}
           isCreator={isCreator}
+          isParticipant={isParticipant}
           onStart={handleStart}
           onCancel={handleCancel}
           onUpdate={handleUpdate}
+          onJoin={handleJoin}
         />
       </div>
     );

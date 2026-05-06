@@ -70,6 +70,14 @@ export async function GET(
         joinedAt: row.joined_at,
       }));
 
+    const currentPlayer = db
+      .prepare("select id from players where guild_id = ? and discord_user_id = ?")
+      .get(draft.guild_id, session.user.id) as { id: number } | undefined;
+
+    const isParticipant = currentPlayer
+      ? players.some((p: any) => p.playerId === currentPlayer.id)
+      : false;
+
     return NextResponse.json({
       id: draft.id,
       guildId: draft.guild_id,
@@ -88,6 +96,7 @@ export async function GET(
       endedAt: draft.ended_at ?? undefined,
       playerCount: draft.player_count,
       players,
+      isParticipant,
     });
   } catch (error) {
     console.error("[api/drafts/[slug]] error:", error);

@@ -140,6 +140,43 @@ db.exec(`
     unique (draft_id, player_id, wave_number, pick_step),
     unique (draft_card_id)
   );
+
+  create table if not exists draft_templates (
+    id integer primary key autoincrement,
+    guild_id text not null,
+    name text not null,
+    config_json text not null default '{}',
+    created_by_user_id text not null,
+    created_at text not null default current_timestamp,
+    unique (guild_id, name)
+  );
+
+  create table if not exists card_sets (
+    set_name text primary key not null,
+    set_code text,
+    card_count integer,
+    synced_at text not null
+  );
+
+  create table if not exists guild_settings (
+    guild_id text primary key not null,
+    announce_draft_created integer not null default 1,
+    announce_draft_started integer not null default 1,
+    announce_draft_completed integer not null default 1,
+    announce_tournament_created integer not null default 1,
+    announce_tournament_completed integer not null default 1,
+    announce_channel_id text
+  );
+
+  create index if not exists draft_cards_unpicked_by_draft_wave
+    on draft_cards (draft_id, wave_number)
+    where picked_by_player_id is null;
+
+  create index if not exists draft_packs_holder_idx
+    on draft_packs (draft_id, pack_round, current_holder_seat_index);
+
+  create index if not exists draft_cards_pack_idx
+    on draft_cards (draft_pack_id, picked_by_player_id, position);
 `);
 
 // ---------- PLAYERS ----------

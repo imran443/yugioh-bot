@@ -29,9 +29,11 @@ interface DraftManageViewProps {
     playerCount: number;
   };
   isCreator: boolean;
+  isParticipant: boolean;
   onStart: () => Promise<void>;
   onCancel: () => Promise<void>;
   onUpdate: (data: { name?: string; config?: unknown }) => Promise<void>;
+  onJoin: () => Promise<void>;
 }
 
 function formatDate(iso: string) {
@@ -47,15 +49,18 @@ function formatDate(iso: string) {
 export function DraftManageView({
   draft,
   isCreator,
+  isParticipant,
   onStart,
   onCancel,
   onUpdate,
+  onJoin,
 }: DraftManageViewProps) {
   const [editing, setEditing] = React.useState(false);
   const [nameValue, setNameValue] = React.useState(draft.name);
   const [saving, setSaving] = React.useState(false);
   const [starting, setStarting] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
+  const [joining, setJoining] = React.useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -98,6 +103,101 @@ export function DraftManageView({
       setShowCancelConfirm(false);
     }
   };
+
+  const handleJoin = async () => {
+    setJoining(true);
+    setError(null);
+    try {
+      await onJoin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to join draft");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  function getActionSection() {
+    if (isCreator) {
+      return (
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold text-text-primary">Ready to begin?</p>
+            <p className="text-sm text-text-secondary">
+              Start the draft once all players have joined.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            {showCancelConfirm ? (
+              <>
+                <span className="flex items-center text-sm text-text-secondary">
+                  Are you sure?
+                </span>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={cancelling}
+                  onClick={handleCancel}
+                >
+                  Yes, Cancel
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCancelConfirm(false)}
+                >
+                  No, Go Back
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="primary"
+                  loading={starting}
+                  onClick={handleStart}
+                >
+                  Start Draft
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowCancelConfirm(true)}
+                >
+                  Cancel Draft
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (isParticipant) {
+      return (
+        <div className="rounded-xl border border-border bg-surface p-6 text-center">
+          <p className="text-text-secondary">
+            You have joined this draft. Waiting for the creator to start.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold text-text-primary">Want to play?</p>
+          <p className="text-sm text-text-secondary">
+            Join this draft to participate when it starts.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          loading={joining}
+          onClick={handleJoin}
+        >
+          Join Draft
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -261,62 +361,7 @@ export function DraftManageView({
         )}
       </div>
 
-      {isCreator ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold text-text-primary">Ready to begin?</p>
-            <p className="text-sm text-text-secondary">
-              Start the draft once all players have joined.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            {showCancelConfirm ? (
-              <>
-                <span className="flex items-center text-sm text-text-secondary">
-                  Are you sure?
-                </span>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  loading={cancelling}
-                  onClick={handleCancel}
-                >
-                  Yes, Cancel
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCancelConfirm(false)}
-                >
-                  No, Go Back
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="primary"
-                  loading={starting}
-                  onClick={handleStart}
-                >
-                  Start Draft
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => setShowCancelConfirm(true)}
-                >
-                  Cancel Draft
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border bg-surface p-6 text-center">
-          <p className="text-text-secondary">
-            Waiting for the creator to start this draft
-          </p>
-        </div>
-      )}
+      {getActionSection()}
     </div>
   );
 }

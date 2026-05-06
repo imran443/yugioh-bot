@@ -92,6 +92,17 @@ export async function GET(
       playerTwoName: match.playerTwoId ? (playerMap.get(match.playerTwoId) ?? `Player ${match.playerTwoId}`) : null,
     }));
 
+    const session = await auth();
+    let isParticipant = false;
+    if (session?.user?.id) {
+      const currentPlayer = db
+        .prepare("select id from players where guild_id = ? and discord_user_id = ?")
+        .get(tournament.guild_id, session.user.id) as { id: number } | undefined;
+      isParticipant = currentPlayer
+        ? participants.some((p) => p.playerId === currentPlayer.id)
+        : false;
+    }
+
     return NextResponse.json({
       id: tournament.id,
       guildId: tournament.guild_id,
@@ -102,6 +113,7 @@ export async function GET(
       webSlug: tournament.web_slug ?? undefined,
       participants,
       matches: matchesWithNames,
+      isParticipant,
     });
   } catch (error) {
     console.error("[api/tournaments/id] error:", error);
