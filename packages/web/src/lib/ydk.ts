@@ -38,7 +38,8 @@ export function generateYdk(cards: YdkCard[]): string {
   for (const id of extra) {
     lines.push(String(id));
   }
-  lines.push("#side");
+  lines.push("");
+  lines.push("!side");
 
   return lines.join("\n") + "\n";
 }
