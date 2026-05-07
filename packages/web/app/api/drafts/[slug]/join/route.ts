@@ -18,10 +18,11 @@ export async function POST(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, guild_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; guild_id: string; status: string } | undefined;
+      .prepare("select id, guild_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; guild_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
@@ -31,13 +32,13 @@ export async function POST(
       return NextResponse.json({ error: "Draft is no longer accepting players" }, { status: 400 });
     }
 
-    const guildId = draft.guild_id || env.discordGuildId;
-    if (!guildId) {
+    const draftGuildId = draft.guild_id || env.discordGuildId;
+    if (!draftGuildId) {
       return NextResponse.json({ error: "Server not configured" }, { status: 500 });
     }
 
     const players = createPlayerService(db);
-    const player = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
+    const player = players.findOrCreate(draftGuildId, session.user.id, session.user.name ?? "Unknown");
 
     const drafts = createDraftService(db);
     drafts.join(draft.id, player.id);

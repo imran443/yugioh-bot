@@ -27,10 +27,18 @@ export function TimerBar({ className }: TimerBarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 shadow-card",
+        "flex flex-col gap-2 rounded-xl border border-border bg-surface p-3",
         className
       )}
     >
+      <div className="flex items-center justify-end text-[0.7rem] font-semibold uppercase tracking-[0.22em]">
+        {!completed && (
+          <span className={cn(isUrgent ? "text-accent-cta" : "text-accent-primary")}>
+            {isUrgent ? "Urgent" : "Live"}
+          </span>
+        )}
+      </div>
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Clock
@@ -40,10 +48,10 @@ export function TimerBar({ className }: TimerBarProps) {
             )}
             aria-hidden="true"
           />
-          <span className="text-sm font-semibold text-text-secondary">
-            Pack {packRound} &middot; Pick {pickStep}
-          </span>
-        </div>
+            <span className="text-sm font-semibold text-text-secondary">
+              Pack {packRound} &middot; Pick {pickStep}
+            </span>
+          </div>
 
         {completed ? (
           <span className="font-display text-xl text-accent-success">

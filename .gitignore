@@ -1,11 +1,11 @@
 node_modules/
 .env
-docker-compose.override.yml
 data/
 dist/
 coverage/
 .turbo/
 .worktrees/
+.claude/
 packages/*/data/
 packages/*/dist/
 packages/*/.next/

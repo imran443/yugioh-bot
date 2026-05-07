@@ -156,7 +156,7 @@ export function AnnouncementToggles() {
           id="announce-channel"
           value={settings.announceChannelId ?? ""}
           onChange={(e) => handleChange("announceChannelId", e.target.value || null)}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+          className="native-select w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
         >
           <option value="">Default Channel</option>
           {channels.map((ch) => (

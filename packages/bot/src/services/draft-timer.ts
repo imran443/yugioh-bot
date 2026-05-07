@@ -40,7 +40,7 @@ export function createDraftTimerService({
         return;
       }
 
-      intervalId = setInterval(() => tick(), 10000);
+      intervalId = setInterval(() => tick(), 1000);
     },
 
     stop() {

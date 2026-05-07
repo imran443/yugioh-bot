@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { createDraftService } from "@yugidraft/shared/services";
+import { buildDraftResponse } from "./helpers";
 
 export const runtime = "nodejs";
 
@@ -16,88 +18,13 @@ export async function GET(
     }
 
     const { slug } = await params;
-    const db = getDb();
+    const response = await buildDraftResponse(slug, session.user.id);
 
-    const draft = db
-      .prepare(
-        `
-        select
-          d.id,
-          d.guild_id,
-          d.channel_id,
-          d.name,
-          d.status,
-          d.created_by_user_id,
-          d.config_json,
-          d.current_wave_number,
-          d.current_pick_step,
-          d.pick_deadline_at,
-          d.status_message_id,
-          d.web_slug,
-          d.created_at,
-          d.started_at,
-          d.ended_at,
-          count(dp.player_id) as player_count
-        from drafts d
-        left join draft_players dp on dp.draft_id = d.id
-        where d.web_slug = ?
-        group by d.id
-      `
-      )
-      .get(slug) as any;
-
-    if (!draft) {
+    if (!response) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
     }
 
-    const players = db
-      .prepare(
-        `
-        select p.id as player_id, p.display_name, dp.seat_index, dp.pick_count, dp.finished_at, dp.joined_at
-        from draft_players dp
-        inner join players p on p.id = dp.player_id
-        where dp.draft_id = ?
-        order by dp.joined_at asc, dp.rowid asc
-      `
-      )
-      .all(draft.id)
-      .map((row: any) => ({
-        playerId: row.player_id,
-        displayName: row.display_name,
-        seatIndex: row.seat_index ?? undefined,
-        pickCount: row.pick_count,
-        finishedAt: row.finished_at ?? undefined,
-        joinedAt: row.joined_at,
-      }));
-
-    const currentPlayer = db
-      .prepare("select id from players where guild_id = ? and discord_user_id = ?")
-      .get(draft.guild_id, session.user.id) as { id: number } | undefined;
-
-    const isParticipant = currentPlayer
-      ? players.some((p: any) => p.playerId === currentPlayer.id)
-      : false;
-
-    return NextResponse.json({
-      id: draft.id,
-      guildId: draft.guild_id,
-      channelId: draft.channel_id,
-      name: draft.name,
-      status: draft.status,
-      createdByUserId: draft.created_by_user_id,
-      config: JSON.parse(draft.config_json),
-      currentPackRound: draft.current_wave_number ?? 0,
-      currentPickStep: draft.current_pick_step ?? 0,
-      pickDeadlineAt: draft.pick_deadline_at ?? undefined,
-      statusMessageId: draft.status_message_id ?? undefined,
-      webSlug: draft.web_slug ?? undefined,
-      createdAt: draft.created_at,
-      startedAt: draft.started_at ?? undefined,
-      endedAt: draft.ended_at ?? undefined,
-      playerCount: draft.player_count,
-      players,
-      isParticipant,
-    });
+    return NextResponse.json(response);
   } catch (error) {
     console.error("[api/drafts/[slug]] error:", error);
     return NextResponse.json(
@@ -119,10 +46,11 @@ export async function DELETE(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, created_by_user_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; created_by_user_id: string; status: string } | undefined;
+      .prepare("select id, created_by_user_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; created_by_user_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
@@ -166,10 +94,11 @@ export async function PUT(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, created_by_user_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; created_by_user_id: string; status: string } | undefined;
+      .prepare("select id, created_by_user_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; created_by_user_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
@@ -238,10 +167,11 @@ export async function POST(
 
     const { slug } = await params;
     const db = getDb();
+    const guildId = env.discordGuildId;
 
     const draft = db
-      .prepare("select id, created_by_user_id, status from drafts where web_slug = ?")
-      .get(slug) as { id: number; created_by_user_id: string; status: string } | undefined;
+      .prepare("select id, created_by_user_id, status from drafts where web_slug = ? and guild_id = ?")
+      .get(slug, guildId) as { id: number; created_by_user_id: string; status: string } | undefined;
 
     if (!draft) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });

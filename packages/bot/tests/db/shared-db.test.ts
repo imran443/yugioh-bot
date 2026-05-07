@@ -27,6 +27,7 @@ describe("shared database package", () => {
         "draft_players",
         "draft_templates",
         "drafts",
+        "guild_settings",
         "matches",
         "players",
         "tournament_matches",

@@ -32,6 +32,7 @@ describe("shared database schema", () => {
       "draft_players",
       "draft_templates",
       "drafts",
+      "guild_settings",
       "matches",
       "players",
       "tournament_matches",
@@ -99,6 +100,188 @@ describe("shared database schema", () => {
       "pick_step",
       "pick_method",
       "picked_at",
+    ]);
+    expect(getTableInfo(db, "card_catalog").map((column) => column.name)).toEqual([
+      "ygoprodeck_id",
+      "name",
+      "type",
+      "frame_type",
+      "effect_text",
+      "atk",
+      "def",
+      "attribute",
+      "level",
+      "image_url",
+      "image_url_small",
+      "card_sets_json",
+      "cached_at",
+    ]);
+  });
+
+  it("adds the card_sets table when migrating an older database", () => {
+    const db = new Database(":memory:");
+
+    db.exec(`
+      create table players (
+        id integer primary key autoincrement,
+        guild_id text not null,
+        discord_user_id text not null,
+        display_name text not null,
+        created_at text not null default current_timestamp,
+        unique (guild_id, discord_user_id)
+      );
+
+      create table tournaments (
+        id integer primary key autoincrement,
+        guild_id text not null,
+        name text not null,
+        format text not null,
+        status text not null,
+        created_by_user_id text not null,
+        created_at text not null default current_timestamp,
+        started_at text,
+        ended_at text
+      );
+
+      create table tournament_participants (
+        tournament_id integer not null references tournaments(id),
+        player_id integer not null references players(id),
+        joined_at text not null default current_timestamp,
+        primary key (tournament_id, player_id)
+      );
+
+      create table card_catalog (
+        ygoprodeck_id integer primary key not null,
+        name text not null,
+        type text not null,
+        frame_type text not null,
+        image_url text not null,
+        image_url_small text not null,
+        card_sets_json text not null,
+        cached_at text not null
+      );
+
+      create table drafts (
+        id integer primary key autoincrement,
+        guild_id text not null,
+        channel_id text not null,
+        name text not null,
+        status text not null,
+        created_by_user_id text not null,
+        config_json text not null default '{}',
+        current_wave_number integer not null default 0,
+        current_pick_step integer not null default 0,
+        pick_deadline_at text,
+        status_message_id text,
+        created_at text not null default current_timestamp,
+        started_at text,
+        ended_at text
+      );
+
+      create table draft_players (
+        draft_id integer not null references drafts(id),
+        player_id integer not null references players(id),
+        pick_count integer not null default 0,
+        finished_at text,
+        seat_index integer,
+        joined_at text not null default current_timestamp,
+        primary key (draft_id, player_id)
+      );
+
+      create table draft_packs (
+        id integer primary key autoincrement,
+        draft_id integer not null references drafts(id),
+        pack_round integer not null,
+        origin_seat_index integer not null,
+        current_holder_seat_index integer not null,
+        pass_direction integer not null,
+        created_at text not null default current_timestamp,
+        unique (draft_id, pack_round, origin_seat_index)
+      );
+
+      create table draft_cards (
+        id integer primary key autoincrement,
+        draft_id integer not null references drafts(id),
+        wave_number integer not null,
+        draft_pack_id integer references draft_packs(id),
+        catalog_card_id integer not null references card_catalog(ygoprodeck_id),
+        position integer,
+        picked_by_player_id integer,
+        picked_at text,
+        created_at text not null default current_timestamp,
+        foreign key (draft_id, picked_by_player_id) references draft_players(draft_id, player_id),
+        unique (id, draft_id, wave_number)
+      );
+
+      create table draft_picks (
+        id integer primary key autoincrement,
+        draft_id integer not null references drafts(id),
+        player_id integer not null,
+        draft_card_id integer not null references draft_cards(id),
+        wave_number integer not null,
+        pick_step integer not null,
+        pick_method text not null default 'manual',
+        picked_at text not null,
+        foreign key (draft_id, player_id) references draft_players(draft_id, player_id),
+        foreign key (draft_card_id, draft_id, wave_number) references draft_cards(id, draft_id, wave_number),
+        unique (draft_id, player_id, wave_number, pick_step),
+        unique (draft_card_id)
+      );
+
+      create table matches (
+        id integer primary key autoincrement,
+        guild_id text not null,
+        player_one_id integer not null references players(id),
+        player_two_id integer not null references players(id),
+        winner_id integer references players(id),
+        reporter_id integer not null references players(id),
+        approver_id integer references players(id),
+        status text not null,
+        source text not null,
+        tournament_id integer references tournaments(id),
+        created_at text not null default current_timestamp,
+        resolved_at text
+      );
+
+      create table tournament_matches (
+        id integer primary key autoincrement,
+        tournament_id integer not null references tournaments(id),
+        match_id integer references matches(id),
+        player_one_id integer not null references players(id),
+        player_two_id integer references players(id),
+        round_number integer not null,
+        status text not null,
+        metadata_json text not null default '{}'
+      );
+    `);
+
+    migrate(db);
+
+    const cardSetsRow = db
+      .prepare("select name from sqlite_master where type = 'table' and name = 'card_sets'")
+      .get() as { name: string } | undefined;
+
+    expect(cardSetsRow?.name).toBe("card_sets");
+    expect(getTableInfo(db, "card_sets").map((column) => column.name)).toEqual([
+      "set_name",
+      "synced_at",
+      "card_count",
+      "set_code",
+    ]);
+    expect(getTableInfo(db, "card_catalog").map((column) => column.name)).toEqual([
+      "ygoprodeck_id",
+      "name",
+      "type",
+      "frame_type",
+      "image_url",
+      "image_url_small",
+      "card_sets_json",
+      "cached_at",
+      "effect_text",
+      "atk",
+      "def",
+      "attribute",
+      "level",
     ]);
   });
 });

@@ -21,7 +21,7 @@ FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npx turbo run build --concurrency=1
+RUN npx turbo run build
 RUN npm prune --omit=dev
 
 # ── bot ──────────────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ CMD ["/app/node_modules/.bin/next", "start"]
 
 # ── web-dev ──────────────────────────────────────────────────────────────────
 # Development stage: runs `next dev` with HMR.
-# Source directories are bind-mounted by docker-compose.dev.yml at runtime.
+# Source directories are bind-mounted by docker-compose.override.yml at runtime.
 FROM node:22-bookworm-slim AS web-dev
 WORKDIR /app
 ENV NODE_ENV=development
@@ -92,8 +92,11 @@ COPY packages/bot/package*.json packages/bot/
 COPY packages/ws/package*.json packages/ws/
 COPY packages/web/package*.json packages/web/
 COPY packages/shared/package*.json packages/shared/
-# Copy full source — bind mounts in docker-compose.dev.yml overlay these at runtime
+# Copy full source — bind mounts in docker-compose.override.yml overlay these at runtime
 COPY . .
+# Pre-create the Next cache directory with the runtime UID/GID so the
+# anonymous volume mounted at /app/packages/web/.next remains writable.
+RUN mkdir -p /app/packages/web/.next && chown -R 1000:1000 /app/packages/web/.next
 EXPOSE 3000
 WORKDIR /app/packages/web
 CMD ["/app/node_modules/.bin/next", "dev"]

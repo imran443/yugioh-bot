@@ -10,30 +10,40 @@ interface SeatListProps {
 
 export function SeatList({ className }: SeatListProps) {
   const seats = useDraftStore((s) => s.seats);
+  const activeSeat = seats.find((seat) => seat.isCurrentPlayer) ?? null;
 
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 shadow-card",
+        "flex flex-col gap-3 rounded-xl border border-border bg-surface p-3",
         className
       )}
     >
-      <h3 className="mb-1 font-display text-lg text-text-primary">Players</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="font-display text-lg text-text-primary">Players</h3>
+        {activeSeat && (
+          <span className="rounded-full bg-accent-primary/10 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-wide text-accent-primary">
+            You: Seat {activeSeat.seatIndex + 1}
+          </span>
+        )}
+      </div>
       <div className="flex flex-col gap-2" role="list" aria-label="Draft players">
         {seats.length === 0 && (
-          <p className="text-sm text-text-secondary">Waiting for players...</p>
+          <p className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-text-secondary">
+            Waiting for players...
+          </p>
         )}
         {seats.map((seat) => (
           <div
             key={seat.seatIndex}
             role="listitem"
             className={cn(
-              "flex items-center gap-3 rounded-lg border p-2.5 motion-safe:transition-colors",
-              seat.isCurrentPlayer
-                ? "border-accent-primary bg-accent-primary/10"
-                : "border-border bg-bg-elevated/50"
-            )}
-          >
+              "flex items-center gap-3 rounded-lg border p-2 motion-safe:transition-colors",
+               seat.isCurrentPlayer
+                 ? "border-accent-primary/50 bg-accent-primary/10"
+                 : "border-border bg-bg-elevated/50"
+             )}
+           >
             {/* Avatar placeholder */}
             <div
               className={cn(

@@ -60,14 +60,42 @@ const initialState: DraftState = {
   highlightedIndex: -1,
 };
 
+function haveSameCardIds(currentPack: DraftCardDetail[], nextPack: DraftCardDetail[]) {
+  if (currentPack.length !== nextPack.length) {
+    return false;
+  }
+
+  return currentPack.every((card, index) => card.id === nextPack[index]?.id);
+}
+
 export const useDraftStore = create<DraftState & DraftActions>((set) => ({
   ...initialState,
 
   setFromServer: (partial) =>
-    set((state) => ({
-      ...state,
-      ...partial,
-    })),
+    set((state) => {
+      const nextState = {
+        ...state,
+        ...partial,
+      };
+      const nextPack = partial.currentPack ?? state.currentPack;
+      const nextIsMyTurn = partial.isMyTurn ?? state.isMyTurn;
+      const nextCompleted = partial.completed ?? state.completed;
+      const packChanged = partial.currentPack !== undefined && !haveSameCardIds(state.currentPack, partial.currentPack);
+      const selectedStillAvailable =
+        nextState.selectedCardId !== null && nextPack.some((card) => card.id === nextState.selectedCardId);
+      const highlightedStillAvailable =
+        nextState.highlightedIndex >= 0 && nextState.highlightedIndex < nextPack.length;
+
+      if (!nextIsMyTurn || nextCompleted || packChanged || !selectedStillAvailable) {
+        nextState.selectedCardId = null;
+      }
+
+      if (!nextIsMyTurn || nextCompleted || packChanged || !highlightedStillAvailable) {
+        nextState.highlightedIndex = -1;
+      }
+
+      return nextState;
+    }),
 
   pickCard: (cardId) =>
     set((state) => {

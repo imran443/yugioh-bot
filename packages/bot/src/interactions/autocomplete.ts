@@ -32,6 +32,10 @@ type AutocompleteDependencies = {
 
 const maxAutocompleteChoiceLength = 100;
 
+function formatSetChoiceName(set: { setName: string; setCode: string }): string {
+  return (set.setCode ? `${set.setName} (${set.setCode})` : set.setName).slice(0, maxAutocompleteChoiceLength);
+}
+
 function tournamentChoices(
   tournaments: ReturnType<TournamentService["autocomplete"]>,
 ): AutocompleteChoice[] {
@@ -140,8 +144,8 @@ export async function handleAutocomplete(
 
       await interaction.respond(
         sets.map((set) => ({
-          name: `${set.setName} (${set.setCode})`.slice(0, maxAutocompleteChoiceLength),
-          value: set.setName,
+          name: formatSetChoiceName(set),
+          value: set.setName.slice(0, maxAutocompleteChoiceLength),
         })),
       );
       return;
@@ -152,8 +156,8 @@ export async function handleAutocomplete(
 
       await interaction.respond(
         sets.map((set) => ({
-          name: `${set.setName} (${set.setCode})`.slice(0, maxAutocompleteChoiceLength),
-          value: set.setName,
+          name: formatSetChoiceName(set),
+          value: set.setName.slice(0, maxAutocompleteChoiceLength),
         })),
       );
       return;

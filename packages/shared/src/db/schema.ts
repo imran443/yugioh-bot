@@ -47,6 +47,11 @@ export function migrate(db: Database.Database) {
       name text not null,
       type text not null,
       frame_type text not null,
+      effect_text text,
+      atk integer,
+      def integer,
+      attribute text,
+      level integer,
       image_url text not null,
       image_url_small text not null,
       card_sets_json text not null,
@@ -145,6 +150,11 @@ export function migrate(db: Database.Database) {
       status text not null,
       metadata_json text not null default '{}'
     );
+
+    create table if not exists card_sets (
+      set_name text primary key not null,
+      synced_at text not null
+    );
   `);
 
   const tournamentSchema = db
@@ -215,6 +225,11 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "draft_cards", "draft_pack_id", "integer references draft_packs(id)");
   addColumnIfMissing(db, "draft_cards", "position", "integer");
   addColumnIfMissing(db, "draft_picks", "pick_method", "text not null default 'manual'");
+  addColumnIfMissing(db, "card_catalog", "effect_text", "text");
+  addColumnIfMissing(db, "card_catalog", "atk", "integer");
+  addColumnIfMissing(db, "card_catalog", "def", "integer");
+  addColumnIfMissing(db, "card_catalog", "attribute", "text");
+  addColumnIfMissing(db, "card_catalog", "level", "integer");
   addColumnIfMissing(db, "card_sets", "card_count", "integer");
   addColumnIfMissing(db, "card_sets", "set_code", "text");
 
@@ -235,11 +250,6 @@ export function migrate(db: Database.Database) {
       created_by_user_id text not null,
       created_at text not null default current_timestamp,
       unique (guild_id, name)
-    );
-
-    create table if not exists card_sets (
-      set_name text primary key not null,
-      synced_at text not null
     );
 
     create index if not exists draft_cards_unpicked_by_draft_wave
