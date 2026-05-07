@@ -47,6 +47,18 @@ export async function buildDraftResponse(slug: string, userId: string) {
   const drafts = createDraftService(db);
   const guildId = env.discordGuildId;
 
+  const draftIdRow = db
+    .prepare("select id, status from drafts where web_slug = ? and guild_id = ?")
+    .get(slug, guildId) as { id: number; status: string } | undefined;
+
+  if (!draftIdRow) {
+    return null;
+  }
+
+  if (draftIdRow.status === "active") {
+    drafts.expireCurrentPickStep(draftIdRow.id);
+  }
+
   const draft = db
     .prepare(
       `
@@ -69,11 +81,11 @@ export async function buildDraftResponse(slug: string, userId: string) {
           count(dp.player_id) as player_count
         from drafts d
         left join draft_players dp on dp.draft_id = d.id
-        where d.web_slug = ? and d.guild_id = ?
+        where d.id = ?
         group by d.id
       `
     )
-    .get(slug, guildId) as any;
+    .get(draftIdRow.id) as any;
 
   if (!draft) {
     return null;
