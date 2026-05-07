@@ -31,7 +31,7 @@ export function DraftCard({ draft }: { draft: DraftCardProps }) {
         ? "Cancelled"
         : draft.status.charAt(0).toUpperCase() + draft.status.slice(1);
 
-  const isLinkable = draft.webSlug && (draft.status === "active" || draft.status === "pending" || draft.status === "completed");
+  const isLinkable = draft.webSlug && (draft.status === "active" || draft.status === "pending" || draft.status === "completed" || draft.status === "cancelled");
 
   const card = (
     <div className="rounded-xl border border-border bg-surface p-5 motion-safe:transition-colors hover:border-accent-primary/30 hover:bg-bg-elevated">
@@ -57,7 +57,7 @@ export function DraftCard({ draft }: { draft: DraftCardProps }) {
         </div>
         {isLinkable && (
           <span className="text-sm font-semibold text-accent-primary hover:text-accent-secondary">
-            {draft.status === "active" ? "Open Draft Room →" : draft.status === "pending" ? "Manage Draft →" : "View Deck →"}
+            {draft.status === "active" ? "Open Draft Room →" : draft.status === "pending" ? "Manage Draft →" : draft.status === "cancelled" ? "View Summary →" : "View Deck →"}
           </span>
         )}
       </div>

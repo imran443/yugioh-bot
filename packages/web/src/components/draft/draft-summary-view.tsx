@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Clock, Download, Layers, Package, User, Users } from "lucide-react";
+import { Clock, Download, Layers, Package, Trash2, User, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import type { DraftCardDetail } from "@/lib/stores/draft-store";
 
 interface DraftSummaryViewProps {
@@ -33,7 +34,9 @@ interface DraftSummaryViewProps {
     participantPickCount?: number;
   };
   isParticipant: boolean;
+  isCreator: boolean;
   onExportYdk: () => Promise<string>;
+  onDelete: () => Promise<void>;
   myPool?: DraftCardDetail[];
 }
 
@@ -57,10 +60,14 @@ function formatDate(iso: string) {
 export function DraftSummaryView({
   draft,
   isParticipant,
+  isCreator,
   onExportYdk,
+  onDelete,
   myPool,
 }: DraftSummaryViewProps) {
   const [exporting, setExporting] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const isCompleted = draft.status === "completed";
@@ -87,6 +94,17 @@ export function DraftSummaryView({
       setError(err instanceof Error ? err.message : "Failed to export YDK");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      await onDelete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete draft");
+      setDeleting(false);
     }
   };
 
@@ -121,17 +139,29 @@ export function DraftSummaryView({
               )}
             </div>
           </div>
-          {canExportYdk && (
-            <Button
-              variant="primary"
-              size="sm"
-              loading={exporting}
-              onClick={handleExport}
-            >
-              <Download className="h-4 w-4" />
-              Export YDK
-            </Button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {canExportYdk && (
+              <Button
+                variant="primary"
+                size="sm"
+                loading={exporting}
+                onClick={handleExport}
+              >
+                <Download className="h-4 w-4" />
+                Export YDK
+              </Button>
+            )}
+            {isCreator && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setConfirmOpen(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            )}
+          </div>
         </div>
         {isCompleted && isParticipant && !canExportYdk && (
           <p className="mt-4 text-sm text-text-secondary">
@@ -251,6 +281,24 @@ export function DraftSummaryView({
           </div>
         )}
       </div>
+
+      <Modal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Delete draft?"
+      >
+        <p className="text-sm text-text-secondary">
+          This will permanently delete <span className="font-semibold text-text-primary">{draft.name}</span> and all pick history. This cannot be undone.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant="secondary" size="sm" onClick={() => setConfirmOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="sm" loading={deleting} onClick={handleDelete}>
+            Delete
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

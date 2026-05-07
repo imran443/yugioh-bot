@@ -184,6 +184,15 @@ export default function DraftDetailPage() {
     await fetchDraft();
   };
 
+  const handleDelete = async () => {
+    const res = await fetch(`/api/drafts/${slug}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error ?? "Failed to delete draft");
+    }
+    router.push("/drafts");
+  };
+
   const handleExportYdk = async (): Promise<string> => {
     const res = await fetch(`/api/drafts/${slug}/export`);
     if (!res.ok) throw new Error("Failed to export deck");
@@ -331,7 +340,9 @@ export default function DraftDetailPage() {
       <DraftSummaryView
         draft={draft}
         isParticipant={isParticipant}
+        isCreator={isCreator}
         onExportYdk={handleExportYdk}
+        onDelete={handleDelete}
         myPool={draft.myPool}
       />
     </div>

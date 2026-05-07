@@ -61,7 +61,14 @@ export async function DELETE(
     }
 
     if (draft.status === "completed" || draft.status === "cancelled") {
-      return NextResponse.json({ error: `Draft is already ${draft.status}` }, { status: 400 });
+      db.transaction(() => {
+        db.prepare("delete from draft_picks where draft_id = ?").run(draft.id);
+        db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
+        db.prepare("delete from draft_packs where draft_id = ?").run(draft.id);
+        db.prepare("delete from draft_players where draft_id = ?").run(draft.id);
+        db.prepare("delete from drafts where id = ?").run(draft.id);
+      })();
+      return NextResponse.json({ deleted: true });
     }
 
     const drafts = createDraftService(db);

@@ -104,7 +104,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={{ ...baseDraft, participantPickCount: 15 } as any}
         isParticipant={true}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
       />
     );
 
@@ -117,7 +119,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={baseDraft as any}
         isParticipant={true}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
         myPool={samplePool}
       />
     );
@@ -133,7 +137,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={baseDraft as any}
         isParticipant={true}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
         myPool={samplePool}
       />
     );
@@ -150,7 +156,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={baseDraft as any}
         isParticipant={true}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
         myPool={samplePool}
       />
     );
@@ -165,7 +173,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={baseDraft as any}
         isParticipant={false}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
         myPool={samplePool}
       />
     );
@@ -179,7 +189,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={baseDraft as any}
         isParticipant={true}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
         myPool={[]}
       />
     );
@@ -192,7 +204,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={baseDraft as any}
         isParticipant={true}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
       />
     );
 
@@ -204,7 +218,9 @@ describe("DraftSummaryView", () => {
       <DraftSummaryView
         draft={baseDraft as any}
         isParticipant={true}
+        isCreator={false}
         onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
         myPool={subtypePool}
       />
     );
