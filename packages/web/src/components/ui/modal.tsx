@@ -119,7 +119,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       <div
         ref={panelRef}
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-lg bg-surface p-6 shadow-card",
+          "relative z-10 w-full max-w-lg rounded-lg bg-bg-surface p-6 shadow-card",
           "motion-safe:transition-all motion-safe:duration-200",
           visible ? "opacity-100 scale-100" : "opacity-0 scale-95",
           className

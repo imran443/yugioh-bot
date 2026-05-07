@@ -299,7 +299,15 @@ export function CardGrid({ className }: CardGridProps) {
           }}
         >
           <div className="max-h-[calc(100vh-2rem)] w-72 overflow-auto rounded-xl border border-border bg-surface shadow-card">
-            <div className="relative aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-bg-elevated">
+            <div
+              data-testid="hover-preview-art"
+              className="relative isolate aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-[#d8c28a]"
+            >
+              <div
+                data-testid="hover-preview-art-backdrop"
+                className="absolute inset-0 bg-[#d8c28a]"
+                aria-hidden="true"
+              />
               {imageErrors.has(hoveredCard.id) ? (
                 <div className="flex h-full items-center justify-center text-text-secondary">
                   No image

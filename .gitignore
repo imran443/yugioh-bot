@@ -5,6 +5,7 @@ dist/
 coverage/
 .turbo/
 .worktrees/
+.claude/
 packages/*/data/
 packages/*/dist/
 packages/*/.next/

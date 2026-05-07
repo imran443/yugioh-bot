@@ -69,6 +69,10 @@ describe("seed script", () => {
       .prepare("select name, image_url, image_url_small from card_catalog where name = 'Mystical Space Typhoon'")
       .get() as { name: string; image_url: string; image_url_small: string } | undefined;
 
+    const blueEyes = db
+      .prepare("select effect_text, atk, def, attribute, level from card_catalog where name = 'Blue-Eyes White Dragon'")
+      .get() as { effect_text: string; atk: number; def: number; attribute: string; level: number } | undefined;
+
     expect(tournamentOwners).toEqual([{ created_by_user_id: discordUserId }]);
     expect(draftOwners).toEqual([{ created_by_user_id: discordUserId }]);
     expect(draftConfigs.map((draft) => ({
@@ -102,6 +106,13 @@ describe("seed script", () => {
       name: "Mystical Space Typhoon",
       image_url: expect.stringContaining("https://images.ygoprodeck.com/images/cards/"),
       image_url_small: expect.stringContaining("https://images.ygoprodeck.com/images/cards_small/"),
+    });
+    expect(blueEyes).toEqual({
+      effect_text: expect.stringContaining("legendary dragon"),
+      atk: 3000,
+      def: 2500,
+      attribute: "LIGHT",
+      level: 8,
     });
   }, 15000);
 });

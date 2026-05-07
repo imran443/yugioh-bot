@@ -171,8 +171,11 @@ describe("GET /api/drafts/[slug]", () => {
     expect(payload.currentPack.length).toBeGreaterThan(0);
     expect(
       payload.currentPack.every(
-        (card: { name: string; imageUrl: string; imageUrlSmall: string }) =>
-          card.name.length > 0 && card.imageUrl.length > 0 && card.imageUrlSmall.length > 0
+        (card: { name: string; imageUrl: string; imageUrlSmall: string; effectText: string }) =>
+          card.name.length > 0 &&
+          card.imageUrl.length > 0 &&
+          card.imageUrlSmall.length > 0 &&
+          card.effectText.length > 0
       )
     ).toBe(true);
   }, testTimeoutMs);

@@ -101,6 +101,21 @@ describe("shared database schema", () => {
       "pick_method",
       "picked_at",
     ]);
+    expect(getTableInfo(db, "card_catalog").map((column) => column.name)).toEqual([
+      "ygoprodeck_id",
+      "name",
+      "type",
+      "frame_type",
+      "effect_text",
+      "atk",
+      "def",
+      "attribute",
+      "level",
+      "image_url",
+      "image_url_small",
+      "card_sets_json",
+      "cached_at",
+    ]);
   });
 
   it("adds the card_sets table when migrating an older database", () => {
@@ -252,6 +267,21 @@ describe("shared database schema", () => {
       "synced_at",
       "card_count",
       "set_code",
+    ]);
+    expect(getTableInfo(db, "card_catalog").map((column) => column.name)).toEqual([
+      "ygoprodeck_id",
+      "name",
+      "type",
+      "frame_type",
+      "image_url",
+      "image_url_small",
+      "card_sets_json",
+      "cached_at",
+      "effect_text",
+      "atk",
+      "def",
+      "attribute",
+      "level",
     ]);
   });
 });

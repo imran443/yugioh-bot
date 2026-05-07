@@ -8,6 +8,11 @@ type SnapshotCard = {
   name: string;
   type: string;
   frameType: string;
+  effectText: string;
+  atk?: number;
+  def?: number;
+  attribute?: string;
+  level?: number;
   imageUrl: string;
   imageUrlSmall: string;
   cardSets: Array<{ set_name: string }>;
@@ -116,6 +121,11 @@ db.exec(`
     name text not null,
     type text not null,
     frame_type text not null,
+    effect_text text,
+    atk integer,
+    def integer,
+    attribute text,
+    level integer,
     image_url text not null,
     image_url_small text not null,
     card_sets_json text not null,
@@ -234,12 +244,17 @@ const others = players.filter((p) => p.discord_user_id !== userDiscordId);
 // ---------- CARD CATALOG ----------
 const insertCard = db.prepare(
   `insert into card_catalog
-   (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
-   values (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+   (ygoprodeck_id, name, type, frame_type, effect_text, atk, def, attribute, level, image_url, image_url_small, card_sets_json, cached_at)
+   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
    on conflict(ygoprodeck_id) do update set
      name = excluded.name,
      type = excluded.type,
      frame_type = excluded.frame_type,
+     effect_text = excluded.effect_text,
+     atk = excluded.atk,
+     def = excluded.def,
+     attribute = excluded.attribute,
+     level = excluded.level,
      image_url = excluded.image_url,
      image_url_small = excluded.image_url_small,
      card_sets_json = excluded.card_sets_json,
@@ -252,6 +267,11 @@ draftCatalogSnapshot.cards.forEach((card) => {
     card.name,
     card.type,
     card.frameType,
+    card.effectText,
+    card.atk ?? null,
+    card.def ?? null,
+    card.attribute ?? null,
+    card.level ?? null,
     card.imageUrl,
     card.imageUrlSmall,
     JSON.stringify(card.cardSets)

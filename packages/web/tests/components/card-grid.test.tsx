@@ -45,6 +45,19 @@ const samplePack = [
     imageUrl: "https://img/full/202",
     imageUrlSmall: "https://img/small/202",
   },
+  {
+    id: 303,
+    name: "Summoned Skull",
+    type: "Fiend / Normal Monster",
+    frameType: "normal",
+    effectText: "A fiend with dark powers for confusing the enemy. Among the Fiend-Type monsters, this monster boasts considerable force.",
+    attribute: "DARK",
+    level: 6,
+    atk: 2500,
+    def: 1200,
+    imageUrl: "https://img/full/303",
+    imageUrlSmall: "https://img/small/303",
+  },
 ];
 
 describe("CardGrid", () => {
@@ -153,5 +166,27 @@ describe("CardGrid", () => {
 
     expect(screen.getAllByAltText("Mirror Force").length).toBeGreaterThan(1);
     expect(document.querySelector(".pointer-events-none.fixed.z-30")).toBeTruthy();
+    expect(screen.getByTestId("hover-preview-art").className).toContain("bg-[#d8c28a]");
+    expect(screen.getByTestId("hover-preview-art-backdrop").className).toContain("bg-[#d8c28a]");
+  });
+
+  it("shows effect text and monster stats in the pick modal", async () => {
+    useDraftStore.setState({ ...baseState, currentPack: samplePack, isMyTurn: true });
+
+    render(<CardGrid />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("option", { name: /summoned skull/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: /summoned skull/i })).toBeTruthy();
+    });
+
+    expect(screen.getByText(/fiend with dark powers/i)).toBeTruthy();
+    expect(screen.getByText("ATK 2500")).toBeTruthy();
+    expect(screen.getByText("DEF 1200")).toBeTruthy();
+    expect(screen.getByText("DARK")).toBeTruthy();
+    expect(screen.getByText("Level 6")).toBeTruthy();
   });
 });

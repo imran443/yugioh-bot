@@ -40,6 +40,14 @@ function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
 
 function setup() {
   const db = new Database(":memory:");
+  db.exec(`
+    create table if not exists card_sets (
+      set_name text primary key not null,
+      synced_at text not null,
+      card_count integer,
+      set_code text
+    );
+  `);
   migrate(db);
   const updateStatusCalls: Array<{ draftId: number }> = [];
 
@@ -127,5 +135,18 @@ describe("draft timer service", () => {
     const updatedDraft = app.drafts.findById(draft.id);
     expect(updatedDraft.currentPickStep).toBeGreaterThan(1);
     expect(app.updateStatusCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("checks overdue drafts every second while running", () => {
+    const app = setup();
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+
+    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger });
+    timer.start();
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+
+    timer.stop();
+    setIntervalSpy.mockRestore();
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
+import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, waitFor } from "@testing-library/react";
 import { useDraftStore } from "../../src/lib/stores/draft-store";
 import { useDraftExpiryResync } from "../../src/lib/hooks/use-draft-expiry-resync";
 
@@ -68,8 +68,82 @@ describe("useDraftExpiryResync", () => {
 
     render(<ResyncHarness slug="legendary-draft" />);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps retrying after zero until the server advances the draft", async () => {
+    vi.useFakeTimers();
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            slug: "legendary-draft",
+            packRound: 2,
+            pickStep: 2,
+            currentPack: [],
+            myPool: [],
+            seats: [],
+            timerSeconds: 0,
+            isMyTurn: true,
+            completed: false,
+            pickSeconds: 60,
+          }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            slug: "legendary-draft",
+            packRound: 2,
+            pickStep: 3,
+            currentPack: [{ id: 99, name: "Card 99", type: "Spell Card", frameType: "spell", effectText: "fresh", imageUrl: "https://img/full/99", imageUrlSmall: "https://img/small/99" }],
+            myPool: [],
+            seats: [],
+            timerSeconds: 58,
+            isMyTurn: false,
+            completed: false,
+            pickSeconds: 60,
+          }),
+      } as unknown as Response)
+      .mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            slug: "legendary-draft",
+            packRound: 2,
+            pickStep: 3,
+            currentPack: [{ id: 99, name: "Card 99", type: "Spell Card", frameType: "spell", effectText: "fresh", imageUrl: "https://img/full/99", imageUrlSmall: "https://img/small/99" }],
+            myPool: [],
+            seats: [],
+            timerSeconds: 58,
+            isMyTurn: false,
+            completed: false,
+            pickSeconds: 60,
+          }),
+      } as unknown as Response);
+
+    render(<ResyncHarness slug="legendary-draft" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(useDraftStore.getState().pickStep).toBe(3);
+    expect(useDraftStore.getState().isMyTurn).toBe(false);
+
+    vi.useRealTimers();
   });
 });

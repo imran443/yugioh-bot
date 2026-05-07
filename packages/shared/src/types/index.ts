@@ -89,6 +89,11 @@ export interface Card {
   name: string;
   type: string;
   frameType: string;
+  effectText: string;
+  atk?: number;
+  def?: number;
+  attribute?: string;
+  level?: number;
   imageUrl: string;
   imageUrlSmall: string;
   cardSets: Array<{ set_name: string }>;

@@ -8,6 +8,11 @@ type SnapshotCard = {
   name: string;
   type: string;
   frameType: string;
+  effectText: string;
+  atk?: number;
+  def?: number;
+  attribute?: string;
+  level?: number;
   imageUrl: string;
   imageUrlSmall: string;
   cardSets: Array<{ set_name: string }>;
@@ -30,6 +35,11 @@ async function main() {
       name text not null,
       type text not null,
       frame_type text not null,
+      effect_text text,
+      atk integer,
+      def integer,
+      attribute text,
+      level integer,
       image_url text not null,
       image_url_small text not null,
       card_sets_json text not null,
@@ -53,6 +63,11 @@ async function main() {
         name: card.name,
         type: card.type,
         frameType: card.frameType,
+        effectText: card.effectText,
+        atk: card.atk,
+        def: card.def,
+        attribute: card.attribute,
+        level: card.level,
         imageUrl: card.imageUrl,
         imageUrlSmall: card.imageUrlSmall,
         cardSets: card.cardSets,

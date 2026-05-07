@@ -16,6 +16,11 @@ type YgoprodeckCard = {
   name: string;
   type: string;
   frameType: string;
+  desc?: string;
+  atk?: number;
+  def?: number;
+  attribute?: string;
+  level?: number;
   card_images: Array<{
     image_url: string;
     image_url_small: string;
@@ -61,6 +66,11 @@ function mapCard(row: any): CardCatalogCard {
     name: row.name,
     type: row.type,
     frameType: row.frame_type,
+    effectText: row.effect_text ?? "",
+    atk: row.atk ?? undefined,
+    def: row.def ?? undefined,
+    attribute: row.attribute ?? undefined,
+    level: row.level ?? undefined,
     imageUrl: row.image_url,
     imageUrlSmall: row.image_url_small,
     cardSets: JSON.parse(row.card_sets_json),
@@ -95,15 +105,25 @@ export function createCardCatalogService(
         name,
         type,
         frame_type,
+        effect_text,
+        atk,
+        def,
+        attribute,
+        level,
         image_url,
         image_url_small,
         card_sets_json,
         cached_at
-      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       on conflict(ygoprodeck_id) do update set
         name = excluded.name,
         type = excluded.type,
         frame_type = excluded.frame_type,
+        effect_text = excluded.effect_text,
+        atk = excluded.atk,
+        def = excluded.def,
+        attribute = excluded.attribute,
+        level = excluded.level,
         image_url = excluded.image_url,
         image_url_small = excluded.image_url_small,
         card_sets_json = excluded.card_sets_json,
@@ -126,6 +146,11 @@ export function createCardCatalogService(
         card.name,
         card.type,
         card.frameType,
+        card.desc ?? "",
+        card.atk ?? null,
+        card.def ?? null,
+        card.attribute ?? null,
+        card.level ?? null,
         image.image_url,
         image.image_url_small,
         JSON.stringify(card.card_sets ?? []),
@@ -255,6 +280,11 @@ export function createCardCatalogService(
           name: c.name,
           type: c.type,
           frameType: c.frameType,
+          effectText: c.desc ?? "",
+          atk: c.atk,
+          def: c.def,
+          attribute: c.attribute,
+          level: c.level,
           imageUrl: image?.image_url ?? "",
           imageUrlSmall: image?.image_url_small ?? "",
           cardSets: (c.card_sets ?? []).map((cs: any) => cs.set_name ?? cs),

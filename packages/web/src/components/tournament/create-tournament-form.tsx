@@ -102,7 +102,7 @@ export function CreateTournamentForm() {
           id="tournament-format"
           value={format}
           onChange={(e) => setFormat(e.target.value as "round_robin" | "single_elim")}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+          className="native-select w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
         >
           <option value="round_robin">Round Robin</option>
           <option value="single_elim">Single Elimination</option>
@@ -117,7 +117,7 @@ export function CreateTournamentForm() {
           id="tournament-channel"
           value={channelId}
           onChange={(e) => setChannelId(e.target.value)}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+          className="native-select w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
         >
           <option value="">Default Channel</option>
           {channelsLoading ? (
