@@ -40,6 +40,39 @@ const samplePool = [
   },
 ];
 
+const subtypePool = [
+  {
+    id: 1,
+    name: "Monster Reborn",
+    type: "Quick-Play Spell Card",
+    frameType: "spell",
+    attribute: "SPELL",
+    effectText: "Special Summon 1 monster from either GY.",
+    imageUrl: "https://images.ygoprodeck.com/images/cards/1.jpg",
+    imageUrlSmall: "https://images.ygoprodeck.com/images/cards_small/1.jpg",
+  },
+  {
+    id: 2,
+    name: "Solemn Judgment",
+    type: "Counter Trap Card",
+    frameType: "trap",
+    attribute: "TRAP",
+    effectText: "Negate the activation.",
+    imageUrl: "https://images.ygoprodeck.com/images/cards/2.jpg",
+    imageUrlSmall: "https://images.ygoprodeck.com/images/cards_small/2.jpg",
+  },
+  {
+    id: 3,
+    name: "Gravity Bind",
+    type: "Continuous Trap Card",
+    frameType: "trap",
+    attribute: "TRAP",
+    effectText: "Level 4 or higher monsters cannot attack.",
+    imageUrl: "https://images.ygoprodeck.com/images/cards/3.jpg",
+    imageUrlSmall: "https://images.ygoprodeck.com/images/cards_small/3.jpg",
+  },
+];
+
 const baseDraft = {
   id: 1,
   name: "Legendary Draft",
@@ -164,5 +197,25 @@ describe("DraftSummaryView", () => {
     );
 
     expect(screen.queryByText(/your pool/i)).toBeNull();
+  });
+
+  it("renders S badge for Quick-Play Spell Card and T badge for Counter/Continuous Trap Card subtypes", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        myPool={subtypePool}
+      />
+    );
+
+    const badges = screen.getAllByText(/^[MST]$/);
+    const badgeTexts = badges.map((b) => b.textContent);
+    // Quick-Play Spell Card → S
+    expect(badgeTexts.filter((t) => t === "S").length).toBe(1);
+    // Counter Trap Card and Continuous Trap Card → T (two traps)
+    expect(badgeTexts.filter((t) => t === "T").length).toBe(2);
+    // No monsters in subtypePool, so no M badges
+    expect(badgeTexts.filter((t) => t === "M").length).toBe(0);
   });
 });

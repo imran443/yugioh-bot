@@ -4,20 +4,7 @@ import * as React from "react";
 import { Clock, Download, Layers, Package, User, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-interface CardPoolEntry {
-  id: number;
-  name: string;
-  type: string;
-  frameType: string;
-  attribute?: string;
-  level?: number;
-  effectText: string;
-  atk?: number;
-  def?: number;
-  imageUrl: string;
-  imageUrlSmall: string;
-}
+import type { DraftCardDetail } from "@/lib/stores/draft-store";
 
 interface DraftSummaryViewProps {
   draft: {
@@ -47,7 +34,12 @@ interface DraftSummaryViewProps {
   };
   isParticipant: boolean;
   onExportYdk: () => Promise<string>;
-  myPool?: CardPoolEntry[];
+  myPool?: DraftCardDetail[];
+}
+
+function getTypeBadge(type: string) {
+  const t = type.toLowerCase();
+  return t.includes("spell card") ? "S" : t.includes("trap card") ? "T" : "M";
 }
 
 function formatDate(iso: string) {
@@ -195,7 +187,7 @@ export function DraftSummaryView({
                 className="flex items-center gap-3 rounded-lg border border-border bg-bg-elevated/50 px-3 py-2"
               >
                 <span className="min-w-[1.75rem] rounded bg-accent-primary/10 px-1.5 py-0.5 text-center text-xs font-semibold text-accent-primary">
-                  {card.type === "Spell Card" ? "S" : card.type === "Trap Card" ? "T" : "M"}
+                  {getTypeBadge(card.type)}
                 </span>
                 <span className="flex-1 text-sm text-text-primary">{card.name}</span>
                 {card.attribute && card.attribute !== "SPELL" && card.attribute !== "TRAP" && (
