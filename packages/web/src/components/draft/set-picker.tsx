@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, X, Grid3X3 } from "lucide-react";
+import { Search, X, Grid3X3, RefreshCw } from "lucide-react";
 import { SetBrowserModal } from "./set-browser-modal";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,8 @@ export function SetPicker({ selectedSets, onSetsChange }: SetPickerProps) {
   const [results, setResults] = React.useState<SetResult[]>([]);
   const [showResults, setShowResults] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncError, setSyncError] = React.useState<string | null>(null);
   const [browserOpen, setBrowserOpen] = React.useState(false);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -64,6 +66,27 @@ export function SetPicker({ selectedSets, onSetsChange }: SetPickerProps) {
 
   const handleRemove = (setName: string) => {
     onSetsChange(selectedSets.filter((s) => s !== setName));
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/sets", { method: "POST" });
+      if (!res.ok) throw new Error("Sync failed");
+      if (query.trim()) {
+        const res2 = await fetch(`/api/sets?q=${encodeURIComponent(query.trim())}`);
+        if (res2.ok) {
+          const data = await res2.json();
+          setResults(data.sets ?? []);
+          setShowResults(true);
+        }
+      }
+    } catch {
+      setSyncError("Failed to sync sets");
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleToggleSet = (setName: string) => {
@@ -125,7 +148,19 @@ export function SetPicker({ selectedSets, onSetsChange }: SetPickerProps) {
           <Grid3X3 className="h-4 w-4" />
           Browse
         </button>
+        <button
+          type="button"
+          onClick={handleSync}
+          disabled={syncing}
+          title="Sync set list from YGOPRODeck"
+          className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-4 w-4", syncing && "motion-safe:animate-spin")} />
+        </button>
       </div>
+      {syncError && (
+        <p className="mt-1 text-xs text-accent-cta">{syncError}</p>
+      )}
 
       {selectedSets.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">

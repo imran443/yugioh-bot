@@ -94,6 +94,7 @@ export default function DraftDetailPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const setFromServer = useDraftStore((s) => s.setFromServer);
+  const storeCompleted = useDraftStore((s) => s.completed);
   useDraftWebsocket(slug);
   useDraftCountdown();
   useDraftExpiryResync(slug);
@@ -144,6 +145,12 @@ export default function DraftDetailPage() {
   useEffect(() => {
     fetchDraft();
   }, [fetchDraft]);
+
+  useEffect(() => {
+    if (storeCompleted && draft?.status === "active") {
+      void fetchDraft();
+    }
+  }, [storeCompleted, draft?.status, fetchDraft]);
 
   const handleStart = async () => {
     const res = await fetch(`/api/drafts/${slug}`, { method: "POST" });
@@ -219,6 +226,15 @@ export default function DraftDetailPage() {
     await fetchDraft();
   };
 
+  const handleAddBot = async () => {
+    const res = await fetch(`/api/drafts/${slug}/join-bot`, { method: "POST" });
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error ?? "Failed to add bot");
+    }
+    await fetchDraft();
+  };
+
   if (draft.status === "pending") {
     return (
       <div>
@@ -230,6 +246,8 @@ export default function DraftDetailPage() {
           onCancel={handleCancel}
           onUpdate={handleUpdate}
           onJoin={handleJoin}
+          onAddBot={handleAddBot}
+          isDev={process.env.NODE_ENV !== "production"}
         />
       </div>
     );
@@ -314,6 +332,7 @@ export default function DraftDetailPage() {
         draft={draft}
         isParticipant={isParticipant}
         onExportYdk={handleExportYdk}
+        myPool={draft.myPool}
       />
     </div>
   );

@@ -285,7 +285,7 @@ export function createDraftService(db: Database.Database) {
       throw new Error("Deck is not complete yet");
     }
 
-    return ["#created by Yugioh Discord Bot", "#main", ...mainDeckCardIds, "#extra", "!side"].join("\n");
+    return ["#main", ...mainDeckCardIds, "#extra", "", "!side", ""].join("\n");
   };
 
   const catalogCardIdsForDraft = (config: DraftConfig): number[] => {

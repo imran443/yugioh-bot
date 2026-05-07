@@ -35,6 +35,8 @@ interface DraftManageViewProps {
   onCancel: () => Promise<void>;
   onUpdate: (data: { name?: string; config?: unknown }) => Promise<void>;
   onJoin: () => Promise<void>;
+  onAddBot?: () => Promise<void>;
+  isDev?: boolean;
 }
 
 function formatDate(iso: string) {
@@ -55,6 +57,8 @@ export function DraftManageView({
   onCancel,
   onUpdate,
   onJoin,
+  onAddBot,
+  isDev,
 }: DraftManageViewProps) {
   const [editing, setEditing] = React.useState(false);
   const [nameValue, setNameValue] = React.useState(draft.name);
@@ -62,6 +66,7 @@ export function DraftManageView({
   const [starting, setStarting] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
   const [joining, setJoining] = React.useState(false);
+  const [addingBot, setAddingBot] = React.useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -123,6 +128,19 @@ export function DraftManageView({
       setError(err instanceof Error ? err.message : "Failed to join draft");
     } finally {
       setJoining(false);
+    }
+  };
+
+  const handleAddBot = async () => {
+    if (!onAddBot) return;
+    setAddingBot(true);
+    setError(null);
+    try {
+      await onAddBot();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add bot");
+    } finally {
+      setAddingBot(false);
     }
   };
 
@@ -223,6 +241,16 @@ export function DraftManageView({
                 >
                   Start Draft
                 </Button>
+                {isDev && onAddBot && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={addingBot}
+                    onClick={handleAddBot}
+                  >
+                    Add Bot
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   onClick={() => setShowCancelConfirm(true)}

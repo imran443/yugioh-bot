@@ -50,15 +50,18 @@ export async function POST(
 
     const drafts = createDraftService(db);
 
+    drafts.expireCurrentPickStep(draft.id);
+
     // Persist real player's pick
     drafts.pickCard(draft.id, player.id, cardId, "manual");
 
-    // Auto-pick for fake players who haven't picked yet this step
+    // Auto-pick for fake players and dev bots who haven't picked yet this step
     const fakePlayers = db
       .prepare(
         `SELECT dp.player_id FROM draft_players dp
          INNER JOIN players p ON p.id = dp.player_id
-         WHERE dp.draft_id = ? AND p.discord_user_id LIKE 'fake_%'`
+         WHERE dp.draft_id = ?
+           AND (p.discord_user_id LIKE 'fake_%' OR p.discord_user_id LIKE 'bot_%')`
       )
       .all(draft.id) as Array<{ player_id: number }>;
 

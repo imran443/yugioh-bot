@@ -8,7 +8,7 @@ type CardSet = {
 type YgoprodeckSetInfo = {
   set_name: string;
   set_code: string;
-  num_cards: number;
+  num_of_cards: number;
 };
 
 type YgoprodeckCard = {
@@ -233,7 +233,7 @@ export function createCardCatalogService(
 
       db.transaction(() => {
         for (const set of payload) {
-          insert.run(set.set_name, set.set_code, set.num_cards, syncedAt);
+          insert.run(set.set_name, set.set_code, set.num_of_cards, syncedAt);
         }
       })();
 

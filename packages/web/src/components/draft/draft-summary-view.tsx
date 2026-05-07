@@ -4,6 +4,7 @@ import * as React from "react";
 import { Clock, Download, Layers, Package, User, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import type { DraftCardDetail } from "@/lib/stores/draft-store";
 
 interface DraftSummaryViewProps {
   draft: {
@@ -33,6 +34,14 @@ interface DraftSummaryViewProps {
   };
   isParticipant: boolean;
   onExportYdk: () => Promise<string>;
+  myPool?: DraftCardDetail[];
+}
+
+function getTypeBadge(type: string): string {
+  const t = type.toLowerCase();
+  if (t.includes("spell card")) return "S";
+  if (t.includes("trap card")) return "T";
+  return "M";
 }
 
 function formatDate(iso: string) {
@@ -49,6 +58,7 @@ export function DraftSummaryView({
   draft,
   isParticipant,
   onExportYdk,
+  myPool,
 }: DraftSummaryViewProps) {
   const [exporting, setExporting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -165,6 +175,31 @@ export function DraftSummaryView({
           </ul>
         )}
       </div>
+
+      {isParticipant && myPool && myPool.length > 0 && (
+        <div className="rounded-xl border border-border bg-surface p-6">
+          <h2 className="mb-4 font-display text-lg text-text-primary">
+            <Package className="mr-2 inline h-5 w-5 text-accent-primary" />
+            Your Pool ({myPool.length} cards)
+          </h2>
+          <ul className="flex flex-col gap-1.5" role="list">
+            {myPool.map((card) => (
+              <li
+                key={card.id}
+                className="flex items-center gap-3 rounded-lg border border-border bg-bg-elevated/50 px-3 py-2"
+              >
+                <span className="min-w-[1.75rem] rounded bg-accent-primary/10 px-1.5 py-0.5 text-center text-xs font-semibold text-accent-primary">
+                  {getTypeBadge(card.type)}
+                </span>
+                <span className="flex-1 text-sm text-text-primary">{card.name}</span>
+                {card.attribute && card.attribute !== "SPELL" && card.attribute !== "TRAP" && (
+                  <span className="text-xs text-text-muted">{card.attribute}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-surface p-6">
         <h2 className="mb-4 font-display text-lg text-text-primary">

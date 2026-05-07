@@ -12,7 +12,7 @@ describe("generateYdk", () => {
     const result = generateYdk(cards);
 
     expect(result).toBe(
-      "#main\n46986414\n53183600\n12580477\n#extra\n#side\n",
+      "#main\n46986414\n53183600\n12580477\n#extra\n\n!side\n",
     );
   });
 
@@ -27,7 +27,7 @@ describe("generateYdk", () => {
     const result = generateYdk(cards);
 
     expect(result).toBe(
-      "#main\n#extra\n21123811\n44508094\n84013237\n41420027\n#side\n",
+      "#main\n#extra\n21123811\n44508094\n84013237\n41420027\n\n!side\n",
     );
   });
 
@@ -43,7 +43,7 @@ describe("generateYdk", () => {
     const result = generateYdk(cards);
 
     expect(result).toBe(
-      "#main\n46986414\n53183600\n12580477\n#extra\n21123811\n44508094\n#side\n",
+      "#main\n46986414\n53183600\n12580477\n#extra\n21123811\n44508094\n\n!side\n",
     );
   });
 
@@ -52,7 +52,7 @@ describe("generateYdk", () => {
 
     const result = generateYdk(cards);
 
-    expect(result).toBe("#main\n86327276\n#extra\n#side\n");
+    expect(result).toBe("#main\n86327276\n#extra\n\n!side\n");
   });
 
   it("classifies pendulum extra deck variants as extra deck", () => {
@@ -65,7 +65,7 @@ describe("generateYdk", () => {
     const result = generateYdk(cards);
 
     expect(result).toBe(
-      "#main\n#extra\n10000000\n10000001\n10000002\n#side\n",
+      "#main\n#extra\n10000000\n10000001\n10000002\n\n!side\n",
     );
   });
 
@@ -81,14 +81,14 @@ describe("generateYdk", () => {
     const result = generateYdk(cards);
 
     expect(result).toBe(
-      "#main\n46986414\n46986414\n#extra\n21123811\n21123811\n21123811\n#side\n",
+      "#main\n46986414\n46986414\n#extra\n21123811\n21123811\n21123811\n\n!side\n",
     );
   });
 
   it("generates empty side section even with no cards", () => {
     const result = generateYdk([]);
 
-    expect(result).toBe("#main\n#extra\n#side\n");
+    expect(result).toBe("#main\n#extra\n\n!side\n");
   });
 });
 
