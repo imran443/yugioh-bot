@@ -155,4 +155,43 @@ describe("shared draft service", () => {
       expect.objectContaining({ playerId: kaiba.id, draftCardId: kaibaPick.id, waveNumber: 1, pickStep: 1 }),
     ]);
   });
+
+  it("exports a completed deck in YGOPro YDK format", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", { packSize: 8, packsPerPlayer: 5 }, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 50);
+    app.drafts.start(draft.id);
+
+    // Pick 40 cards to complete the deck (both players need to pick so packs pass)
+    for (let i = 0; i < 40; i++) {
+      const yugiOptions = app.drafts.currentPackOptions(draft.id, yugi.id);
+      const kaibaOptions = app.drafts.currentPackOptions(draft.id, kaiba.id);
+      if (yugiOptions.length > 0) {
+        app.drafts.pickCard(draft.id, yugi.id, yugiOptions[0].id);
+      }
+      if (kaibaOptions.length > 0) {
+        app.drafts.pickCard(draft.id, kaiba.id, kaibaOptions[0].id);
+      }
+    }
+
+    const ydk = app.drafts.exportYdk(draft.id, yugi.id);
+
+    // Verify YDK format
+    const lines = ydk.split("\n");
+    expect(lines[0]).toBe("#main");
+    expect(lines[41]).toBe("#extra");
+    expect(lines[42]).toBe("");
+    expect(lines[43]).toBe("!side");
+    expect(lines[44]).toBe("");
+    expect(lines.length).toBe(45);
+
+    // Verify card IDs are present
+    for (let i = 1; i <= 40; i++) {
+      expect(lines[i]).toMatch(/^\d+$/);
+    }
+  });
 });
