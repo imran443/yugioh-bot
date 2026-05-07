@@ -762,7 +762,7 @@ async function handleDraft(
       await interaction.reply(
         [
           query ? `Sets matching "${query}":` : "Available sets:",
-          ...sets.map((set) => `- ${set}`),
+          ...sets.map((set) => `- ${set.setName}`),
           sets.length >= 25 ? "...and more. Type more characters to narrow your search." : "",
         ]
           .filter(Boolean)

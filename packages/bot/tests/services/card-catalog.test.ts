@@ -20,7 +20,7 @@ type YgoprodeckCard = {
 function setup(
   cardsBySet: Record<string, YgoprodeckCard[]> = {},
   cardsByName: Record<string, YgoprodeckCard[]> = {},
-  setsResponse: Array<{ set_name: string }> = [],
+  setsResponse: Array<{ set_name: string; set_code?: string; num_cards?: number }> = [],
 ) {
   const db = new Database(":memory:");
   migrate(db);
@@ -203,7 +203,10 @@ describe("card catalog service", () => {
 
     const sets = app.catalog.listSets();
 
-    expect(sets).toEqual(["Legend of Blue Eyes White Dragon", "Metal Raiders"]);
+    expect(sets).toEqual([
+      { setName: "Legend of Blue Eyes White Dragon", setCode: "", cardCount: 0 },
+      { setName: "Metal Raiders", setCode: "", cardCount: 0 },
+    ]);
   });
 
   it("filters set names by query", async () => {
@@ -215,8 +218,12 @@ describe("card catalog service", () => {
 
     await app.catalog.syncSets();
 
-    expect(app.catalog.listSets("metal")).toEqual(["Metal Raiders"]);
-    expect(app.catalog.listSets("Dragon")).toEqual(["Legend of Blue Eyes White Dragon"]);
+    expect(app.catalog.listSets("metal")).toEqual([
+      { setName: "Metal Raiders", setCode: "", cardCount: 0 },
+    ]);
+    expect(app.catalog.listSets("Dragon")).toEqual([
+      { setName: "Legend of Blue Eyes White Dragon", setCode: "", cardCount: 0 },
+    ]);
     expect(app.catalog.listSets("xyz")).toEqual([]);
   });
 
@@ -234,16 +241,20 @@ describe("card catalog service", () => {
 
   it("syncs sets from the API into the database", async () => {
     const app = setup({}, {}, [
-      { set_name: "Legend of Blue Eyes White Dragon" },
-      { set_name: "Metal Raiders" },
-      { set_name: "Pharaoh's Servant" },
+      { set_name: "Legend of Blue Eyes White Dragon", set_code: "LOB", num_cards: 126 },
+      { set_name: "Metal Raiders", set_code: "MRD", num_cards: 144 },
+      { set_name: "Pharaoh's Servant", set_code: "PSV", num_cards: 105 },
     ]);
 
     const sets = await app.catalog.syncSets();
 
     expect(sets).toHaveLength(3);
     expect(app.fetchCalls).toContain("https://db.ygoprodeck.com/api/v7/cardsets.php");
-    expect(app.catalog.listSets()).toEqual(["Legend of Blue Eyes White Dragon", "Metal Raiders", "Pharaoh's Servant"]);
+    expect(app.catalog.listSets()).toEqual([
+      { setName: "Legend of Blue Eyes White Dragon", setCode: "LOB", cardCount: 126 },
+      { setName: "Metal Raiders", setCode: "MRD", cardCount: 144 },
+      { setName: "Pharaoh's Servant", setCode: "PSV", cardCount: 105 },
+    ]);
   });
 
   it("filters synced sets by query", async () => {
@@ -255,8 +266,12 @@ describe("card catalog service", () => {
 
     await app.catalog.syncSets();
 
-    expect(app.catalog.listSets("metal")).toEqual(["Metal Raiders"]);
-    expect(app.catalog.listSets("Dragon")).toEqual(["Legend of Blue Eyes White Dragon"]);
+    expect(app.catalog.listSets("metal")).toEqual([
+      { setName: "Metal Raiders", setCode: "", cardCount: 0 },
+    ]);
+    expect(app.catalog.listSets("Dragon")).toEqual([
+      { setName: "Legend of Blue Eyes White Dragon", setCode: "", cardCount: 0 },
+    ]);
     expect(app.catalog.listSets("xyz")).toEqual([]);
   });
 

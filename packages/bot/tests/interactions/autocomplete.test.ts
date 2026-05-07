@@ -389,6 +389,21 @@ describe("autocomplete interactions", () => {
     expect(responses[0]).toEqual([{ name: "Legend of Blue Eyes White Dragon", value: "Legend of Blue Eyes White Dragon" }]);
   });
 
+  it("keeps set autocomplete choices within Discord's 100 character limit", async () => {
+    const app = setup();
+    const longName = "a".repeat(120);
+    app.db.prepare("insert into card_sets (set_name, synced_at) values (?, ?)").run(longName, "2026-01-01");
+
+    const { interaction, responses } = fakeAutocomplete({
+      commandName: "draft",
+      options: { getSubcommand: () => "sets", getSubcommandGroup: () => null, getFocused: () => ({ name: "query", value: "a" }) },
+    });
+
+    await handleAutocomplete(interaction, app);
+
+    expect(responses[0]).toEqual([{ name: "a".repeat(100), value: "a".repeat(100) }]);
+  });
+
   it("suggests template names for draft template delete", async () => {
     const app = setup();
     app.templates.save("guild-1", "Classic", { setNames: ["Metal Raiders"] }, "user-1");

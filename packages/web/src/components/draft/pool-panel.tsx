@@ -1,20 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useDraftStore } from "@/lib/stores/draft-store";
 import { downloadYdk } from "@/lib/ydk";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
-import {
-  Layers,
-  Swords,
-  Scroll,
-  ShieldAlert,
-  ChevronUp,
-  Download,
-  Eye,
-} from "lucide-react";
+import { Layers, Swords, Scroll, ShieldAlert, ChevronUp, Download } from "lucide-react";
+
+type PoolFilter = "all" | "monster" | "spell" | "trap";
 
 interface PoolPanelProps {
   className?: string;
@@ -22,22 +16,52 @@ interface PoolPanelProps {
 
 export function PoolPanel({ className }: PoolPanelProps) {
   const myPool = useDraftStore((s) => s.myPool);
-  const [showFullPool, setShowFullPool] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState<PoolFilter>("all");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
-  const monsterCount = myPool.filter((c) =>
-    c.type.toLowerCase().includes("monster")
-  ).length;
-  const spellCount = myPool.filter((c) =>
-    c.type.toLowerCase().includes("spell")
-  ).length;
-  const trapCount = myPool.filter((c) =>
-    c.type.toLowerCase().includes("trap")
-  ).length;
+  const normalizeCardType = (type: string) => type.trim().toLowerCase();
+  const isMonster = (type: string) => normalizeCardType(type).includes("monster");
+  const isSpell = (type: string) => normalizeCardType(type).includes("spell card");
+  const isTrap = (type: string) => normalizeCardType(type).includes("trap card");
+  const getTypeBadge = (type: string) =>
+    isMonster(type) ? "M" : isSpell(type) ? "S" : isTrap(type) ? "T" : "?";
+  const getCompactTypeLabel = (type: string) =>
+    isMonster(type) ? "Monster" : isSpell(type) ? "Spell" : isTrap(type) ? "Trap" : "Other";
+
+  const monsterCount = myPool.filter((c) => isMonster(c.type)).length;
+  const spellCount = myPool.filter((c) => isSpell(c.type)).length;
+  const trapCount = myPool.filter((c) => isTrap(c.type)).length;
+
+  const filteredPool = useMemo(() => {
+    const normalizedSearchTerm = deferredSearchTerm.trim().toLowerCase();
+
+    return myPool.filter((card) => {
+      const matchesSearch =
+        normalizedSearchTerm.length === 0 ||
+        card.name.toLowerCase().includes(normalizedSearchTerm);
+
+      const matchesFilter =
+        activeFilter === "all" ||
+        (activeFilter === "monster" && isMonster(card.type)) ||
+        (activeFilter === "spell" && isSpell(card.type)) ||
+        (activeFilter === "trap" && isTrap(card.type));
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [activeFilter, deferredSearchTerm, myPool]);
 
   const handleExportYDK = () => {
     downloadYdk(myPool, "draft-pool.ydk");
   };
+
+  const filterButtons: Array<{ ariaLabel: string; label: string; value: PoolFilter }> = [
+    { ariaLabel: "All", label: "All", value: "all" },
+    { ariaLabel: "Monsters", label: "Monsters", value: "monster" },
+    { ariaLabel: "Spells", label: "Spells", value: "spell" },
+    { ariaLabel: "Traps", label: "Traps", value: "trap" },
+  ];
 
   const panelContent = (
     <div className="flex flex-col gap-4">
@@ -82,16 +106,68 @@ export function PoolPanel({ className }: PoolPanelProps) {
           <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
           Export YDK
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowFullPool(true)}
-          disabled={myPool.length === 0}
-          className="w-full"
-        >
-          <Eye className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          View Full Pool
-        </Button>
+      </div>
+
+      <div className="rounded-xl border border-border bg-bg-elevated/40 p-3">
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5 text-sm text-text-secondary">
+            <span className="sr-only">Filter cards</span>
+            <input
+              type="text"
+              aria-label="Filter cards"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Filter cards..."
+              className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/60"
+            />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            {filterButtons.map((filterButton) => (
+              <Button
+                key={filterButton.value}
+                type="button"
+                size="sm"
+                variant={activeFilter === filterButton.value ? "secondary" : "ghost"}
+                onClick={() => setActiveFilter(filterButton.value)}
+                aria-pressed={activeFilter === filterButton.value}
+                aria-label={filterButton.ariaLabel}
+                className="rounded-full px-3"
+              >
+                {filterButton.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="h-72 overflow-y-auto rounded-lg border border-border bg-surface/70">
+            {myPool.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-text-secondary">No cards drafted yet.</p>
+            ) : filteredPool.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-text-secondary">
+                No cards match this filter.
+              </p>
+            ) : (
+              <div className="flex flex-col p-2">
+                {filteredPool.map((card) => (
+                  <div
+                    key={card.id}
+                    className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm text-text-primary"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-bg-elevated text-xs font-semibold text-text-secondary">
+                      {getTypeBadge(card.type)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-text-primary">{card.name}</p>
+                      <p className="truncate text-xs text-text-secondary">
+                        {getCompactTypeLabel(card.type)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -131,38 +207,6 @@ export function PoolPanel({ className }: PoolPanelProps) {
       {/* Mobile sheet */}
       <Sheet open={mobileOpen} onClose={() => setMobileOpen(false)} title="Your Pool">
         {panelContent}
-      </Sheet>
-
-      {/* Full pool view */}
-      <Sheet
-        open={showFullPool}
-        onClose={() => setShowFullPool(false)}
-        title="Full Pool"
-      >
-        <div className="flex flex-col gap-2">
-          {myPool.length === 0 && (
-            <p className="text-sm text-text-secondary">No cards drafted yet.</p>
-          )}
-          {myPool.map((card) => (
-            <div
-              key={card.id}
-              className="flex items-center gap-3 rounded-lg border border-border bg-bg-elevated/50 p-2"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-bg-elevated text-xs font-semibold text-text-secondary">
-                {card.type.toLowerCase().includes("monster")
-                  ? "M"
-                  : card.type.toLowerCase().includes("spell")
-                    ? "S"
-                    : card.type.toLowerCase().includes("trap")
-                      ? "T"
-                      : "?"}
-              </div>
-              <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
-                {card.name}
-              </span>
-            </div>
-          ))}
-        </div>
       </Sheet>
     </>
   );
