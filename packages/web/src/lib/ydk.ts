@@ -29,19 +29,7 @@ export function generateYdk(cards: YdkCard[]): string {
     }
   }
 
-  const lines: string[] = [];
-  lines.push("#main");
-  for (const id of main) {
-    lines.push(String(id));
-  }
-  lines.push("#extra");
-  for (const id of extra) {
-    lines.push(String(id));
-  }
-  lines.push("");
-  lines.push("!side");
-
-  return lines.join("\n") + "\n";
+  return ["#main", ...main.map(String), "#extra", ...extra.map(String), "", "!side", ""].join("\n");
 }
 
 export function downloadYdk(cards: YdkCard[], filename: string): void {

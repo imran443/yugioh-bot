@@ -37,9 +37,11 @@ interface DraftSummaryViewProps {
   myPool?: DraftCardDetail[];
 }
 
-function getTypeBadge(type: string) {
+function getTypeBadge(type: string): string {
   const t = type.toLowerCase();
-  return t.includes("spell card") ? "S" : t.includes("trap card") ? "T" : "M";
+  if (t.includes("spell card")) return "S";
+  if (t.includes("trap card")) return "T";
+  return "M";
 }
 
 function formatDate(iso: string) {
