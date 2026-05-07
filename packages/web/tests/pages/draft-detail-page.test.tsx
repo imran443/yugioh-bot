@@ -187,7 +187,9 @@ describe("DraftDetailPage — completion transition", () => {
   });
 
   it("does NOT re-fetch if storeCompleted becomes true but draft.status is already completed", async () => {
-    const fetchDraftMock = vi.fn().mockImplementation((url: string) => {
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url === "/api/auth/session") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { id: "user-1" } }) } as Response);
       }
@@ -196,9 +198,12 @@ describe("DraftDetailPage — completion transition", () => {
         json: () => Promise.resolve(completedDraftResponse),
       } as Response);
     });
-    global.fetch = fetchDraftMock;
+    global.fetch = fetchMock;
 
     render(<DraftDetailPage />);
+
+    // Switch back to real timers so waitFor can work, then wait for initial load
+    vi.useRealTimers();
 
     // Wait for the completed summary view to appear
     await waitFor(() => {
@@ -206,18 +211,24 @@ describe("DraftDetailPage — completion transition", () => {
     });
 
     // Capture call count once the page has settled
-    const callCountAfterLoad = fetchDraftMock.mock.calls.length;
+    const callCountAfterLoad = fetchMock.mock.calls.length;
 
     // Setting storeCompleted true while draft.status is already "completed"
     // must NOT trigger another fetchDraft call.
-    await act(async () => {
+    act(() => {
       useDraftStore.getState().setFromServer({ completed: true });
-      // Flush microtasks so any triggered effects can run
-      await Promise.resolve();
-      await Promise.resolve();
     });
 
-    expect(fetchDraftMock.mock.calls.length).toBe(callCountAfterLoad);
+    // Use waitFor with a stable assertion: confirm the call count does NOT
+    // increase even after effects have had time to run. The 50 ms interval
+    // and 200 ms timeout give React enough time to flush any effects without
+    // making the suite slow.
+    await waitFor(
+      () => {
+        expect(fetchMock.mock.calls.length).toBe(callCountAfterLoad);
+      },
+      { interval: 50, timeout: 200 },
+    );
   });
 
   it("renders DraftManageView for a pending draft", async () => {
