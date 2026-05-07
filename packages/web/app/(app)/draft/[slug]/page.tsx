@@ -332,6 +332,7 @@ export default function DraftDetailPage() {
         draft={draft}
         isParticipant={isParticipant}
         onExportYdk={handleExportYdk}
+        myPool={draft.myPool}
       />
     </div>
   );

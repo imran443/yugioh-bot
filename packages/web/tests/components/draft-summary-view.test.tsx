@@ -4,6 +4,42 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DraftSummaryView } from "../../src/components/draft/draft-summary-view";
 
+const samplePool = [
+  {
+    id: 89631139,
+    name: "Blue-Eyes White Dragon",
+    type: "Normal Monster",
+    frameType: "normal",
+    attribute: "LIGHT",
+    level: 8,
+    effectText: "This legendary dragon is a powerful engine of destruction.",
+    atk: 3000,
+    def: 2500,
+    imageUrl: "https://images.ygoprodeck.com/images/cards/89631139.jpg",
+    imageUrlSmall: "https://images.ygoprodeck.com/images/cards_small/89631139.jpg",
+  },
+  {
+    id: 46986414,
+    name: "Dark Hole",
+    type: "Spell Card",
+    frameType: "spell",
+    attribute: "SPELL",
+    effectText: "Destroy all monsters on the field.",
+    imageUrl: "https://images.ygoprodeck.com/images/cards/46986414.jpg",
+    imageUrlSmall: "https://images.ygoprodeck.com/images/cards_small/46986414.jpg",
+  },
+  {
+    id: 77563800,
+    name: "Mirror Force",
+    type: "Trap Card",
+    frameType: "trap",
+    attribute: "TRAP",
+    effectText: "When an opponent's monster declares an attack: Destroy all Attack Position monsters your opponent controls.",
+    imageUrl: "https://images.ygoprodeck.com/images/cards/77563800.jpg",
+    imageUrlSmall: "https://images.ygoprodeck.com/images/cards_small/77563800.jpg",
+  },
+];
+
 const baseDraft = {
   id: 1,
   name: "Legendary Draft",
@@ -41,5 +77,92 @@ describe("DraftSummaryView", () => {
 
     expect(screen.queryByRole("button", { name: /export ydk/i })).toBeNull();
     expect(screen.getByText(/requires 40 picks/i)).toBeTruthy();
+  });
+
+  it("renders card pool section with correct card names when isParticipant=true and myPool has cards", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        myPool={samplePool}
+      />
+    );
+
+    expect(screen.getByText(/your pool \(3 cards\)/i)).toBeTruthy();
+    expect(screen.getByText("Blue-Eyes White Dragon")).toBeTruthy();
+    expect(screen.getByText("Dark Hole")).toBeTruthy();
+    expect(screen.getByText("Mirror Force")).toBeTruthy();
+  });
+
+  it("renders correct type badges (M/S/T) for monster, spell, and trap cards", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        myPool={samplePool}
+      />
+    );
+
+    const badges = screen.getAllByText(/^[MST]$/);
+    const badgeTexts = badges.map((b) => b.textContent);
+    expect(badgeTexts).toContain("M");
+    expect(badgeTexts).toContain("S");
+    expect(badgeTexts).toContain("T");
+  });
+
+  it("shows monster attribute but hides SPELL/TRAP attribute labels", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        myPool={samplePool}
+      />
+    );
+
+    expect(screen.getByText("LIGHT")).toBeTruthy();
+    expect(screen.queryByText("SPELL")).toBeNull();
+    expect(screen.queryByText("TRAP")).toBeNull();
+  });
+
+  it("does NOT render card pool section when isParticipant=false", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={false}
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        myPool={samplePool}
+      />
+    );
+
+    expect(screen.queryByText(/your pool/i)).toBeNull();
+    expect(screen.queryByText("Blue-Eyes White Dragon")).toBeNull();
+  });
+
+  it("does NOT render card pool section when myPool is empty", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        myPool={[]}
+      />
+    );
+
+    expect(screen.queryByText(/your pool/i)).toBeNull();
+  });
+
+  it("does NOT render card pool section when myPool is undefined", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+      />
+    );
+
+    expect(screen.queryByText(/your pool/i)).toBeNull();
   });
 });
