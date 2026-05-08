@@ -52,6 +52,30 @@ describe("notifyWs", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("http://ws:4002/internal/draft/complete");
   });
 
+  it("waits for the internal websocket POST before resolving", async () => {
+    fetchMock.mockReset();
+    let resolveFetch: (response: Response) => void = () => {};
+    fetchMock.mockReturnValue(new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    let resolved = false;
+
+    const pending = notifyWs(
+      { url: "http://ws:4002", secret: "shh" },
+      { kind: "status", slug: "abc", status: "active" },
+    ).then(() => {
+      resolved = true;
+    });
+
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    resolveFetch(new Response(null, { status: 204 }));
+    await pending;
+
+    expect(resolved).toBe(true);
+  });
+
   it("does nothing when url or secret is empty", async () => {
     fetchMock.mockReset();
     await notifyWs({ url: "", secret: "shh" }, { kind: "status", slug: "a", status: "active" });

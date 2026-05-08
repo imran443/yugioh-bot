@@ -47,6 +47,7 @@ import {
 import { createDraftTimerService } from "./services/draft-timer.js";
 import { createMatchService } from "@yugidraft/shared/services";
 import { createTournamentService } from "@yugidraft/shared/services";
+import { createAnnounceHandlers } from "./announce/handlers.js";
 import { createAnnounceServer } from "./announce/server.js";
 
 const token = process.env.DISCORD_TOKEN;
@@ -360,27 +361,7 @@ client.once("ready", () => {
   if (announceSecret) {
     const announceServer = createAnnounceServer({
       secret: announceSecret,
-      handlers: {
-        async onDraftCreated({ channelId, name, webSlug }) {
-          const channel = await client.channels.fetch(channelId);
-          if (channel?.type !== ChannelType.GuildText) return;
-          await channel.send(`Signups are open for **${name}**. Pick cards: ${process.env.WEB_URL}/draft/${webSlug}`);
-        },
-        async onDraftStarted({ channelId, draftId }) {
-          const draft = deps.drafts.findById(draftId);
-          await deps.messenger.postStatus(draft);
-        },
-        async onTournamentCreated({ channelId, name, format, webSlug }) {
-          const channel = await client.channels.fetch(channelId);
-          if (channel?.type !== ChannelType.GuildText) return;
-          await channel.send(`Signups are open for **${name}** (${format}). Manage: ${process.env.WEB_URL}/tournament/${webSlug}`);
-        },
-        async onTournamentStarted({ channelId, name, webSlug }) {
-          const channel = await client.channels.fetch(channelId);
-          if (channel?.type !== ChannelType.GuildText) return;
-          await channel.send(`**${name}** has started. Bracket: ${process.env.WEB_URL}/tournament/${webSlug}`);
-        },
-      },
+      handlers: createAnnounceHandlers({ client, drafts: deps.drafts, messenger: deps.messenger }),
     });
     announceServer.listen(announcePort);
   } else {

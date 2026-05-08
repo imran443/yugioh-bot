@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     user: "${UID}:${GID}"
     environment:
-      - WEB_URL=http://web:3000
+      - WEB_URL=${NEXTAUTH_URL:-http://localhost}
       - WS_PORT=3001
       - WS_INTERNAL_PORT=4002
       - WS_INTERNAL_SECRET=${WS_INTERNAL_SECRET}
