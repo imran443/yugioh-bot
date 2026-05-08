@@ -93,4 +93,35 @@ describe("tournament reporting", () => {
       expect.objectContaining({ playerOneId: yugi.id, playerTwoId: kaiba.id, roundNumber: 2 }),
     ]);
   });
+
+  it("marks a round-robin tournament completed once all matches are approved", () => {
+    const app = setup();
+    const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const joey = app.players.upsert("guild-1", "user-3", "Joey");
+
+    for (const player of [yugi, kaiba, joey]) {
+      app.tournaments.join(tournament.id, player.id);
+    }
+    app.tournaments.start(tournament.id);
+
+    const allMatches = app.tournaments.openMatches(tournament.id);
+    expect(allMatches).toHaveLength(3);
+
+    const [m1, m2, m3] = allMatches;
+
+    const r1 = app.tournaments.report(tournament.id, m1.playerOneId, m1.playerTwoId!, m1.playerOneId);
+    app.matches.approve(r1.id, m1.playerTwoId!);
+    expect(app.tournaments.findById(tournament.id).status).toBe("active");
+
+    const r2 = app.tournaments.report(tournament.id, m2.playerOneId, m2.playerTwoId!, m2.playerOneId);
+    app.matches.approve(r2.id, m2.playerTwoId!);
+    expect(app.tournaments.findById(tournament.id).status).toBe("active");
+
+    const r3 = app.tournaments.report(tournament.id, m3.playerOneId, m3.playerTwoId!, m3.playerOneId);
+    app.matches.approve(r3.id, m3.playerTwoId!);
+
+    expect(app.tournaments.findById(tournament.id).status).toBe("completed");
+  });
 });

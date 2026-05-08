@@ -100,6 +100,21 @@ export function createMatchService(db: Database.Database) {
       return;
     }
 
+    if (tournament.format === "round_robin") {
+      const remaining = db
+        .prepare(
+          "select count(*) as count from tournament_matches where tournament_id = ? and status != 'completed'",
+        )
+        .get(match.tournamentId) as { count: number };
+
+      if (remaining.count === 0) {
+        db.prepare(
+          "update tournaments set status = 'completed', ended_at = current_timestamp where id = ?",
+        ).run(match.tournamentId);
+      }
+      return;
+    }
+
     if (tournament.format !== "single_elim") {
       return;
     }
