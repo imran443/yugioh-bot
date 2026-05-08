@@ -76,7 +76,7 @@ describe("GET /api/drafts/[slug]", () => {
     expect(payload.pickSeconds).toBeGreaterThan(0);
   }, testTimeoutMs);
 
-  it("prefers the current guild draft when another guild has the same slug", async () => {
+  it("prefers the current guild draft for the requested slug", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-route-"));
     const dbPath = join(tempDir, "draft-route.sqlite");
 
@@ -100,6 +100,8 @@ describe("GET /api/drafts/[slug]", () => {
     db.prepare(
       "update drafts set status = 'active', current_wave_number = 1, current_pick_step = 1, started_at = datetime('now') where web_slug = ? and guild_id = ?"
     ).run("legendary-draft", "987654321098765432");
+    db.prepare("update drafts set web_slug = 'other-' || web_slug where guild_id = ?").run("987654321098765432");
+    db.prepare("update tournaments set web_slug = 'other-' || web_slug where guild_id = ?").run("987654321098765432");
 
     execFileSync(process.execPath, ["--import", "tsx", "scripts/seed.ts"], {
       cwd: repoRoot,

@@ -779,11 +779,12 @@ describe("draft service", () => {
 
     expect(app.drafts.exportYdk(draft.id, yugi.id)).toBe(
       [
-        "#created by Yugioh Discord Bot",
         "#main",
         ...Array.from({ length: 40 }, (_, index) => String(index + 1)),
         "#extra",
+        "",
         "!side",
+        "",
       ].join("\n"),
     );
   });
