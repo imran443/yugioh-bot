@@ -20,6 +20,8 @@ services:
     environment:
       - WEB_URL=http://web:3000
       - WS_PORT=3001
+      - WS_INTERNAL_PORT=4002
+      - WS_INTERNAL_SECRET=${WS_INTERNAL_SECRET}
     command: node packages/ws/dist/server.js
     volumes:
       - ./data:/app/data
@@ -36,6 +38,8 @@ services:
       - .env
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite
+      - WS_INTERNAL_URL=http://ws:4002
+      - WS_INTERNAL_SECRET=${WS_INTERNAL_SECRET}
     volumes:
       - ./data:/app/data
     depends_on:
