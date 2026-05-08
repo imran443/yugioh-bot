@@ -5,32 +5,35 @@ import { generateRoundRobin, generateSingleElimFirstRound } from "@yugidraft/sha
 
 export const runtime = "nodejs";
 
+type TournamentRow = {
+  id: number;
+  guild_id: string;
+  name: string;
+  format: string;
+  status: string;
+  created_by_user_id: string;
+  web_slug: string | null;
+};
+
+function resolveTournamentBySlug(db: ReturnType<typeof getDb>, slug: string): TournamentRow | undefined {
+  return db.prepare("select * from tournaments where web_slug = ?").get(slug) as TournamentRow | undefined;
+}
+
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { id } = await params;
-    const tournamentId = Number(id);
+    const { slug } = await params;
     const db = getDb();
 
-    const tournament = db
-      .prepare("select * from tournaments where id = ?")
-      .get(tournamentId) as
-      | {
-          id: number;
-          guild_id: string;
-          name: string;
-          format: string;
-          status: string;
-          created_by_user_id: string;
-          web_slug: string | null;
-        }
-      | undefined;
+    const tournament = resolveTournamentBySlug(db, slug);
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
     }
+
+    const tournamentId = tournament.id;
 
     const participants = db
       .prepare(
@@ -94,13 +97,15 @@ export async function GET(
 
     const session = await auth();
     let isParticipant = false;
+    let currentUserPlayerId: number | null = null;
     if (session?.user?.id) {
       const currentPlayer = db
         .prepare("select id from players where guild_id = ? and discord_user_id = ?")
         .get(tournament.guild_id, session.user.id) as { id: number } | undefined;
-      isParticipant = currentPlayer
-        ? participants.some((p) => p.playerId === currentPlayer.id)
-        : false;
+      if (currentPlayer) {
+        currentUserPlayerId = currentPlayer.id;
+        isParticipant = participants.some((p) => p.playerId === currentPlayer.id);
+      }
     }
 
     return NextResponse.json({
@@ -114,9 +119,10 @@ export async function GET(
       participants,
       matches: matchesWithNames,
       isParticipant,
+      currentUserPlayerId,
     });
   } catch (error) {
-    console.error("[api/tournaments/id] error:", error);
+    console.error("[api/tournaments/[slug] GET] error:", error);
     return NextResponse.json(
       { error: "Failed to load tournament" },
       { status: 500 }
@@ -126,7 +132,7 @@ export async function GET(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const session = await auth();
@@ -134,13 +140,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
-    const tournamentId = Number(id);
+    const { slug } = await params;
     const db = getDb();
 
-    const tournament = db
-      .prepare("select id, created_by_user_id, status from tournaments where id = ?")
-      .get(tournamentId) as { id: number; created_by_user_id: string; status: string } | undefined;
+    const tournament = resolveTournamentBySlug(db, slug);
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
@@ -154,18 +157,18 @@ export async function DELETE(
       return NextResponse.json({ error: `Tournament is already ${tournament.status}` }, { status: 400 });
     }
 
-    db.prepare("update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?").run(tournamentId);
+    db.prepare("update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?").run(tournament.id);
 
-    return NextResponse.json({ id: tournamentId, status: "cancelled" });
+    return NextResponse.json({ id: tournament.id, status: "cancelled" });
   } catch (error) {
-    console.error("[api/tournaments/[id] DELETE] error:", error);
+    console.error("[api/tournaments/[slug] DELETE] error:", error);
     return NextResponse.json({ error: "Failed to cancel tournament" }, { status: 500 });
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const session = await auth();
@@ -173,13 +176,10 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
-    const tournamentId = Number(id);
+    const { slug } = await params;
     const db = getDb();
 
-    const tournament = db
-      .prepare("select id, created_by_user_id, status from tournaments where id = ?")
-      .get(tournamentId) as { id: number; created_by_user_id: string; status: string } | undefined;
+    const tournament = resolveTournamentBySlug(db, slug);
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
@@ -193,6 +193,7 @@ export async function PUT(
       return NextResponse.json({ error: "Can only modify pending tournaments" }, { status: 400 });
     }
 
+    const tournamentId = tournament.id;
     const body = await request.json();
     const { name } = body as { name?: string };
 
@@ -203,9 +204,9 @@ export async function PUT(
 
       const existing = db
         .prepare(
-          "select id from tournaments where guild_id = (select guild_id from tournaments where id = ?) and name = ? and status in ('pending', 'active') and id != ?"
+          "select id from tournaments where guild_id = ? and name = ? and status in ('pending', 'active') and id != ?"
         )
-        .get(tournamentId, name) as { id: number } | undefined;
+        .get(tournament.guild_id, name, tournamentId) as { id: number } | undefined;
 
       if (existing) {
         return NextResponse.json({ error: "A tournament with that name already exists" }, { status: 400 });
@@ -224,14 +225,14 @@ export async function PUT(
       webSlug: updated.web_slug ?? undefined,
     });
   } catch (error) {
-    console.error("[api/tournaments/[id] PUT] error:", error);
+    console.error("[api/tournaments/[slug] PUT] error:", error);
     return NextResponse.json({ error: "Failed to update tournament" }, { status: 500 });
   }
 }
 
 export async function POST(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const session = await auth();
@@ -239,13 +240,10 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
-    const tournamentId = Number(id);
+    const { slug } = await params;
     const db = getDb();
 
-    const tournament = db
-      .prepare("select id, created_by_user_id, status, format from tournaments where id = ?")
-      .get(tournamentId) as { id: number; created_by_user_id: string; status: string; format: string } | undefined;
+    const tournament = resolveTournamentBySlug(db, slug);
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
@@ -258,6 +256,8 @@ export async function POST(
     if (tournament.status !== "pending") {
       return NextResponse.json({ error: "Tournament must be pending to start" }, { status: 400 });
     }
+
+    const tournamentId = tournament.id;
 
     const participantCount = db
       .prepare("select count(*) as count from tournament_participants where tournament_id = ?")
@@ -301,7 +301,7 @@ export async function POST(
       status: "active",
     });
   } catch (error) {
-    console.error("[api/tournaments/[id] POST] error:", error);
+    console.error("[api/tournaments/[slug] POST] error:", error);
     return NextResponse.json({ error: "Failed to start tournament" }, { status: 500 });
   }
 }

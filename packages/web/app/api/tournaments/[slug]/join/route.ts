@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { createPlayerService } from "@yugidraft/shared/services";
 
 export const runtime = "nodejs";
 
 export async function POST(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const session = await auth();
@@ -16,13 +15,12 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
-    const tournamentId = Number(id);
+    const { slug } = await params;
     const db = getDb();
 
     const tournament = db
-      .prepare("select id, guild_id, status from tournaments where id = ?")
-      .get(tournamentId) as { id: number; guild_id: string; status: string } | undefined;
+      .prepare("select id, guild_id, status from tournaments where web_slug = ?")
+      .get(slug) as { id: number; guild_id: string; status: string } | undefined;
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
@@ -32,10 +30,8 @@ export async function POST(
       return NextResponse.json({ error: "Tournament has already started" }, { status: 400 });
     }
 
-    const guildId = tournament.guild_id || env.discordGuildId;
-    if (!guildId) {
-      return NextResponse.json({ error: "Server not configured" }, { status: 500 });
-    }
+    const tournamentId = tournament.id;
+    const guildId = tournament.guild_id;
 
     const players = createPlayerService(db);
     const player = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
@@ -54,7 +50,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, playerId: player.id, displayName: player.displayName });
   } catch (error) {
-    console.error("[api/tournaments/[id]/join] error:", error);
+    console.error("[api/tournaments/[slug]/join] error:", error);
     return NextResponse.json(
       { error: "Failed to join tournament" },
       { status: 500 }
