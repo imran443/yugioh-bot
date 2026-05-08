@@ -15,7 +15,7 @@ interface Standing {
 
 export default function TournamentStandingsPage() {
   const params = useParams();
-  const id = typeof params.id === "string" ? params.id : "";
+  const id = typeof params.slug === "string" ? params.slug : "";
 
   const [standings, setStandings] = useState<Standing[]>([]);
   const [loading, setLoading] = useState(true);

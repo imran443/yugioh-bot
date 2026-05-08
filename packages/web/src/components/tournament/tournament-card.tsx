@@ -28,7 +28,7 @@ export function TournamentCard({ tournament }: { tournament: TournamentCardProps
 
   return (
     <Link
-      href={`/tournament/${tournament.id}`}
+      href={`/tournament/${tournament.webSlug ?? tournament.id}`}
       className="group block rounded-xl border border-border bg-surface p-5 motion-safe:transition-colors hover:border-accent-primary/30 hover:bg-bg-elevated"
     >
       <div className="flex items-start justify-between">

@@ -37,7 +37,7 @@ interface TournamentDetail {
 
 export default function TournamentDetailPage() {
   const params = useParams();
-  const id = typeof params.id === "string" ? params.id : "";
+  const id = typeof params.slug === "string" ? params.slug : "";
 
   const [tournament, setTournament] = useState<TournamentDetail | null>(null);
   const [loading, setLoading] = useState(true);
