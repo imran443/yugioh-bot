@@ -100,9 +100,9 @@ export async function POST(request: NextRequest) {
     config: DraftConfig;
   };
 
-  if (!name || !config?.setNames?.length) {
+  if (!name || (!config?.setNames?.length && !config?.customCardIds?.length)) {
     return NextResponse.json(
-      { error: "name and config.setNames are required" },
+      { error: "name and a draft pool are required" },
       { status: 400 }
     );
   }

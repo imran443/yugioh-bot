@@ -1,5 +1,6 @@
 export interface DraftConfig {
   setNames?: string[];
+  customCardIds?: number[];
   includeNames?: string[];
   excludeNames?: string[];
   packSize?: number;
