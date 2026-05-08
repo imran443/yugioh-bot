@@ -82,7 +82,7 @@ export async function DELETE(
     const drafts = createDraftService(db);
     const cancelled = drafts.cancel(draft.id);
 
-    await notifyWs(
+    void notifyWs(
       { url: env.wsInternalUrl, secret: env.wsInternalSecret },
       { kind: "status", slug, status: DRAFT_STATUS.cancelled },
     );
@@ -214,7 +214,7 @@ export async function POST(
 
     const started = drafts.start(draft.id);
 
-    await announceToBot(
+    void announceToBot(
       { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
       {
         kind: "draft-started",
@@ -225,7 +225,7 @@ export async function POST(
       },
     );
 
-    await notifyWs(
+    void notifyWs(
       { url: env.wsInternalUrl, secret: env.wsInternalSecret },
       { kind: "status", slug: started.webSlug ?? slug, status: DRAFT_STATUS.active },
     );

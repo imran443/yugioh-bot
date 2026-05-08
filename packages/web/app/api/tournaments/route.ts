@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     const tournaments = createTournamentService(db);
     const tournament = tournaments.create(guildId, name, format as "round_robin" | "single_elim", session.user.id);
 
-    await announceToBot(
+    void announceToBot(
       { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
       {
         kind: "tournament-created",

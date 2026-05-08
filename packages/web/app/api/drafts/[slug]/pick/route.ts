@@ -90,7 +90,7 @@ export async function POST(
 
     const wsCfg = { url: env.wsInternalUrl, secret: env.wsInternalSecret };
 
-    await notifyWs(wsCfg, {
+    void notifyWs(wsCfg, {
       kind: "pick",
       slug,
       playerId: player.id,
@@ -100,12 +100,12 @@ export async function POST(
 
     const after = drafts.findById(draft.id);
     if (after.status === DRAFT_STATUS.completed) {
-      await notifyWs(wsCfg, { kind: "complete", slug });
+      void notifyWs(wsCfg, { kind: "complete", slug });
     } else if (
       after.currentPackRound !== currentStep.currentPackRound ||
       after.currentPickStep !== currentStep.currentPickStep
     ) {
-      await notifyWs(wsCfg, {
+      void notifyWs(wsCfg, {
         kind: "resync",
         slug,
         packRound: after.currentPackRound,
