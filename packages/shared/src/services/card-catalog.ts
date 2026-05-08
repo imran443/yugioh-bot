@@ -37,6 +37,7 @@ export type CardCatalogCard = Card;
 
 export type SyncDraftPoolInput = {
   setNames: string[];
+  customCardIds?: number[];
   includeNames: string[];
   excludeNames: string[];
 };
@@ -84,7 +85,7 @@ export function createCardCatalogService(
 ) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  const fetchCards = async (searchParam: "cardset" | "name", value: string) => {
+  const fetchCards = async (searchParam: "cardset" | "id" | "name", value: string) => {
     const url = new URL(YGOPRODECK_API_URL);
     url.searchParams.set(searchParam, value);
 
@@ -180,6 +181,9 @@ export function createCardCatalogService(
   return {
     async syncDraftPool(input: SyncDraftPoolInput) {
       const fetchedSets = await Promise.all(input.setNames.map((setName) => fetchCards("cardset", setName)));
+      const fetchedCustomCards = await Promise.all(
+        (input.customCardIds ?? []).map((cardId) => fetchCards("id", String(cardId))),
+      );
       const fetchedIncludes = await Promise.all(
         input.includeNames.map((cardName) => fetchCards("name", cardName)),
       );
@@ -187,7 +191,7 @@ export function createCardCatalogService(
       const seenIds = new Set<number>();
       const cardsToCache: YgoprodeckCard[] = [];
 
-      for (const card of [...fetchedSets.flat(), ...fetchedIncludes.flat()]) {
+      for (const card of [...fetchedSets.flat(), ...fetchedCustomCards.flat(), ...fetchedIncludes.flat()]) {
         if (seenIds.has(card.id) || excludedNames.has(normalizeName(card.name)) || isExtraDeckCard(card)) {
           continue;
         }

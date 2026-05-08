@@ -3,7 +3,7 @@ import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { DraftService } from "../services/drafts.js";
-import type { TournamentService } from "../services/tournaments.js";
+import type { TournamentService } from "@yugidraft/shared/services";
 
 type AutocompleteChoice = {
   name: string;

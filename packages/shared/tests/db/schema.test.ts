@@ -284,4 +284,32 @@ describe("shared database schema", () => {
       "level",
     ]);
   });
+
+  it("backfills web_slug for tournaments that pre-date the column", () => {
+    const db = new Database(":memory:");
+    // Simulate legacy schema without web_slug
+    db.exec(`
+      create table tournaments (
+        id integer primary key autoincrement,
+        guild_id text not null,
+        name text not null,
+        format text not null,
+        status text not null,
+        created_by_user_id text not null,
+        created_at text not null default current_timestamp,
+        started_at text,
+        ended_at text
+      );
+    `);
+    db.prepare(
+      "insert into tournaments (guild_id, name, format, status, created_by_user_id) values (?, ?, ?, ?, ?)",
+    ).run("g1", "old-event", "round_robin", "completed", "u1");
+
+    migrate(db);
+
+    const row = db
+      .prepare("select web_slug from tournaments where name = ?")
+      .get("old-event") as { web_slug: string | null };
+    expect(row.web_slug).toMatch(/^[a-z0-9]{8}$/);
+  });
 });

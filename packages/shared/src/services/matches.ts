@@ -96,7 +96,11 @@ export function createMatchService(db: Database.Database) {
       .prepare("select * from tournaments where id = ?")
       .get(match.tournamentId) as any;
 
-    if (!tournament || tournament.format !== "single_elim") {
+    if (!tournament || tournament.status !== "active") {
+      return;
+    }
+
+    if (tournament.format !== "single_elim") {
       return;
     }
 

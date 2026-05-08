@@ -1,16 +1,17 @@
 import type Database from "better-sqlite3";
-import type { Tournament, TournamentMatch, TournamentPlayer } from "@yugidraft/shared/types";
+import type { Tournament, TournamentMatch, TournamentPlayer } from "../types/index.js";
 import type { Match } from "./matches.js";
 import {
   generateRoundRobin,
   generateSingleElimFirstRound,
   type TournamentPairing,
-} from "@yugidraft/shared/tournaments";
+} from "../tournaments/formats.js";
+import { generateWebSlug } from "../util/web-slug.js";
 
 export type TournamentFormat = "round_robin" | "single_elim";
 export type TournamentStatus = "pending" | "active" | "cancelled" | "completed";
 
-export type { Tournament, TournamentMatch } from "@yugidraft/shared/types";
+export type { Tournament, TournamentMatch } from "../types/index.js";
 export type TournamentParticipant = TournamentPlayer;
 
 export type TournamentMatchStatus = "open" | "pending_approval" | "completed";
@@ -67,11 +68,6 @@ function assertFormat(format: string): asserts format is TournamentFormat {
   if (format !== "round_robin" && format !== "single_elim") {
     throw new Error("Unsupported tournament format");
   }
-}
-
-function generateWebSlug(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
 export function createTournamentService(db: Database.Database) {
@@ -161,16 +157,24 @@ export function createTournamentService(db: Database.Database) {
         throw new Error("An active or pending tournament already uses that name");
       }
 
-      const result = db
-        .prepare(
-          `
+      const insert = db.prepare(
+        `
           insert into tournaments (guild_id, name, format, status, created_by_user_id, web_slug)
           values (?, ?, ?, 'pending', ?, ?)
         `,
-        )
-        .run(guildId, name, format, createdByUserId, generateWebSlug());
+      );
 
-      return findById(Number(result.lastInsertRowid));
+      let result;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          result = insert.run(guildId, name, format, createdByUserId, generateWebSlug());
+          break;
+        } catch (err: any) {
+          if (err?.code !== "SQLITE_CONSTRAINT_UNIQUE" || attempt === 4) throw err;
+        }
+      }
+
+      return findById(Number(result!.lastInsertRowid));
     },
 
     findById,
@@ -576,7 +580,11 @@ export function createTournamentService(db: Database.Database) {
     },
 
     cancel(tournamentId: number): Tournament {
-      findById(tournamentId);
+      const tournament = findById(tournamentId);
+
+      if (tournament.status !== "pending" && tournament.status !== "active") {
+        throw new Error(`Tournament cannot be cancelled in status '${tournament.status}'`);
+      }
 
       db.prepare(
         "update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?",

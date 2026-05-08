@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { createDraftService } from "@yugidraft/shared/services";
+import { createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "./helpers";
 
 export const runtime = "nodejs";
@@ -189,6 +189,16 @@ export async function POST(
     }
 
     const drafts = createDraftService(db);
+    const draftModel = drafts.findById(draft.id);
+    const cards = createCardCatalogService(db);
+
+    await cards.syncDraftPool({
+      setNames: draftModel.config.setNames ?? [],
+      customCardIds: draftModel.config.customCardIds ?? [],
+      includeNames: draftModel.config.includeNames ?? [],
+      excludeNames: draftModel.config.excludeNames ?? [],
+    });
+
     const started = drafts.start(draft.id);
 
     return NextResponse.json({

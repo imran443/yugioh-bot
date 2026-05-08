@@ -5,20 +5,21 @@ export const runtime = "nodejs";
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { id } = await params;
-    const tournamentId = Number(id);
+    const { slug } = await params;
     const db = getDb();
 
     const tournament = db
-      .prepare("select * from tournaments where id = ?")
-      .get(tournamentId) as { id: number } | undefined;
+      .prepare("select id from tournaments where web_slug = ?")
+      .get(slug) as { id: number } | undefined;
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
     }
+
+    const tournamentId = tournament.id;
 
     // Get all participants
     const participants = db
@@ -87,7 +88,7 @@ export async function GET(
 
     return NextResponse.json(standings);
   } catch (error) {
-    console.error("[api/tournaments/id/standings] error:", error);
+    console.error("[api/tournaments/[slug]/standings] error:", error);
     return NextResponse.json(
       { error: "Failed to load standings" },
       { status: 500 }

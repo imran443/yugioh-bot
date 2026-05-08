@@ -24,6 +24,17 @@ describe("draft template service", () => {
     });
   });
 
+  it("saves custom card ids in template config", () => {
+    const templates = setup();
+
+    templates.save("guild-1", "Goat Cube", { customCardIds: [46986414, 83764718], setNames: ["Metal Raiders"] }, "user-1");
+
+    expect(templates.findByName("guild-1", "Goat Cube")?.config).toEqual({
+      customCardIds: [46986414, 83764718],
+      setNames: ["Metal Raiders"],
+    });
+  });
+
   it("upserts an existing template by name", () => {
     const templates = setup();
 

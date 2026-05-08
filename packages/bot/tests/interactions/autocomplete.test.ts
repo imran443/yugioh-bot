@@ -9,7 +9,7 @@ import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftService } from "../../src/services/drafts.js";
 import { createDraftTemplateService } from "../../src/services/draft-templates.js";
-import { createTournamentService } from "../../src/services/tournaments.js";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 function setup() {
   const db = new Database(":memory:");

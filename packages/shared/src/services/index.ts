@@ -5,3 +5,7 @@ export { createGuildSettingsService } from "./guild-settings.js";
 export type { GuildSettingsService, GuildSettings } from "./guild-settings.js";
 export { createPlayerService } from "./players.js";
 export type { PlayerService, Player } from "./players.js";
+export { createMatchService } from "./matches.js";
+export type { MatchService, Match, MatchStats, LeaderboardRow, MatchSource, MatchStatus } from "./matches.js";
+export { createTournamentService } from "./tournaments.js";
+export type { TournamentService, TournamentFormat, TournamentStatus } from "./tournaments.js";

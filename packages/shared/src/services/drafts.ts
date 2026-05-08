@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
+import { generateWebSlug } from "../util/web-slug.js";
 
 export type DraftStatus = "pending" | "active" | "cancelled" | "completed";
 export type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
@@ -84,11 +85,6 @@ const defaultDraftConfig = {
   alternatePassDirection: true,
   randomizeSeats: false,
 } satisfies Required<Pick<DraftConfig, "packSize" | "packsPerPlayer" | "pickSeconds" | "alternatePassDirection" | "randomizeSeats">>;
-
-function generateWebSlug(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
 
 function normalizeDraftConfig(config: DraftConfig): DraftConfig {
   return {
@@ -290,9 +286,10 @@ export function createDraftService(db: Database.Database) {
 
   const catalogCardIdsForDraft = (config: DraftConfig): number[] => {
     const setNames = new Set((config.setNames ?? []).map((name) => name.trim()));
+    const customCardIds = new Set(config.customCardIds ?? []);
     const includeNames = new Set((config.includeNames ?? []).map(normalizeName));
     const excludeNames = new Set((config.excludeNames ?? []).map(normalizeName));
-    const hasExplicitPool = setNames.size > 0 || includeNames.size > 0;
+    const hasExplicitPool = setNames.size > 0 || customCardIds.size > 0 || includeNames.size > 0;
 
     return db
       .prepare("select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog")
@@ -314,6 +311,10 @@ export function createDraftService(db: Database.Database) {
         }
 
         if (includeNames.has(normalizedName)) {
+          return true;
+        }
+
+        if (customCardIds.has(row.ygoprodeck_id)) {
           return true;
         }
 

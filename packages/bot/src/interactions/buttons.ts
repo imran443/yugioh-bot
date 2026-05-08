@@ -14,8 +14,8 @@ import type { DiscordUserLike } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftService } from "../services/drafts.js";
-import type { MatchService } from "../services/matches.js";
-import type { TournamentService } from "../services/tournaments.js";
+import type { MatchService } from "@yugidraft/shared/services";
+import type { TournamentService } from "@yugidraft/shared/services";
 
 export type ButtonInteractionLike = {
   customId: string;

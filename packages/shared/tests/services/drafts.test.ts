@@ -131,6 +131,58 @@ describe("shared draft service", () => {
     expect(app.drafts.currentPackOptions(draft.id, kaiba.id)).toHaveLength(8);
   });
 
+  it("uses custom card ids as an explicit draft pool", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "custom pool night",
+      { setNames: ["Missing Set"], customCardIds: [101, 102], packSize: 2, packsPerPlayer: 1 },
+      "user-1",
+      yugi.id,
+    );
+
+    app.drafts.join(draft.id, kaiba.id);
+
+    const insertCard = app.db.prepare(
+      `
+        insert into card_catalog (
+          ygoprodeck_id,
+          name,
+          type,
+          frame_type,
+          image_url,
+          image_url_small,
+          card_sets_json,
+          cached_at
+        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    );
+
+    for (const id of [101, 102]) {
+      insertCard.run(
+        id,
+        `Custom Card ${id}`,
+        "Spellcaster / Normal Monster",
+        "normal",
+        `https://img/full/${id}`,
+        `https://img/small/${id}`,
+        JSON.stringify([{ set_name: "Different Set" }]),
+        "2026-01-01T00:00:00Z",
+      );
+    }
+
+    app.drafts.start(draft.id);
+
+    const openedCardIds = app.db
+      .prepare("select distinct catalog_card_id from draft_cards where draft_id = ? order by catalog_card_id")
+      .all(draft.id);
+
+    expect(openedCardIds).toEqual([{ catalog_card_id: 101 }, { catalog_card_id: 102 }]);
+  });
+
   it("records synchronized pick steps after all players pick", () => {
     const app = setup();
     const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");

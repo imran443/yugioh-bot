@@ -17,7 +17,11 @@ type YgoprodeckCard = {
   }>;
 };
 
-function setup(cardsBySet: Record<string, YgoprodeckCard[]> = {}, cardsByName: Record<string, YgoprodeckCard[]> = {}) {
+function setup(
+  cardsBySet: Record<string, YgoprodeckCard[]> = {},
+  cardsByName: Record<string, YgoprodeckCard[]> = {},
+  cardsById: Record<string, YgoprodeckCard[]> = {},
+) {
   const db = new Database(":memory:");
   migrate(db);
 
@@ -29,7 +33,14 @@ function setup(cardsBySet: Record<string, YgoprodeckCard[]> = {}, cardsByName: R
 
       const setName = url.searchParams.get("cardset");
       const cardName = url.searchParams.get("name");
-      const data = setName ? cardsBySet[setName] ?? [] : cardName ? cardsByName[cardName] ?? [] : [];
+      const cardId = url.searchParams.get("id");
+      const data = setName
+        ? cardsBySet[setName] ?? []
+        : cardName
+          ? cardsByName[cardName] ?? []
+          : cardId
+            ? cardsById[cardId] ?? []
+            : [];
 
       return {
         ok: true,
@@ -108,5 +119,32 @@ describe("shared card catalog service", () => {
       }),
     ]);
     expect(app.db.prepare("select count(*) as count from card_catalog").get()).toEqual({ count: 2 });
+  });
+
+  it("syncs custom card ids into the local catalog", async () => {
+    const summonedSkull = {
+      id: 70781052,
+      name: "Summoned Skull",
+      type: "Fiend / Normal Monster",
+      frameType: "normal",
+      card_images: [{ image_url: "https://img/full/summoned-skull", image_url_small: "https://img/small/summoned-skull" }],
+      card_sets: [{ set_name: "Metal Raiders" }],
+    } satisfies YgoprodeckCard;
+    const app = setup({}, {}, { "70781052": [summonedSkull] });
+
+    await app.catalog.syncDraftPool({
+      setNames: [],
+      customCardIds: [70781052],
+      includeNames: [],
+      excludeNames: [],
+    });
+
+    expect(app.fetchCalls).toEqual(["https://db.ygoprodeck.com/api/v7/cardinfo.php?id=70781052"]);
+    expect(app.catalog.findByIds([70781052])).toEqual([
+      expect.objectContaining({
+        ygoprodeckId: 70781052,
+        name: "Summoned Skull",
+      }),
+    ]);
   });
 });

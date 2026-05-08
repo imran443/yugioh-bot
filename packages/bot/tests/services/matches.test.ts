@@ -2,15 +2,17 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
-import { createMatchService } from "../../src/services/matches.js";
+import { createMatchService } from "@yugidraft/shared/services";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 function setup() {
   const db = new Database(":memory:");
   migrate(db);
   const players = createPlayerRepository(db);
   const matches = createMatchService(db);
+  const tournaments = createTournamentService(db);
 
-  return { matches, players };
+  return { matches, players, tournaments };
 }
 
 describe("match service", () => {
@@ -140,5 +142,28 @@ describe("match service", () => {
       { playerId: joey.id, displayName: "Joey", wins: 0, losses: 0 },
       { playerId: kaiba.id, displayName: "Kaiba", wins: 0, losses: 1 },
     ]);
+  });
+
+  it("does not advance or complete a tournament that is no longer active", () => {
+    const app = setup();
+    const t = app.tournaments.create("g1", "Locals", "single_elim", "u1");
+    const yugi = app.players.upsert("g1", "u1", "Yugi");
+    const kaiba = app.players.upsert("g1", "u2", "Kaiba");
+    app.tournaments.join(t.id, yugi.id);
+    app.tournaments.join(t.id, kaiba.id);
+    app.tournaments.start(t.id);
+
+    const openMatches = app.tournaments.openMatches(t.id);
+    const tm = openMatches[0];
+    const reported = app.tournaments.report(t.id, yugi.id, kaiba.id, yugi.id);
+
+    // Cancel the tournament before approval
+    app.tournaments.cancel(t.id);
+
+    // Approve should NOT complete the tournament
+    app.matches.approve(reported.id, kaiba.id);
+
+    const tournamentAfter = app.tournaments.findById(t.id);
+    expect(tournamentAfter.status).toBe("cancelled");
   });
 });

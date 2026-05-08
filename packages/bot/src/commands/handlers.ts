@@ -5,8 +5,8 @@ import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
 import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { Draft, DraftService } from "../services/drafts.js";
-import type { MatchService } from "../services/matches.js";
-import type { TournamentFormat, TournamentService } from "../services/tournaments.js";
+import type { MatchService } from "@yugidraft/shared/services";
+import type { TournamentFormat, TournamentService } from "@yugidraft/shared/services";
 
 export type DiscordUserLike = {
   id: string;

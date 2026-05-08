@@ -2,8 +2,8 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
-import { createMatchService } from "../../src/services/matches.js";
-import { createTournamentService } from "../../src/services/tournaments.js";
+import { createMatchService } from "@yugidraft/shared/services";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 function setup() {
   const db = new Database(":memory:");
@@ -199,6 +199,19 @@ describe("tournament service", () => {
         participantPlayerId: yugi.id,
       }),
     ).toEqual([expect.objectContaining({ id: target.id, name: "Spring Locals" })]);
+  });
+
+  it("refuses to cancel a tournament that is already cancelled", () => {
+    const app = setup();
+    const yugi = app.players.upsert("g1", "u1", "Yugi");
+    const kaiba = app.players.upsert("g1", "u2", "Kaiba");
+    const t = app.tournaments.create("g1", "Locals", "round_robin", "u1");
+    app.tournaments.join(t.id, yugi.id);
+    app.tournaments.join(t.id, kaiba.id);
+    app.tournaments.start(t.id);
+    app.tournaments.cancel(t.id);
+
+    expect(() => app.tournaments.cancel(t.id)).toThrow(/cannot be cancelled/i);
   });
 
   it("counts tournament stats from approved tournament matches only", () => {
