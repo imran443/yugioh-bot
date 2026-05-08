@@ -107,7 +107,7 @@ export async function GET() {
               and winner_id not in (${playerIds.map(() => "?").join(",")})
             then 1 else 0 end) as losses
         from matches
-        where status = 'completed'
+        where status = 'approved'
           and (player_one_id in (${playerIds.map(() => "?").join(",")}) or player_two_id in (${playerIds.map(() => "?").join(",")}))
       `
       )
