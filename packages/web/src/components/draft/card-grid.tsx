@@ -237,7 +237,7 @@ export function CardGrid({ className }: CardGridProps) {
               aria-selected={isHighlighted}
               tabIndex={0}
               className={cn(
-                "group relative flex flex-col items-center rounded-xl border bg-surface p-2.5 motion-safe:transition-all",
+                "group relative flex flex-col items-center rounded-xl border bg-bg-surface p-2.5 motion-safe:transition-all",
                 "hover:shadow-card hover:border-accent-primary/50",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary",
                 isHighlighted
@@ -297,7 +297,7 @@ export function CardGrid({ className }: CardGridProps) {
         >
           <div
             data-testid="hover-preview-card"
-            className="max-h-[calc(100vh-2rem)] w-72 overflow-auto rounded-xl border border-border bg-surface shadow-card"
+            className="max-h-[calc(100vh-2rem)] w-72 overflow-auto rounded-xl border border-border bg-bg-surface shadow-card"
           >
             <div
               data-testid="hover-preview-art"
