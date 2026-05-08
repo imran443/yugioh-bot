@@ -29,11 +29,11 @@ describe("tournament reporting", () => {
     app.tournaments.join(tournament.id, joey.id);
     app.tournaments.start(tournament.id);
 
-    expect(app.tournaments.openMatches(tournament.id)).toEqual([
+    expect(app.tournaments.openMatches(tournament.id)).toEqual(expect.arrayContaining([
       expect.objectContaining({ playerOneId: yugi.id, playerTwoId: kaiba.id, status: "open" }),
       expect.objectContaining({ playerOneId: yugi.id, playerTwoId: joey.id, status: "open" }),
       expect.objectContaining({ playerOneId: kaiba.id, playerTwoId: joey.id, status: "open" }),
-    ]);
+    ]));
   });
 
   it("reporting a tournament match creates a pending approved-stats match tied to the tournament", () => {

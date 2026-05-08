@@ -698,6 +698,7 @@ describe("command handlers", () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };
     const kaiba = { id: "user-2", username: "Kaiba" };
+    const joey = { id: "user-3", username: "Joey" };
 
     await handleCommand(
       fakeInteraction({ commandName: "duel", user: yugi, users: { player: kaiba }, strings: { result: "loss" } })
@@ -710,7 +711,7 @@ describe("command handlers", () => {
         commandName: "event",
         subcommand: "create",
         user: yugi,
-        users: { player1: yugi, player2: kaiba },
+        users: { player1: yugi, player2: kaiba, player3: joey },
         strings: { name: "locals", format: "round_robin" },
       }).interaction,
       app,
@@ -744,13 +745,14 @@ describe("command handlers", () => {
     const app = setup();
     const yugi = { id: "user-1", username: "Yugi" };
     const kaiba = { id: "user-2", username: "Kaiba" };
+    const joey = { id: "user-3", username: "Joey" };
 
     await handleCommand(
       fakeInteraction({
         commandName: "event",
         subcommand: "create",
         user: yugi,
-        users: { player1: yugi, player2: kaiba },
+        users: { player1: yugi, player2: kaiba, player3: joey },
         strings: { name: "locals", format: "round_robin" },
       }).interaction,
       app,

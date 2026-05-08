@@ -5,8 +5,15 @@ import { env } from "@/lib/env";
 import { createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "./helpers";
 import { announceToBot } from "@/lib/announce-bot";
+import { notifyWs } from "@/lib/notify-ws";
 
 export const runtime = "nodejs";
+
+const DRAFT_STATUS = {
+  active: "active",
+  cancelled: "cancelled",
+  completed: "completed",
+} as const;
 
 export async function GET(
   _request: Request,
@@ -61,7 +68,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Only the draft creator can cancel or delete a draft" }, { status: 403 });
     }
 
-    if (draft.status === "completed" || draft.status === "cancelled") {
+    if (draft.status === DRAFT_STATUS.completed || draft.status === DRAFT_STATUS.cancelled) {
       db.transaction(() => {
         db.prepare("delete from draft_picks where draft_id = ?").run(draft.id);
         db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
@@ -74,6 +81,11 @@ export async function DELETE(
 
     const drafts = createDraftService(db);
     const cancelled = drafts.cancel(draft.id);
+
+    await notifyWs(
+      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+      { kind: "status", slug, status: DRAFT_STATUS.cancelled },
+    );
 
     return NextResponse.json({
       id: cancelled.id,
@@ -211,6 +223,11 @@ export async function POST(
         name: started.name,
         webSlug: started.webSlug ?? "",
       },
+    );
+
+    await notifyWs(
+      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+      { kind: "status", slug: started.webSlug ?? slug, status: DRAFT_STATUS.active },
     );
 
     return NextResponse.json({

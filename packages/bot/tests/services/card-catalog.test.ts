@@ -20,7 +20,7 @@ type YgoprodeckCard = {
 function setup(
   cardsBySet: Record<string, YgoprodeckCard[]> = {},
   cardsByName: Record<string, YgoprodeckCard[]> = {},
-  setsResponse: Array<{ set_name: string; set_code?: string; num_cards?: number }> = [],
+  setsResponse: Array<{ set_name: string; set_code?: string; num_of_cards?: number }> = [],
 ) {
   const db = new Database(":memory:");
   migrate(db);
@@ -241,9 +241,9 @@ describe("card catalog service", () => {
 
   it("syncs sets from the API into the database", async () => {
     const app = setup({}, {}, [
-      { set_name: "Legend of Blue Eyes White Dragon", set_code: "LOB", num_cards: 126 },
-      { set_name: "Metal Raiders", set_code: "MRD", num_cards: 144 },
-      { set_name: "Pharaoh's Servant", set_code: "PSV", num_cards: 105 },
+      { set_name: "Legend of Blue Eyes White Dragon", set_code: "LOB", num_of_cards: 126 },
+      { set_name: "Metal Raiders", set_code: "MRD", num_of_cards: 144 },
+      { set_name: "Pharaoh's Servant", set_code: "PSV", num_of_cards: 105 },
     ]);
 
     const sets = await app.catalog.syncSets();

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolve } from "path";
 
 const openDatabase = vi.fn(() => ({ mocked: true }));
 
@@ -20,6 +21,7 @@ describe("getDb path resolution", () => {
 
     getDb();
 
-    expect(openDatabase).toHaveBeenCalledWith("/home/imran/yugioh-discord-bot/data/bot.sqlite");
+    const expectedPath = resolve(process.cwd(), "..", "..", "data", "bot.sqlite");
+    expect(openDatabase).toHaveBeenCalledWith(expectedPath);
   });
 });

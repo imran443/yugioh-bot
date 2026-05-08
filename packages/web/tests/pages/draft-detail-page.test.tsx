@@ -55,6 +55,12 @@ vi.mock("../../src/components/draft/pool-panel", () => ({
 // Import page AFTER mocks are set up
 // ---------------------------------------------------------------------------
 import DraftDetailPage from "../../app/(app)/draft/[slug]/page";
+import { useDraftWebsocket } from "../../src/lib/hooks/use-draft-websocket";
+
+const DRAFT_STATUS = {
+  active: "active",
+  completed: "completed",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -77,7 +83,7 @@ const baseStoreState = {
 const activeDraftResponse = {
   id: 1,
   name: "Test Draft",
-  status: "active",
+  status: DRAFT_STATUS.active,
   createdByUserId: "user-1",
   createdAt: "2026-05-06T12:00:00.000Z",
   config: { packSize: 5, packsPerPlayer: 3, pickSeconds: 60, setNames: [] },
@@ -97,7 +103,7 @@ const activeDraftResponse = {
 
 const completedDraftResponse = {
   ...activeDraftResponse,
-  status: "completed",
+  status: DRAFT_STATUS.completed,
   completed: true,
   endedAt: "2026-05-06T12:30:00.000Z",
 };
@@ -259,5 +265,71 @@ describe("DraftDetailPage — completion transition", () => {
 
     expect(screen.queryByTestId("card-grid")).toBeNull();
     expect(screen.queryByTestId("draft-summary-view")).toBeNull();
+  });
+
+  it("re-fetches the draft when websocket status changes", async () => {
+    let draftApiCallCount = 0;
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/auth/session") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { id: "user-1" } }) } as Response);
+      }
+      if (url === "/api/drafts/test-draft") {
+        draftApiCallCount += 1;
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(activeDraftResponse),
+      } as Response);
+    });
+
+    render(<DraftDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("card-grid")).toBeTruthy();
+    });
+
+    const options = vi.mocked(useDraftWebsocket).mock.calls.at(-1)?.[1];
+
+    act(() => {
+      options?.onStatusChange?.(DRAFT_STATUS.active);
+    });
+
+    await waitFor(() => {
+      expect(draftApiCallCount).toBe(2);
+    });
+  });
+
+  it("re-fetches the draft when websocket resync fires", async () => {
+    let draftApiCallCount = 0;
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/auth/session") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { id: "user-1" } }) } as Response);
+      }
+      if (url === "/api/drafts/test-draft") {
+        draftApiCallCount += 1;
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(activeDraftResponse),
+      } as Response);
+    });
+
+    render(<DraftDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("card-grid")).toBeTruthy();
+    });
+
+    const options = vi.mocked(useDraftWebsocket).mock.calls.at(-1)?.[1];
+
+    act(() => {
+      options?.onResync?.();
+    });
+
+    await waitFor(() => {
+      expect(draftApiCallCount).toBe(2);
+    });
   });
 });

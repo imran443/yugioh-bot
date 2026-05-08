@@ -28,6 +28,10 @@
       "types": "./dist/util/web-slug.d.ts",
       "source": "./src/util/web-slug.ts",
       "default": "./dist/util/web-slug.js"
+    },
+    "./ws": {
+      "types": "./dist/ws/index.d.ts",
+      "default": "./dist/ws/index.js"
     }
   },
   "scripts": {
