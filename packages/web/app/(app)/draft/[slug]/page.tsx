@@ -95,18 +95,6 @@ export default function DraftDetailPage() {
 
   const setFromServer = useDraftStore((s) => s.setFromServer);
   const storeCompleted = useDraftStore((s) => s.completed);
-  useDraftWebsocket(slug);
-  useDraftCountdown();
-  useDraftExpiryResync(slug);
-
-  useEffect(() => {
-    fetch("/api/auth/session")
-      .then((r) => r.json())
-      .then((s) => {
-        if (s?.user?.id) setCurrentUserId(s.user.id);
-      })
-      .catch(() => {});
-  }, []);
 
   const fetchDraft = useCallback(async () => {
     try {
@@ -141,6 +129,26 @@ export default function DraftDetailPage() {
       setLoading(false);
     }
   }, [setFromServer, slug, router]);
+
+  useDraftWebsocket(slug, {
+    onStatusChange: () => {
+      void fetchDraft();
+    },
+    onResync: () => {
+      void fetchDraft();
+    },
+  });
+  useDraftCountdown();
+  useDraftExpiryResync(slug);
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((s) => {
+        if (s?.user?.id) setCurrentUserId(s.user.id);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchDraft();

@@ -55,6 +55,7 @@ vi.mock("../../src/components/draft/pool-panel", () => ({
 // Import page AFTER mocks are set up
 // ---------------------------------------------------------------------------
 import DraftDetailPage from "../../app/(app)/draft/[slug]/page";
+import { useDraftWebsocket } from "../../src/lib/hooks/use-draft-websocket";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -259,5 +260,71 @@ describe("DraftDetailPage — completion transition", () => {
 
     expect(screen.queryByTestId("card-grid")).toBeNull();
     expect(screen.queryByTestId("draft-summary-view")).toBeNull();
+  });
+
+  it("re-fetches the draft when websocket status changes", async () => {
+    let draftApiCallCount = 0;
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/auth/session") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { id: "user-1" } }) } as Response);
+      }
+      if (url === "/api/drafts/test-draft") {
+        draftApiCallCount += 1;
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(activeDraftResponse),
+      } as Response);
+    });
+
+    render(<DraftDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("card-grid")).toBeTruthy();
+    });
+
+    const options = vi.mocked(useDraftWebsocket).mock.calls.at(-1)?.[1];
+
+    act(() => {
+      options?.onStatusChange?.("active");
+    });
+
+    await waitFor(() => {
+      expect(draftApiCallCount).toBe(2);
+    });
+  });
+
+  it("re-fetches the draft when websocket resync fires", async () => {
+    let draftApiCallCount = 0;
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/auth/session") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { id: "user-1" } }) } as Response);
+      }
+      if (url === "/api/drafts/test-draft") {
+        draftApiCallCount += 1;
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(activeDraftResponse),
+      } as Response);
+    });
+
+    render(<DraftDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("card-grid")).toBeTruthy();
+    });
+
+    const options = vi.mocked(useDraftWebsocket).mock.calls.at(-1)?.[1];
+
+    act(() => {
+      options?.onResync?.();
+    });
+
+    await waitFor(() => {
+      expect(draftApiCallCount).toBe(2);
+    });
   });
 });
