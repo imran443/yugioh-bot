@@ -9,7 +9,7 @@ import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftImageService } from "../../src/services/draft-images.js";
 import { createDraftService } from "../../src/services/drafts.js";
-import { createTournamentService } from "../../src/services/tournaments.js";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 type SelectMenuDependencies = Parameters<typeof handleSelectMenu>[1];
 type _DraftSelectMenuDependencyChecks = [

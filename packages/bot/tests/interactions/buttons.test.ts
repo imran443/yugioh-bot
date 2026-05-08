@@ -5,8 +5,8 @@ import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftService } from "../../src/services/drafts.js";
-import { createMatchService } from "../../src/services/matches.js";
-import { createTournamentService } from "../../src/services/tournaments.js";
+import { createMatchService } from "@yugidraft/shared/services";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
   const insertCard = app.db.prepare(

@@ -7,8 +7,8 @@ import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftImageService } from "../../src/services/draft-images.js";
 import { createDraftService } from "../../src/services/drafts.js";
 import { createDraftTemplateService } from "../../src/services/draft-templates.js";
-import { createMatchService } from "../../src/services/matches.js";
-import { createTournamentService } from "../../src/services/tournaments.js";
+import { createMatchService } from "@yugidraft/shared/services";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 const mockSetNames = ["Legend of Blue Eyes White Dragon", "Metal Raiders", "Pharaoh's Servant"];
 

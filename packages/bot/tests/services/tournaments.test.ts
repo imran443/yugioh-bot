@@ -2,8 +2,8 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
-import { createMatchService } from "../../src/services/matches.js";
-import { createTournamentService } from "../../src/services/tournaments.js";
+import { createMatchService } from "@yugidraft/shared/services";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 function setup() {
   const db = new Database(":memory:");

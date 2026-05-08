@@ -45,8 +45,8 @@ import {
   selectTournamentReminderTargets,
 } from "./reminders/tournament-reminders.js";
 import { createDraftTimerService } from "./services/draft-timer.js";
-import { createMatchService } from "./services/matches.js";
-import { createTournamentService } from "./services/tournaments.js";
+import { createMatchService } from "@yugidraft/shared/services";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 const token = process.env.DISCORD_TOKEN;
 

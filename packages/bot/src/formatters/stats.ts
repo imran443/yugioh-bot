@@ -1,4 +1,4 @@
-import type { LeaderboardRow, MatchStats } from "../services/matches.js";
+import type { LeaderboardRow, MatchStats } from "@yugidraft/shared/services";
 
 export function formatStats(playerName: string, stats: MatchStats) {
   const total = stats.wins + stats.losses;
