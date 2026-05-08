@@ -81,7 +81,12 @@ describe("CardGrid", () => {
     expect(screen.getByText(/waiting for pack/i)).toBeTruthy();
   });
 
-  it("opens a centered modal picker when a card is selected", async () => {
+  it("picks a card immediately when clicked without opening a modal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    } as unknown as Response);
+    global.fetch = fetchMock;
     useDraftStore.setState({ ...baseState, currentPack: samplePack, isMyTurn: true });
 
     render(<CardGrid />);
@@ -91,36 +96,16 @@ describe("CardGrid", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: /mirror force/i })).toBeTruthy();
-      expect(screen.getByRole("button", { name: /close modal/i })).toBeTruthy();
-    });
-  });
-
-  it("clears the open picker when server state removes the selected card", async () => {
-    useDraftStore.setState({ ...baseState, currentPack: samplePack, isMyTurn: true });
-
-    render(<CardGrid />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("option", { name: /mirror force/i }));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/drafts/legendary-draft/pick",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ cardId: 101 }),
+        }),
+      );
     });
 
-    await waitFor(() => expect(screen.getByRole("dialog", { name: /mirror force/i })).toBeTruthy());
-
-    act(() => {
-      useDraftStore.getState().setFromServer({
-        currentPack: [samplePack[1]],
-        isMyTurn: false,
-        timerSeconds: 54,
-      });
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: /mirror force/i })).toBeNull();
-    });
-
-    expect(useDraftStore.getState().selectedCardId).toBeNull();
-    expect(useDraftStore.getState().highlightedIndex).toBe(-1);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("does not submit a stale pick after server state ends the turn", async () => {
@@ -134,12 +119,6 @@ describe("CardGrid", () => {
 
     render(<CardGrid />);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("option", { name: /mirror force/i }));
-    });
-
-    await waitFor(() => expect(screen.getByRole("dialog", { name: /mirror force/i })).toBeTruthy());
-
     act(() => {
       useDraftStore.getState().setFromServer({
         currentPack: [samplePack[1]],
@@ -148,8 +127,8 @@ describe("CardGrid", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /pick this card/i })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("option", { name: /mystical space typhoon/i }));
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -166,21 +145,18 @@ describe("CardGrid", () => {
 
     expect(screen.getAllByAltText("Mirror Force").length).toBeGreaterThan(1);
     expect(document.querySelector(".pointer-events-none.fixed.z-30")).toBeTruthy();
-    expect(screen.getByTestId("hover-preview-art").className).toContain("bg-[#d8c28a]");
-    expect(screen.getByTestId("hover-preview-art-backdrop").className).toContain("bg-[#d8c28a]");
+    expect(screen.getByTestId("hover-preview-card").className).toContain("bg-surface");
+    expect(screen.getByTestId("hover-preview-art").className).toContain("bg-bg-elevated");
+    expect(screen.getAllByAltText("Mirror Force")[1]).toHaveClass("object-contain");
   });
 
-  it("shows effect text and monster stats in the pick modal", async () => {
+  it("shows effect text and monster stats in the hover preview", async () => {
     useDraftStore.setState({ ...baseState, currentPack: samplePack, isMyTurn: true });
 
     render(<CardGrid />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("option", { name: /summoned skull/i }));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: /summoned skull/i })).toBeTruthy();
+      fireEvent.mouseEnter(screen.getByRole("option", { name: /summoned skull/i }));
     });
 
     expect(screen.getByText(/fiend with dark powers/i)).toBeTruthy();

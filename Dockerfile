@@ -67,6 +67,7 @@ COPY --from=build /app/packages/shared/package*.json packages/shared/
 COPY --from=build /app/packages/shared/dist packages/shared/dist
 # Next.js built output and public assets
 COPY --from=build /app/packages/web/package*.json packages/web/
+COPY --from=build /app/packages/web/next.config.ts packages/web/next.config.ts
 COPY --from=build /app/packages/web/.next packages/web/.next
 RUN mkdir -p /app/packages/web/public
 RUN mkdir -p /app/data

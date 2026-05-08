@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import Image from "next/image";
+import { Shield, Swords } from "lucide-react";
 import { useDraftStore, DraftCardDetail } from "@/lib/stores/draft-store";
 import { cn } from "@/lib/utils";
-import { CardPreview } from "./card-preview";
-import { Modal } from "@/components/ui/modal";
 
 interface CardGridProps {
   className?: string;
@@ -57,9 +56,7 @@ function getDesktopPreviewPosition(rect: DOMRect) {
 
 export function CardGrid({ className }: CardGridProps) {
   const currentPack = useDraftStore((s) => s.currentPack);
-  const selectedCardId = useDraftStore((s) => s.selectedCardId);
   const highlightedIndex = useDraftStore((s) => s.highlightedIndex);
-  const setSelectedCard = useDraftStore((s) => s.setSelectedCard);
   const setHighlightedIndex = useDraftStore((s) => s.setHighlightedIndex);
   const pickCard = useDraftStore((s) => s.pickCard);
   const setFromServer = useDraftStore((s) => s.setFromServer);
@@ -192,12 +189,12 @@ export function CardGrid({ className }: CardGridProps) {
   }, [clearHoveredCard, handleConfirmPick, updateHoveredCard]);
 
   const handleCardClick = (card: DraftCardDetail, index: number) => {
-    setSelectedCard(card.id);
     setHighlightedIndex(index);
+    handleConfirmPick(card.id);
   };
 
-  const selectedCard = currentPack.find((c) => c.id === selectedCardId) || null;
   const previewPosition = hoveredRect ? getDesktopPreviewPosition(hoveredRect) : null;
+  const hoveredCardIsMonster = hoveredCard?.type.toLowerCase().includes("monster") ?? false;
 
   if (currentPack.length === 0) {
     return (
@@ -298,16 +295,14 @@ export function CardGrid({ className }: CardGridProps) {
             top: `${previewPosition.top}px`,
           }}
         >
-          <div className="max-h-[calc(100vh-2rem)] w-72 overflow-auto rounded-xl border border-border bg-surface shadow-card">
+          <div
+            data-testid="hover-preview-card"
+            className="max-h-[calc(100vh-2rem)] w-72 overflow-auto rounded-xl border border-border bg-surface shadow-card"
+          >
             <div
               data-testid="hover-preview-art"
-              className="relative isolate aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-[#d8c28a]"
+              className="relative isolate aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-bg-elevated"
             >
-              <div
-                data-testid="hover-preview-art-backdrop"
-                className="absolute inset-0 bg-[#d8c28a]"
-                aria-hidden="true"
-              />
               {imageErrors.has(hoveredCard.id) ? (
                 <div className="flex h-full items-center justify-center text-text-secondary">
                   No image
@@ -317,41 +312,55 @@ export function CardGrid({ className }: CardGridProps) {
                   src={hoveredCard.imageUrl}
                   alt={hoveredCard.name}
                   fill
-                  className="object-cover"
+                  className="object-contain"
                   sizes="288px"
                   onError={() => handleImageError(hoveredCard.id)}
                 />
               )}
             </div>
-            <div className="p-4">
+            <div className="space-y-3 p-4">
               <h3 className="mb-1 font-display text-lg text-text-primary">
                 {hoveredCard.name}
               </h3>
-              <p className="line-clamp-4 text-sm text-text-secondary">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+                {hoveredCard.attribute && (
+                  <span className="rounded-md bg-bg-elevated px-2 py-1">
+                    {hoveredCard.attribute}
+                  </span>
+                )}
+                {hoveredCard.level !== undefined && (
+                  <span className="rounded-md bg-bg-elevated px-2 py-1">
+                    Level {hoveredCard.level}
+                  </span>
+                )}
+                <span className="rounded-md bg-bg-elevated px-2 py-1">{hoveredCard.type}</span>
+                <span className="rounded-md bg-bg-elevated px-2 py-1 capitalize">
+                  {hoveredCard.frameType}
+                </span>
+              </div>
+              <p className="text-sm leading-relaxed text-text-secondary">
                 {hoveredCard.effectText}
               </p>
+              {hoveredCardIsMonster && (hoveredCard.atk !== undefined || hoveredCard.def !== undefined) && (
+                <div className="flex items-center gap-4 text-sm font-semibold text-text-primary">
+                  {hoveredCard.atk !== undefined && (
+                    <div className="flex items-center gap-1.5">
+                      <Swords className="h-4 w-4 text-accent-cta" aria-hidden="true" />
+                      <span>ATK {hoveredCard.atk}</span>
+                    </div>
+                  )}
+                  {hoveredCard.def !== undefined && (
+                    <div className="flex items-center gap-1.5">
+                      <Shield className="h-4 w-4 text-accent-primary" aria-hidden="true" />
+                      <span>DEF {hoveredCard.def}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
-
-      <Modal
-        open={!!selectedCard}
-        onClose={() => setSelectedCard(null)}
-        title={selectedCard?.name}
-        className="max-w-3xl"
-      >
-        {selectedCard && (
-          <CardPreview
-            card={selectedCard}
-            onPick={() => {
-              handleConfirmPick(selectedCard.id);
-              setSelectedCard(null);
-            }}
-            onBack={() => setSelectedCard(null)}
-          />
-        )}
-      </Modal>
     </div>
   );
 }
