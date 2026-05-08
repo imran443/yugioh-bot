@@ -1,5 +1,7 @@
 # Bot ↔ Web Tournament Integration Fixes Implementation Plan
 
+> **Status: COMPLETE** — All 18 tasks implemented and merged to `feat/bot-web-tournament-integration` (2026-05-08).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix the broken bot↔web integration for tournaments and drafts, harden the tournament state machine, and remove drift between web routes and the shared service layer.

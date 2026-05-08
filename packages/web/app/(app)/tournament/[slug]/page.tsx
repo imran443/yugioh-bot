@@ -14,6 +14,7 @@ interface Participant {
 
 interface Match {
   id: number;
+  matchId: number | null;
   roundNumber: number;
   playerOneId: number;
   playerTwoId: number | null;
@@ -21,6 +22,7 @@ interface Match {
   playerTwoName: string | null;
   status: string;
   winnerId: number | null;
+  reporterId: number | null;
   metadata: Record<string, unknown>;
 }
 
@@ -33,11 +35,12 @@ interface TournamentDetail {
   participants: Participant[];
   matches: Match[];
   isParticipant: boolean;
+  currentUserPlayerId: number | null;
 }
 
 export default function TournamentDetailPage() {
   const params = useParams();
-  const id = typeof params.id === "string" ? params.id : "";
+  const id = typeof params.slug === "string" ? params.slug : "";
 
   const [tournament, setTournament] = useState<TournamentDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -347,6 +350,7 @@ export default function TournamentDetailPage() {
                         key={match.id}
                         match={match}
                         tournamentId={id}
+                        currentUserPlayerId={tournament.currentUserPlayerId}
                         isReporting={reportingMatch === match.id}
                         onReport={() => setReportingMatch(match.id)}
                         onCancelReport={() => setReportingMatch(null)}
@@ -354,6 +358,7 @@ export default function TournamentDetailPage() {
                           setReportingMatch(null);
                           fetchTournament();
                         }}
+                        onResolved={() => fetchTournament()}
                       />
                     ))}
                 </div>
@@ -369,22 +374,71 @@ export default function TournamentDetailPage() {
 function MatchCard({
   match,
   tournamentId,
+  currentUserPlayerId,
   isReporting,
   onReport,
   onCancelReport,
   onReported,
+  onResolved,
 }: {
   match: Match;
   tournamentId: string;
+  currentUserPlayerId: number | null;
   isReporting: boolean;
   onReport: () => void;
   onCancelReport: () => void;
   onReported: () => void;
+  onResolved: () => void;
 }) {
+  const [resolveLoading, setResolveLoading] = useState<"approve" | "deny" | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
   const isBye = match.metadata?.bye === true;
   const isCompleted = match.status === "completed";
   const isPendingApproval = match.status === "pending_approval";
   const isOpen = match.status === "open";
+
+  const isOpponent =
+    currentUserPlayerId !== null &&
+    match.reporterId !== null &&
+    currentUserPlayerId !== match.reporterId &&
+    (match.playerOneId === currentUserPlayerId || match.playerTwoId === currentUserPlayerId);
+
+  async function handleApprove() {
+    if (!match.matchId) return;
+    setResolveLoading("approve");
+    setResolveError(null);
+    try {
+      const res = await fetch(`/api/matches/${match.matchId}/approve`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to approve");
+      }
+      onResolved();
+    } catch (err) {
+      setResolveError(err instanceof Error ? err.message : "Failed to approve");
+    } finally {
+      setResolveLoading(null);
+    }
+  }
+
+  async function handleDeny() {
+    if (!match.matchId) return;
+    setResolveLoading("deny");
+    setResolveError(null);
+    try {
+      const res = await fetch(`/api/matches/${match.matchId}/deny`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to deny");
+      }
+      onResolved();
+    } catch (err) {
+      setResolveError(err instanceof Error ? err.message : "Failed to deny");
+    } finally {
+      setResolveLoading(null);
+    }
+  }
 
   function getStatusBadge() {
     if (isBye || isCompleted) {
@@ -440,8 +494,32 @@ function MatchCard({
               Report
             </Button>
           )}
+          {isPendingApproval && isOpponent && (
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={resolveLoading === "approve"}
+                onClick={handleApprove}
+              >
+                Approve
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={resolveLoading === "deny"}
+                onClick={handleDeny}
+              >
+                Deny
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {resolveError && (
+        <p className="mt-2 text-sm text-accent-cta">{resolveError}</p>
+      )}
 
       {isReporting && (
         <div className="mt-4 border-t border-border pt-4">

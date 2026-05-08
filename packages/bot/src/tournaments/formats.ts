@@ -10,19 +10,32 @@ export type SingleElimFirstRound = {
 };
 
 export function generateRoundRobin(playerIds: number[]): TournamentPairing[] {
-  const pairings: TournamentPairing[] = [];
+  if (playerIds.length < 2) return [];
+  const ghost = -1;
+  const ids = playerIds.length % 2 === 1 ? [...playerIds, ghost] : [...playerIds];
+  const n = ids.length;
+  const rounds = n - 1;
+  const half = n / 2;
+  const out: TournamentPairing[] = [];
 
-  for (let i = 0; i < playerIds.length; i += 1) {
-    for (let j = i + 1; j < playerIds.length; j += 1) {
-      pairings.push({
-        playerOneId: playerIds[i],
-        playerTwoId: playerIds[j],
-        roundNumber: pairings.length + 1,
-      });
+  // Standard circle rotation: fix index 0, rotate the rest.
+  let order = ids.slice();
+  for (let r = 1; r <= rounds; r += 1) {
+    for (let i = 0; i < half; i += 1) {
+      const a = order[i];
+      const b = order[n - 1 - i];
+      if (a === ghost) {
+        out.push({ playerOneId: b, playerTwoId: null, roundNumber: r });
+      } else if (b === ghost) {
+        out.push({ playerOneId: a, playerTwoId: null, roundNumber: r });
+      } else {
+        out.push({ playerOneId: a, playerTwoId: b, roundNumber: r });
+      }
     }
+    order = [order[0], ...order.slice(2), order[1]];
   }
 
-  return pairings;
+  return out;
 }
 
 export function generateSingleElimFirstRound(playerIds: number[]): SingleElimFirstRound {

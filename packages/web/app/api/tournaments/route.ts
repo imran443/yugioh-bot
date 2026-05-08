@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { createPlayerService } from "@yugidraft/shared/services";
-import { generateWebSlug } from "@yugidraft/shared/util/web-slug";
+import { createPlayerService, createTournamentService } from "@yugidraft/shared/services";
+import { announceToBot } from "@/lib/announce-bot";
 
 const VALID_FORMATS = ["round_robin", "single_elim"] as const;
 
@@ -86,24 +86,39 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const db = getDb();
-  const players = createPlayerService(db);
-  players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
+  try {
+    const db = getDb();
+    const players = createPlayerService(db);
+    players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
 
-  const result = db.prepare(
-    "insert into tournaments (guild_id, name, format, status, created_by_user_id, web_slug) values (?, ?, ?, 'pending', ?, ?)"
-  ).run(guildId, name, format, session.user.id, generateWebSlug());
+    const tournaments = createTournamentService(db);
+    const tournament = tournaments.create(guildId, name, format as "round_robin" | "single_elim", session.user.id);
 
-  const tournament = db.prepare("select * from tournaments where id = ?").get(Number(result.lastInsertRowid)) as any;
+    await announceToBot(
+      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+      {
+        kind: "tournament-created",
+        tournamentId: tournament.id,
+        channelId: env.discordDefaultChannelId,
+        name: tournament.name,
+        format: tournament.format,
+        webSlug: tournament.webSlug ?? "",
+      },
+    );
 
-  return NextResponse.json(
-    {
-      id: tournament.id,
-      name: tournament.name,
-      format: tournament.format,
-      status: tournament.status,
-      webSlug: tournament.web_slug,
-    },
-    { status: 201 }
-  );
+    return NextResponse.json(
+      {
+        id: tournament.id,
+        name: tournament.name,
+        format: tournament.format,
+        status: tournament.status,
+        webSlug: tournament.webSlug,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create tournament";
+    console.error("[api/tournaments POST] error:", error);
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 }
