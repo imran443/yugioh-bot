@@ -572,7 +572,11 @@ export function createTournamentService(db: Database.Database) {
     },
 
     cancel(tournamentId: number): Tournament {
-      findById(tournamentId);
+      const tournament = findById(tournamentId);
+
+      if (tournament.status !== "pending" && tournament.status !== "active") {
+        throw new Error(`Tournament cannot be cancelled in status '${tournament.status}'`);
+      }
 
       db.prepare(
         "update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?",

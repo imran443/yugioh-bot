@@ -201,6 +201,19 @@ describe("tournament service", () => {
     ).toEqual([expect.objectContaining({ id: target.id, name: "Spring Locals" })]);
   });
 
+  it("refuses to cancel a tournament that is already cancelled", () => {
+    const app = setup();
+    const yugi = app.players.upsert("g1", "u1", "Yugi");
+    const kaiba = app.players.upsert("g1", "u2", "Kaiba");
+    const t = app.tournaments.create("g1", "Locals", "round_robin", "u1");
+    app.tournaments.join(t.id, yugi.id);
+    app.tournaments.join(t.id, kaiba.id);
+    app.tournaments.start(t.id);
+    app.tournaments.cancel(t.id);
+
+    expect(() => app.tournaments.cancel(t.id)).toThrow(/cannot be cancelled/i);
+  });
+
   it("counts tournament stats from approved tournament matches only", () => {
     const app = setup();
     const tournament = app.tournaments.create("guild-1", "locals", "round_robin", "user-1");
