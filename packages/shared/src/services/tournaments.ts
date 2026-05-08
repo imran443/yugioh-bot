@@ -356,7 +356,16 @@ export function createTournamentService(db: Database.Database) {
 
       if (tournament.format === "round_robin") {
         for (const pairing of generateRoundRobin(playerIds)) {
-          insertTournamentPairing(tournamentId, pairing);
+          if (pairing.playerTwoId === null) {
+            insertTournamentPairing(
+              tournamentId,
+              pairing,
+              "completed",
+              { bye: true, winnerId: pairing.playerOneId },
+            );
+          } else {
+            insertTournamentPairing(tournamentId, pairing);
+          }
         }
       }
 
