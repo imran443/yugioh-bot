@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createPlayerService, createTournamentService } from "@yugidraft/shared/services";
+import { announceToBot } from "@/lib/announce-bot";
 
 const VALID_FORMATS = ["round_robin", "single_elim"] as const;
 
@@ -92,6 +93,18 @@ export async function POST(request: NextRequest) {
 
     const tournaments = createTournamentService(db);
     const tournament = tournaments.create(guildId, name, format as "round_robin" | "single_elim", session.user.id);
+
+    await announceToBot(
+      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+      {
+        kind: "tournament-created",
+        tournamentId: tournament.id,
+        channelId: env.discordDefaultChannelId,
+        name: tournament.name,
+        format: tournament.format,
+        webSlug: tournament.webSlug ?? "",
+      },
+    );
 
     return NextResponse.json(
       {

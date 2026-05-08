@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createDraftService, createPlayerService } from "@yugidraft/shared/services";
 import type { DraftConfig } from "@yugidraft/shared/types";
+import { announceToBot } from "@/lib/announce-bot";
 
 export const runtime = "nodejs";
 
@@ -129,6 +130,17 @@ export async function POST(request: NextRequest) {
     config,
     session.user.id,
     player.id,
+  );
+
+  await announceToBot(
+    { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+    {
+      kind: "draft-created",
+      draftId: draft.id,
+      channelId: draft.channelId,
+      name: draft.name,
+      webSlug: draft.webSlug ?? "",
+    },
   );
 
   return NextResponse.json(

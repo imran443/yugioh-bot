@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { createTournamentService } from "@yugidraft/shared/services";
+import { announceToBot } from "@/lib/announce-bot";
 
 export const runtime = "nodejs";
 
@@ -255,6 +257,18 @@ export async function POST(
 
     const tournaments = createTournamentService(db);
     const started = tournaments.start(tournament.id);
+
+    await announceToBot(
+      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+      {
+        kind: "tournament-started",
+        tournamentId: started.id,
+        channelId: env.discordDefaultChannelId,
+        name: started.name,
+        format: started.format,
+        webSlug: started.webSlug ?? "",
+      },
+    );
 
     return NextResponse.json({
       id: started.id,

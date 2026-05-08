@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "./helpers";
+import { announceToBot } from "@/lib/announce-bot";
 
 export const runtime = "nodejs";
 
@@ -190,6 +191,17 @@ export async function POST(
 
     const drafts = createDraftService(db);
     const started = drafts.start(draft.id);
+
+    await announceToBot(
+      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+      {
+        kind: "draft-started",
+        draftId: started.id,
+        channelId: started.channelId,
+        name: started.name,
+        webSlug: started.webSlug ?? "",
+      },
+    );
 
     return NextResponse.json({
       id: started.id,
