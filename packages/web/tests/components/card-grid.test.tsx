@@ -145,7 +145,7 @@ describe("CardGrid", () => {
 
     expect(screen.getAllByAltText("Mirror Force").length).toBeGreaterThan(1);
     expect(document.querySelector(".pointer-events-none.fixed.z-30")).toBeTruthy();
-    expect(screen.getByTestId("hover-preview-card").className).toContain("bg-surface");
+    expect(screen.getByTestId("hover-preview-card").className).toContain("bg-bg-surface");
     expect(screen.getByTestId("hover-preview-art").className).toContain("bg-bg-elevated");
     expect(screen.getAllByAltText("Mirror Force")[1]).toHaveClass("object-contain");
   });
