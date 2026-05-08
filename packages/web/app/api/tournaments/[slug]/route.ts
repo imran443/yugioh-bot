@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { generateRoundRobin, generateSingleElimFirstRound } from "@yugidraft/shared/tournaments";
+import { createTournamentService } from "@yugidraft/shared/services";
 
 export const runtime = "nodejs";
 
@@ -253,52 +253,12 @@ export async function POST(
       return NextResponse.json({ error: "Only the tournament creator can start it" }, { status: 403 });
     }
 
-    if (tournament.status !== "pending") {
-      return NextResponse.json({ error: "Tournament must be pending to start" }, { status: 400 });
-    }
-
-    const tournamentId = tournament.id;
-
-    const participantCount = db
-      .prepare("select count(*) as count from tournament_participants where tournament_id = ?")
-      .get(tournamentId) as { count: number };
-
-    if (participantCount.count < 2) {
-      return NextResponse.json({ error: "Tournament requires at least 2 participants to start" }, { status: 400 });
-    }
-
-    const playerIds = db
-      .prepare("select player_id from tournament_participants where tournament_id = ? order by joined_at asc, rowid asc")
-      .all(tournamentId)
-      .map((row: any) => row.player_id);
-
-    const insertPairing = db.prepare(
-      `insert into tournament_matches (tournament_id, player_one_id, player_two_id, round_number, status, metadata_json) values (?, ?, ?, ?, ?, ?)`
-    );
-
-    if (tournament.format === "round_robin") {
-      for (const pairing of generateRoundRobin(playerIds)) {
-        insertPairing.run(tournamentId, pairing.playerOneId, pairing.playerTwoId, pairing.roundNumber, "open", "{}");
-      }
-    }
-
-    if (tournament.format === "single_elim") {
-      const firstRound = generateSingleElimFirstRound(playerIds);
-
-      for (const byePlayerId of firstRound.byes) {
-        insertPairing.run(tournamentId, byePlayerId, null, 1, "completed", JSON.stringify({ bye: true, winnerId: byePlayerId }));
-      }
-
-      for (const pairing of firstRound.pairings) {
-        insertPairing.run(tournamentId, pairing.playerOneId, pairing.playerTwoId, pairing.roundNumber, "open", "{}");
-      }
-    }
-
-    db.prepare("update tournaments set status = 'active', started_at = current_timestamp where id = ?").run(tournamentId);
+    const tournaments = createTournamentService(db);
+    const started = tournaments.start(tournament.id);
 
     return NextResponse.json({
-      id: tournamentId,
-      status: "active",
+      id: started.id,
+      status: started.status,
     });
   } catch (error) {
     console.error("[api/tournaments/[slug] POST] error:", error);
