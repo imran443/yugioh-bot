@@ -57,6 +57,11 @@ vi.mock("../../src/components/draft/pool-panel", () => ({
 import DraftDetailPage from "../../app/(app)/draft/[slug]/page";
 import { useDraftWebsocket } from "../../src/lib/hooks/use-draft-websocket";
 
+const DRAFT_STATUS = {
+  active: "active",
+  completed: "completed",
+} as const;
+
 // ---------------------------------------------------------------------------
 // Shared fixtures
 // ---------------------------------------------------------------------------
@@ -78,7 +83,7 @@ const baseStoreState = {
 const activeDraftResponse = {
   id: 1,
   name: "Test Draft",
-  status: "active",
+  status: DRAFT_STATUS.active,
   createdByUserId: "user-1",
   createdAt: "2026-05-06T12:00:00.000Z",
   config: { packSize: 5, packsPerPlayer: 3, pickSeconds: 60, setNames: [] },
@@ -98,7 +103,7 @@ const activeDraftResponse = {
 
 const completedDraftResponse = {
   ...activeDraftResponse,
-  status: "completed",
+  status: DRAFT_STATUS.completed,
   completed: true,
   endedAt: "2026-05-06T12:30:00.000Z",
 };
@@ -287,7 +292,7 @@ describe("DraftDetailPage — completion transition", () => {
     const options = vi.mocked(useDraftWebsocket).mock.calls.at(-1)?.[1];
 
     act(() => {
-      options?.onStatusChange?.("active");
+      options?.onStatusChange?.(DRAFT_STATUS.active);
     });
 
     await waitFor(() => {

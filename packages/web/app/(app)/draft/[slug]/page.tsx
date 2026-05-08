@@ -13,6 +13,11 @@ import { useDraftWebsocket } from "@/lib/hooks/use-draft-websocket";
 import { useDraftCountdown } from "@/lib/hooks/use-draft-countdown";
 import { useDraftExpiryResync } from "@/lib/hooks/use-draft-expiry-resync";
 
+const DRAFT_STATUS = {
+  active: "active",
+  completed: "completed",
+} as const;
+
 interface DraftPlayer {
   playerId: number;
   displayName: string;
@@ -108,7 +113,7 @@ export default function DraftDetailPage() {
         throw new Error("Failed to load draft");
       }
       const data = await res.json();
-      if (data.status === "active") {
+      if (data.status === DRAFT_STATUS.active) {
         setFromServer({
           slug,
           packRound: data.packRound ?? data.currentPackRound ?? 1,
@@ -131,7 +136,8 @@ export default function DraftDetailPage() {
   }, [setFromServer, slug, router]);
 
   useDraftWebsocket(slug, {
-    onStatusChange: () => {
+    onStatusChange: (status) => {
+      if (status === DRAFT_STATUS.completed) return;
       void fetchDraft();
     },
     onResync: () => {
@@ -155,7 +161,7 @@ export default function DraftDetailPage() {
   }, [fetchDraft]);
 
   useEffect(() => {
-    if (storeCompleted && draft?.status === "active") {
+    if (storeCompleted && draft?.status === DRAFT_STATUS.active) {
       void fetchDraft();
     }
   }, [storeCompleted, draft?.status, fetchDraft]);
