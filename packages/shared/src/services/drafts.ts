@@ -626,7 +626,7 @@ export function createDraftService(db: Database.Database) {
     },
   );
 
-  const expireCurrentPickStep = (draftId: number, now = new Date()): { autoPickedPlayerIds: number[] } => {
+  const expireCurrentPickStep = db.transaction((draftId: number, now = new Date()): { autoPickedPlayerIds: number[] } => {
     const draft = findById(draftId);
 
     if (draft.status !== "active" || !draft.pickDeadlineAt || new Date(draft.pickDeadlineAt).getTime() > now.getTime()) {
@@ -639,7 +639,7 @@ export function createDraftService(db: Database.Database) {
     const autoPickedPlayerIds: number[] = [];
 
     for (const playerId of pendingPlayers) {
-      const options = db.transaction(() => currentPackOptionsInternal(draftId, playerId))();
+      const options = currentPackOptionsInternal(draftId, playerId);
 
       if (options.length === 0) {
         continue;
@@ -651,7 +651,7 @@ export function createDraftService(db: Database.Database) {
     }
 
     return { autoPickedPlayerIds };
-  };
+  });
 
   const currentPackOptionsInternal = (draftId: number, playerId: number): DraftCard[] => {
     const draft = findById(draftId);
