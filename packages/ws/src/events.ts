@@ -12,6 +12,7 @@ export interface ServerToClientEvents {
   "draft:pick": (data: { playerId: number; packRound: number; pickStep: number }) => void;
   "draft:resync": (data: { packRound: number; pickStep: number }) => void;
   "draft:complete": (data: Record<string, never>) => void;
+  "draft:seats": (data: Record<string, never>) => void;
 }
 
 export interface ClientToServerEvents {

@@ -143,6 +143,9 @@ export default function DraftDetailPage() {
     onResync: () => {
       void fetchDraft();
     },
+    onSeatsChange: () => {
+      void fetchDraft();
+    },
   });
   useDraftCountdown();
   useDraftExpiryResync(slug);

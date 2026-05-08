@@ -55,6 +55,15 @@ describe("createInternalHttpHandler", () => {
     expect(emit).toHaveBeenCalledWith("draft:complete", {});
   });
 
+  it("emits draft:seats to the slug room", async () => {
+    const { io, to, emit } = makeIo();
+    const handle = createInternalHttpHandler({ io: io as any, secret: SECRET });
+    const res = await handle(makeRequest("/internal/draft/seats", { slug: "test-slug" }));
+    expect(res.status).toBe(204);
+    expect(to).toHaveBeenCalledWith("test-slug");
+    expect(emit).toHaveBeenCalledWith("draft:seats", {});
+  });
+
   it("rejects bad signature with 401", async () => {
     const { io, emit } = makeIo();
     const handle = createInternalHttpHandler({ io: io as any, secret: SECRET });

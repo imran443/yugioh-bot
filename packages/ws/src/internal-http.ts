@@ -42,6 +42,13 @@ function parseComplete(v: unknown): CompleteBody | null {
   return { slug: o.slug };
 }
 
+function parseSeats(v: unknown): { slug: string } | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (!isNonEmptyString(o.slug)) return null;
+  return { slug: o.slug };
+}
+
 export function createInternalHttpHandler(opts: { io: TypedServer; secret: string }) {
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -84,6 +91,12 @@ export function createInternalHttpHandler(opts: { io: TypedServer; secret: strin
         const data = parseComplete(parsed);
         if (!data) return new Response("Bad payload", { status: 400 });
         opts.io.to(data.slug).emit("draft:complete", {});
+        return new Response(null, { status: 204 });
+      }
+      case "/internal/draft/seats": {
+        const data = parseSeats(parsed);
+        if (!data) return new Response("Bad payload", { status: 400 });
+        opts.io.to(data.slug).emit("draft:seats", {});
         return new Response(null, { status: 204 });
       }
       default:
