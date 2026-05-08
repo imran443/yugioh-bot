@@ -52,7 +52,7 @@ export function registerEventHandlers(
 
     socket.on("draft:join", (payload, ack) => {
       try {
-        const { slug } = payload;
+        const slug = payload?.slug;
         if (typeof slug !== "string" || slug.length === 0) {
           ack?.({ error: "slug required" });
           return;

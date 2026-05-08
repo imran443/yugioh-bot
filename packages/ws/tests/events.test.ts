@@ -101,6 +101,17 @@ describe("registerEventHandlers", () => {
     expect(result).toEqual({ error: "slug required" });
   });
 
+  it("draft:join rejects a missing payload", async () => {
+    const client = addClient(server.url);
+    await waitForConnect(client);
+
+    const result = await new Promise<unknown>((resolve) => {
+      client.emit("draft:join", undefined as never, resolve);
+    });
+
+    expect(result).toEqual({ error: "slug required" });
+  });
+
   it("disconnecting removes the socket from draft rooms", async () => {
     const clientA = addClient(server.url);
     const clientB = addClient(server.url);
