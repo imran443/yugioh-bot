@@ -4,8 +4,13 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "../helpers";
+import { notifyWs } from "@/lib/notify-ws";
 
 export const runtime = "nodejs";
+
+const DRAFT_STATUS = {
+  completed: "completed",
+} as const;
 
 export async function POST(
   request: NextRequest,
@@ -51,6 +56,7 @@ export async function POST(
     const drafts = createDraftService(db);
 
     drafts.expireCurrentPickStep(draft.id);
+    const currentStep = drafts.findById(draft.id);
 
     // Persist real player's pick
     drafts.pickCard(draft.id, player.id, cardId, "manual");
@@ -65,7 +71,6 @@ export async function POST(
       )
       .all(draft.id) as Array<{ player_id: number }>;
 
-    const currentStep = drafts.findById(draft.id);
     for (const fake of fakePlayers) {
       const hasPicked = db
         .prepare(
@@ -81,6 +86,31 @@ export async function POST(
           drafts.pickCard(draft.id, fake.player_id, randomCard.id, "auto");
         }
       }
+    }
+
+    const wsCfg = { url: env.wsInternalUrl, secret: env.wsInternalSecret };
+
+    await notifyWs(wsCfg, {
+      kind: "pick",
+      slug,
+      playerId: player.id,
+      packRound: currentStep.currentPackRound,
+      pickStep: currentStep.currentPickStep,
+    });
+
+    const after = drafts.findById(draft.id);
+    if (after.status === DRAFT_STATUS.completed) {
+      await notifyWs(wsCfg, { kind: "complete", slug });
+    } else if (
+      after.currentPackRound !== currentStep.currentPackRound ||
+      after.currentPickStep !== currentStep.currentPickStep
+    ) {
+      await notifyWs(wsCfg, {
+        kind: "resync",
+        slug,
+        packRound: after.currentPackRound,
+        pickStep: after.currentPickStep,
+      });
     }
 
     // Return updated draft state
