@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
+import { generateWebSlug } from "../util/web-slug.js";
 
 export type DraftStatus = "pending" | "active" | "cancelled" | "completed";
 export type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
@@ -84,11 +85,6 @@ const defaultDraftConfig = {
   alternatePassDirection: true,
   randomizeSeats: false,
 } satisfies Required<Pick<DraftConfig, "packSize" | "packsPerPlayer" | "pickSeconds" | "alternatePassDirection" | "randomizeSeats">>;
-
-function generateWebSlug(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
 
 function normalizeDraftConfig(config: DraftConfig): DraftConfig {
   return {

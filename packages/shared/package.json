@@ -23,6 +23,11 @@
       "types": "./dist/tournaments/index.d.ts",
       "source": "./src/tournaments/index.ts",
       "default": "./dist/tournaments/index.js"
+    },
+    "./util/web-slug": {
+      "types": "./dist/util/web-slug.d.ts",
+      "source": "./src/util/web-slug.ts",
+      "default": "./dist/util/web-slug.js"
     }
   },
   "scripts": {

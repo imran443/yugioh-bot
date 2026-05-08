@@ -3,11 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createPlayerService } from "@yugidraft/shared/services";
-
-function generateWebSlug(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
+import { generateWebSlug } from "@yugidraft/shared/util/web-slug";
 
 const VALID_FORMATS = ["round_robin", "single_elim"] as const;
 

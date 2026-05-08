@@ -6,6 +6,7 @@ import {
   generateSingleElimFirstRound,
   type TournamentPairing,
 } from "@yugidraft/shared/tournaments";
+import { generateWebSlug } from "@yugidraft/shared/util/web-slug";
 
 export type TournamentFormat = "round_robin" | "single_elim";
 export type TournamentStatus = "pending" | "active" | "cancelled" | "completed";
@@ -67,11 +68,6 @@ function assertFormat(format: string): asserts format is TournamentFormat {
   if (format !== "round_robin" && format !== "single_elim") {
     throw new Error("Unsupported tournament format");
   }
-}
-
-function generateWebSlug(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
 export function createTournamentService(db: Database.Database) {
