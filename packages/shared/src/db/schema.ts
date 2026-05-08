@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { generateWebSlug } from "../util/web-slug.js";
 
 function hasColumn(db: Database.Database, table: string, column: string) {
   return (db.pragma(`table_info(${table})`) as Array<{ name: string }>).some((info) => info.name === column);
@@ -221,6 +222,15 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "drafts", "status_message_id", "text");
   addColumnIfMissing(db, "drafts", "web_slug", "text");
   addColumnIfMissing(db, "tournaments", "web_slug", "text");
+  const slugless = db
+    .prepare("select id from tournaments where web_slug is null")
+    .all() as Array<{ id: number }>;
+  if (slugless.length > 0) {
+    const update = db.prepare("update tournaments set web_slug = ? where id = ?");
+    for (const { id } of slugless) {
+      update.run(generateWebSlug(), id);
+    }
+  }
   addColumnIfMissing(db, "draft_players", "seat_index", "integer");
   addColumnIfMissing(db, "draft_cards", "draft_pack_id", "integer references draft_packs(id)");
   addColumnIfMissing(db, "draft_cards", "position", "integer");
@@ -237,6 +247,10 @@ export function migrate(db: Database.Database) {
     create unique index if not exists tournaments_current_name_unique
     on tournaments (guild_id, name)
     where status in ('pending', 'active');
+
+    create unique index if not exists tournaments_web_slug_unique
+    on tournaments (web_slug)
+    where web_slug is not null;
 
     create unique index if not exists drafts_current_name_unique
     on drafts (guild_id, name)
