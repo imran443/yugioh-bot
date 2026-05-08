@@ -258,7 +258,7 @@ export async function POST(
     const tournaments = createTournamentService(db);
     const started = tournaments.start(tournament.id);
 
-    await announceToBot(
+    void announceToBot(
       { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
       {
         kind: "tournament-started",

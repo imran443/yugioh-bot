@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
     player.id,
   );
 
-  await announceToBot(
+  void announceToBot(
     { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
     {
       kind: "draft-created",
