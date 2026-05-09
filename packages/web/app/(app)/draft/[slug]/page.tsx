@@ -283,9 +283,9 @@ export default function DraftDetailPage() {
     return (
       <div>
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
-        <div className="sticky top-0 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
+        <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
           <div className="mx-auto max-w-[1600px]">
-            <TimerBar />
+            <TimerBar className="rounded-none border-0 bg-transparent p-0" />
           </div>
         </div>
 
