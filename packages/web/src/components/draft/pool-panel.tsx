@@ -26,14 +26,31 @@ function getPopupPosition(rect: DOMRect): { left: number; top: number } {
   const vh = window.innerHeight;
   // Panel is on the right side — prefer showing popup to the left
   const leftOfItem = rect.left - POPUP_WIDTH - POPUP_MARGIN;
-  const left = Math.max(POPUP_MARGIN, leftOfItem);
+  const left = Math.min(
+    vw - POPUP_WIDTH - POPUP_MARGIN,
+    Math.max(POPUP_MARGIN, leftOfItem),
+  );
   const top = Math.min(
     vh - POPUP_HEIGHT - POPUP_MARGIN,
     Math.max(POPUP_MARGIN, rect.top + rect.height / 2 - POPUP_HEIGHT / 2),
   );
-  // Suppress unused variable warning for vw
-  void vw;
   return { left, top };
+}
+
+function isMonster(type: string) { return type.trim().toLowerCase().includes("monster"); }
+function isSpell(type: string) { return type.trim().toLowerCase().includes("spell card"); }
+function isTrap(type: string) { return type.trim().toLowerCase().includes("trap card"); }
+
+function getTypeBadgeClass(type: string) {
+  return isMonster(type)
+    ? "bg-accent-primary/10 text-accent-primary"
+    : isSpell(type)
+      ? "bg-accent-gold/10 text-accent-gold"
+      : "bg-accent-cta/10 text-accent-cta";
+}
+
+function getTypeLabel(type: string) {
+  return isMonster(type) ? "Monster" : isSpell(type) ? "Spell" : isTrap(type) ? "Trap" : "Other";
 }
 
 export function PoolPanel({ className }: PoolPanelProps) {
@@ -47,23 +64,14 @@ export function PoolPanel({ className }: PoolPanelProps) {
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
-  const isMonster = (type: string) => type.trim().toLowerCase().includes("monster");
-  const isSpell = (type: string) => type.trim().toLowerCase().includes("spell card");
-  const isTrap = (type: string) => type.trim().toLowerCase().includes("trap card");
-
-  const getTypeBadgeClass = (type: string) =>
-    isMonster(type)
-      ? "bg-accent-primary/10 text-accent-primary"
-      : isSpell(type)
-        ? "bg-accent-gold/10 text-accent-gold"
-        : "bg-accent-cta/10 text-accent-cta";
-
-  const getTypeLabel = (type: string) =>
-    isMonster(type) ? "Monster" : isSpell(type) ? "Spell" : isTrap(type) ? "Trap" : "Other";
-
-  const monsterCount = myPool.filter((c) => isMonster(c.type)).length;
-  const spellCount = myPool.filter((c) => isSpell(c.type)).length;
-  const trapCount = myPool.filter((c) => isTrap(c.type)).length;
+  const { monsterCount, spellCount, trapCount } = useMemo(
+    () => ({
+      monsterCount: myPool.filter((c) => isMonster(c.type)).length,
+      spellCount: myPool.filter((c) => isSpell(c.type)).length,
+      trapCount: myPool.filter((c) => isTrap(c.type)).length,
+    }),
+    [myPool],
+  );
 
   const handleImageError = useCallback(
     (id: number) => setImageErrors((prev) => new Set(prev).add(id)),
