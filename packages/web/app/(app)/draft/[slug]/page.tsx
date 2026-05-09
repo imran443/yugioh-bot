@@ -282,8 +282,11 @@ export default function DraftDetailPage() {
   if (draft.status === "active") {
     return (
       <div>
-        <div className="sticky top-0 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3 sm:hidden">
-          <TimerBar />
+        {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
+        <div className="sticky top-0 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
+          <div className="mx-auto max-w-[1600px]">
+            <TimerBar />
+          </div>
         </div>
 
         <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8">
@@ -292,8 +295,8 @@ export default function DraftDetailPage() {
           </div>
 
           <div className="grid gap-8 xl:grid-cols-[15rem_minmax(0,1fr)_17.5rem]">
+            {/* Left aside — SeatList only (TimerBar moved to sticky top) */}
             <aside className="hidden flex-col gap-4 xl:flex">
-              <TimerBar />
               <SeatList />
             </aside>
 
@@ -321,7 +324,8 @@ export default function DraftDetailPage() {
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border/50 pt-3 text-sm text-text-secondary">
                   <span className="font-medium text-text-primary">
-                    Pack {draft.packRound ?? draft.currentPackRound ?? 1} · Pick {draft.pickStep ?? draft.currentPickStep ?? 1}
+                    Pack {draft.packRound ?? draft.currentPackRound ?? 1} · Pick{" "}
+                    {draft.pickStep ?? draft.currentPickStep ?? 1}
                   </span>
                   <span>{draft.currentPack?.length ?? 0} cards in pack</span>
                   <span>{draft.playerCount} players</span>
@@ -331,8 +335,8 @@ export default function DraftDetailPage() {
               <CardGrid />
             </section>
 
+            {/* sm–xl intermediate aside — TimerBar removed, SeatList + PoolPanel kept */}
             <aside className="hidden w-full shrink-0 flex-col gap-4 sm:flex xl:hidden">
-              <TimerBar />
               <SeatList />
               <PoolPanel />
             </aside>
