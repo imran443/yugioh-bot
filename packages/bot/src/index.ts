@@ -176,7 +176,14 @@ const deps = {
   } as DraftMessenger,
 };
 
-const draftTimer = createDraftTimerService({ drafts: deps.drafts, messenger: deps.messenger });
+const draftTimer = createDraftTimerService({
+  drafts: deps.drafts,
+  messenger: deps.messenger,
+  wsCfg: {
+    url: process.env.WS_INTERNAL_URL ?? "",
+    secret: process.env.WS_INTERNAL_SECRET ?? "",
+  },
+});
 
 function toCommandInteraction(
   interaction: ChatInputCommandInteraction,

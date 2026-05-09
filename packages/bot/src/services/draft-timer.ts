@@ -1,12 +1,15 @@
 import type { DraftMessenger } from "../commands/handlers.js";
 import type { DraftService } from "./drafts.js";
+import { notifyWs } from "../lib/notify-ws.js";
 
 export function createDraftTimerService({
   drafts,
   messenger,
+  wsCfg,
 }: {
   drafts: DraftService;
   messenger: DraftMessenger;
+  wsCfg: { url: string; secret: string };
 }) {
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -28,6 +31,17 @@ export function createDraftTimerService({
         drafts.expireCurrentPickStep(draft.id, now);
         const updatedDraft = drafts.findById(draft.id);
         await messenger.updateStatus(updatedDraft);
+
+        if (!updatedDraft.webSlug) continue;
+
+        if (updatedDraft.status === "completed") {
+          await notifyWs(wsCfg, "complete", updatedDraft.webSlug);
+        } else {
+          await notifyWs(wsCfg, "resync", updatedDraft.webSlug, {
+            packRound: updatedDraft.currentPackRound,
+            pickStep: updatedDraft.currentPickStep,
+          });
+        }
       } catch (error) {
         console.warn(`Draft timer failed to expire pick step for draft ${draft.id}`, error);
       }
@@ -36,10 +50,7 @@ export function createDraftTimerService({
 
   return {
     start() {
-      if (intervalId) {
-        return;
-      }
-
+      if (intervalId) return;
       intervalId = setInterval(() => tick(), 1000);
     },
 
