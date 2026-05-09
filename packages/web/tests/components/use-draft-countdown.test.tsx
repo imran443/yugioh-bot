@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { useDraftStore } from "../../src/lib/stores/draft-store";
 import { useDraftCountdown } from "../../src/lib/hooks/use-draft-countdown";
 
@@ -25,14 +25,45 @@ function CountdownHarness() {
   return null;
 }
 
+const oscillatorStart = vi.fn();
+const oscillatorStop = vi.fn();
+const oscillatorConnect = vi.fn();
+const gainConnect = vi.fn();
+
+class MockAudioContext {
+  currentTime = 0;
+  destination = {};
+
+  createOscillator() {
+    return {
+      frequency: { value: 0 },
+      connect: oscillatorConnect,
+      start: oscillatorStart,
+      stop: oscillatorStop,
+    };
+  }
+
+  createGain() {
+    return {
+      gain: { value: 0 },
+      connect: gainConnect,
+    };
+  }
+}
+
 describe("useDraftCountdown", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.clearAllMocks();
+    (window as any).AudioContext = MockAudioContext;
+    (window as any).webkitAudioContext = undefined;
     useDraftStore.setState(baseState);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    delete (window as any).AudioContext;
+    delete (window as any).webkitAudioContext;
     useDraftStore.setState(baseState);
   });
 
@@ -62,5 +93,55 @@ describe("useDraftCountdown", () => {
     vi.advanceTimersByTime(1000);
 
     expect(useDraftStore.getState().timerSeconds).toBe(60);
+  });
+
+  it("plays a warning sound once when the timer reaches 10 seconds", () => {
+    useDraftStore.setState({ ...baseState, timerSeconds: 11 });
+
+    render(<CountdownHarness />);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(useDraftStore.getState().timerSeconds).toBe(10);
+    expect(oscillatorStart).toHaveBeenCalledTimes(1);
+    expect(oscillatorStop).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(useDraftStore.getState().timerSeconds).toBe(9);
+    expect(oscillatorStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not repeat the warning for the same pick", () => {
+    render(<CountdownHarness />);
+
+    act(() => {
+      useDraftStore.setState({ ...baseState, timerSeconds: 10 });
+    });
+    act(() => {
+      useDraftStore.setState({ ...baseState, timerSeconds: 9 });
+    });
+    act(() => {
+      useDraftStore.setState({ ...baseState, timerSeconds: 10 });
+    });
+
+    expect(oscillatorStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows the warning sound again on a new pick", () => {
+    render(<CountdownHarness />);
+
+    act(() => {
+      useDraftStore.setState({ ...baseState, timerSeconds: 10 });
+    });
+    act(() => {
+      useDraftStore.setState({ ...baseState, pickStep: 2, timerSeconds: 10 });
+    });
+
+    expect(oscillatorStart).toHaveBeenCalledTimes(2);
   });
 });

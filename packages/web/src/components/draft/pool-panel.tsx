@@ -53,6 +53,15 @@ function getTypeLabel(type: string) {
   return isMonster(type) ? "Monster" : isSpell(type) ? "Spell" : isTrap(type) ? "Trap" : "Other";
 }
 
+function getMonsterSubtype(type: string) {
+  if (!isMonster(type)) {
+    return null;
+  }
+
+  const [subtype] = type.split("/").map((part) => part.trim()).filter(Boolean);
+  return subtype || null;
+}
+
 export function PoolPanel({ className }: PoolPanelProps) {
   const myPool = useDraftStore((s) => s.myPool);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -216,67 +225,75 @@ export function PoolPanel({ className }: PoolPanelProps) {
           </div>
 
           {/* Card list */}
-          <div className="h-72 overflow-y-auto rounded-lg border border-border bg-surface/70">
+          <div className="h-[26rem] overflow-y-auto rounded-lg border border-border bg-surface/70 xl:h-[34rem]">
             {myPool.length === 0 ? (
               <p className="px-3 py-4 text-sm text-text-secondary">No cards drafted yet.</p>
             ) : filteredAndSorted.length === 0 ? (
               <p className="px-3 py-4 text-sm text-text-secondary">No cards match.</p>
             ) : (
               <div className="flex flex-col p-2">
-                {filteredAndSorted.map((card) => (
-                  <button
-                    key={card.id}
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
-                    onMouseEnter={(e) =>
-                      handleMouseEnter(card, e.currentTarget.getBoundingClientRect())
-                    }
-                    onMouseLeave={handleMouseLeave}
-                    onFocus={(e) =>
-                      handleMouseEnter(card, e.currentTarget.getBoundingClientRect())
-                    }
-                    onBlur={handleMouseLeave}
-                  >
-                    {/* 28×40 thumbnail */}
-                    <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-bg-elevated">
-                      {imageErrors.has(card.id) ? (
-                        <div className="flex h-full w-full items-center justify-center text-[0.5rem] text-text-muted">
-                          ?
-                        </div>
-                      ) : (
-                        <Image
-                          src={card.imageUrlSmall || card.imageUrl}
-                          alt=""
-                          fill
-                          className="object-cover"
-                          sizes="28px"
-                          onError={() => handleImageError(card.id)}
-                        />
-                      )}
-                    </div>
+                {filteredAndSorted.map((card) => {
+                  const monsterSubtype = getMonsterSubtype(card.type);
 
-                    {/* Name + type badge + attribute + level */}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-text-primary">{card.name}</p>
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={cn(
-                            "rounded px-1 py-0.5 text-[0.6rem] font-semibold uppercase",
-                            getTypeBadgeClass(card.type),
-                          )}
-                        >
-                          {getTypeLabel(card.type)}
-                        </span>
-                        {card.attribute && !["SPELL", "TRAP"].includes(card.attribute) && (
-                          <span className="text-[0.65rem] text-text-muted">{card.attribute}</span>
-                        )}
-                        {card.level !== undefined && (
-                          <span className="text-[0.65rem] text-text-muted">Lv{card.level}</span>
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      aria-label={`Preview ${card.name}`}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
+                      onMouseEnter={(e) =>
+                        handleMouseEnter(card, e.currentTarget.getBoundingClientRect())
+                      }
+                      onMouseLeave={handleMouseLeave}
+                      onFocus={(e) =>
+                        handleMouseEnter(card, e.currentTarget.getBoundingClientRect())
+                      }
+                      onBlur={handleMouseLeave}
+                    >
+                      {/* 28×40 thumbnail */}
+                      <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-bg-elevated">
+                        {imageErrors.has(card.id) ? (
+                          <div className="flex h-full w-full items-center justify-center text-[0.5rem] text-text-muted">
+                            ?
+                          </div>
+                        ) : (
+                          <Image
+                            src={card.imageUrlSmall || card.imageUrl}
+                            alt=""
+                            fill
+                            className="object-cover"
+                            sizes="28px"
+                            onError={() => handleImageError(card.id)}
+                          />
                         )}
                       </div>
-                    </div>
-                  </button>
-                ))}
+
+                      {/* Name + type badge + attribute + level */}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-text-primary">{card.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "rounded px-1 py-0.5 text-[0.6rem] font-semibold uppercase",
+                              getTypeBadgeClass(card.type),
+                            )}
+                          >
+                            {getTypeLabel(card.type)}
+                          </span>
+                          {monsterSubtype && (
+                            <span className="text-[0.65rem] text-text-muted">{monsterSubtype}</span>
+                          )}
+                          {card.attribute && !["SPELL", "TRAP"].includes(card.attribute) && (
+                            <span className="text-[0.65rem] text-text-muted">{card.attribute}</span>
+                          )}
+                          {card.level !== undefined && (
+                            <span className="text-[0.65rem] text-text-muted">Lv{card.level}</span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

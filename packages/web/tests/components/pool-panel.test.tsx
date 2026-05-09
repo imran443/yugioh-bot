@@ -214,4 +214,13 @@ describe("PoolPanel", () => {
     expect(within(poolPanel).queryByText("Breaker the Magical Warrior")).toBeNull();
     expect(within(poolPanel).getByText(/no cards match/i)).toBeTruthy();
   });
+
+  it("shows monster subtypes in drafted card rows", () => {
+    renderPoolPanel(draftedPool);
+    const poolPanel = getPoolPanelContainer();
+
+    expect(within(poolPanel).getByText("Dragon")).toBeTruthy();
+    expect(within(poolPanel).getByText("Fiend")).toBeTruthy();
+    expect(within(poolPanel).getByText("Spell")).toBeTruthy();
+  });
 });
