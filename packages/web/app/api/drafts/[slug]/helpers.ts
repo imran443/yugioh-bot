@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import { createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
+import { toUtcIso } from "@/lib/utils";
 
 function getTimerSeconds(pickDeadlineAt: string | null | undefined): number {
   if (!pickDeadlineAt) {
@@ -109,8 +110,8 @@ export async function buildDraftResponse(slug: string, userId: string) {
       displayName: row.display_name,
       seatIndex: row.seat_index ?? undefined,
       pickCount: row.pick_count,
-      finishedAt: row.finished_at ?? undefined,
-      joinedAt: row.joined_at,
+      finishedAt: toUtcIso(row.finished_at),
+      joinedAt: toUtcIso(row.joined_at),
     }));
 
   const currentPlayer = db
@@ -181,9 +182,9 @@ export async function buildDraftResponse(slug: string, userId: string) {
     pickDeadlineAt: draft.pick_deadline_at ?? undefined,
     statusMessageId: draft.status_message_id ?? undefined,
     webSlug: draft.web_slug ?? undefined,
-    createdAt: draft.created_at,
-    startedAt: draft.started_at ?? undefined,
-    endedAt: draft.ended_at ?? undefined,
+    createdAt: toUtcIso(draft.created_at),
+    startedAt: toUtcIso(draft.started_at),
+    endedAt: toUtcIso(draft.ended_at),
     playerCount: draft.player_count,
     players,
     participantPickCount,

@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import { createDraftService, createPlayerService } from "@yugidraft/shared/services";
 import type { DraftConfig } from "@yugidraft/shared/types";
 import { announceToBot } from "@/lib/announce-bot";
+import { toUtcIso } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -69,8 +70,8 @@ export async function GET() {
         currentPackRound: row.current_wave_number ?? 0,
         currentPickStep: row.current_pick_step ?? 0,
         playerCount: row.player_count,
-        createdAt: row.created_at,
-        endedAt: row.ended_at ?? undefined,
+        createdAt: toUtcIso(row.created_at),
+        endedAt: toUtcIso(row.ended_at),
       }));
 
     const active = drafts.filter((d: any) => d.status === "active");
