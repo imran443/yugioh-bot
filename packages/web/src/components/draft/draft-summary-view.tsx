@@ -89,7 +89,7 @@ export function DraftSummaryView({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to export YDK");
     } finally {

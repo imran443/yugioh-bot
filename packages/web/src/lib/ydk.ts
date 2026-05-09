@@ -42,5 +42,5 @@ export function downloadYdk(cards: YdkCard[], filename: string): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
