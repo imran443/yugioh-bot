@@ -7,12 +7,14 @@ export function useDraftExpiryResync(slug: string) {
   const packRound = useDraftStore((s) => s.packRound);
   const pickStep = useDraftStore((s) => s.pickStep);
   const timerSeconds = useDraftStore((s) => s.timerSeconds);
-  const isMyTurn = useDraftStore((s) => s.isMyTurn);
   const completed = useDraftStore((s) => s.completed);
   const setFromServer = useDraftStore((s) => s.setFromServer);
 
   useEffect(() => {
-    if (!slug || completed || timerSeconds > 0 || !isMyTurn) {
+    // Poll whenever the timer hits 0 on an active draft — including for players who have
+    // already picked this step, because the bot auto-picks remaining players and the pack
+    // then advances. Without this, already-picked players get stuck until a WS event arrives.
+    if (!slug || completed || timerSeconds > 0) {
       return;
     }
 
@@ -24,14 +26,10 @@ export function useDraftExpiryResync(slug: string) {
           if (!response.ok) {
             throw new Error(`Failed to refetch draft state: ${response.status}`);
           }
-
           return response.json();
         })
         .then((data) => {
-          if (cancelled) {
-            return;
-          }
-
+          if (cancelled) return;
           setFromServer({
             slug,
             packRound: data.packRound ?? data.currentPackRound ?? 1,
@@ -57,5 +55,5 @@ export function useDraftExpiryResync(slug: string) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [completed, isMyTurn, packRound, pickStep, setFromServer, slug, timerSeconds]);
+  }, [completed, packRound, pickStep, setFromServer, slug, timerSeconds]);
 }
