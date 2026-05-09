@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createDraftService, createPlayerService } from "@yugidraft/shared/services";
+import { notifyWs } from "@/lib/notify-ws";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,11 @@ export async function POST(
 
     const drafts = createDraftService(db);
     drafts.join(draft.id, player.id);
+
+    void notifyWs(
+      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+      { kind: "seats", slug },
+    );
 
     return NextResponse.json({ success: true, playerId: player.id, displayName: player.displayName });
   } catch (error) {

@@ -626,6 +626,18 @@ export function createDraftService(db: Database.Database) {
     },
   );
 
+  const recordManualPick = db.transaction(
+    (draftId: number, playerId: number, draftCardId: number, now = new Date()): { alreadyPicked: boolean } => {
+      const draftBefore = findById(draftId);
+      expireCurrentPickStep(draftId, now);
+      if (hasPickedCurrentStep(draftId, playerId, draftBefore.currentPackRound, draftBefore.currentPickStep)) {
+        return { alreadyPicked: true };
+      }
+      pickCard(draftId, playerId, draftCardId, "manual", now);
+      return { alreadyPicked: false };
+    },
+  );
+
   const expireCurrentPickStep = db.transaction((draftId: number, now = new Date()): { autoPickedPlayerIds: number[] } => {
     const draft = findById(draftId);
 
@@ -860,6 +872,10 @@ export function createDraftService(db: Database.Database) {
 
     expireCurrentPickStep(draftId: number, now = new Date()): { autoPickedPlayerIds: number[] } {
       return expireCurrentPickStep(draftId, now);
+    },
+
+    recordManualPick(draftId: number, playerId: number, draftCardId: number, now = new Date()): { alreadyPicked: boolean } {
+      return recordManualPick(draftId, playerId, draftCardId, now);
     },
 
     pool(draftId: number, playerId: number): DraftPoolCard[] {

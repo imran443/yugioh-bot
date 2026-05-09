@@ -208,6 +208,70 @@ describe("shared draft service", () => {
     ]);
   });
 
+  it("recordManualPick returns alreadyPicked: true when expiry auto-picked the player before the manual pick runs", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", { packSize: 8, packsPerPlayer: 5 }, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 50);
+    app.drafts.start(draft.id);
+
+    // Get a valid card from Yugi's current pack
+    const options = app.drafts.currentPackOptions(draft.id, yugi.id);
+    expect(options.length).toBeGreaterThan(0);
+    const cardId = options[0].id;
+
+    // Set deadline to the past so the next expiry fires immediately
+    app.db
+      .prepare("update drafts set pick_deadline_at = ? where id = ?")
+      .run(new Date(Date.now() - 1000).toISOString(), draft.id);
+
+    // recordManualPick fires expiry inside the transaction, which auto-picks Yugi
+    const started = app.drafts.findById(draft.id);
+    const result = app.drafts.recordManualPick(draft.id, yugi.id, cardId);
+
+    expect(result).toEqual({ alreadyPicked: true });
+
+    // A pick row must exist for Yugi at the current wave/step
+    const pickRow = app.db
+      .prepare(
+        "select * from draft_picks where draft_id = ? and player_id = ? and wave_number = ? and pick_step = ?",
+      )
+      .get(draft.id, yugi.id, started.currentPackRound, started.currentPickStep);
+
+    expect(pickRow).toBeTruthy();
+  });
+
+  it("recordManualPick records the manual pick and returns alreadyPicked: false when no expiry fires", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", { packSize: 8, packsPerPlayer: 5 }, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 50);
+    // Deadline is in the future after start, so expiry will not fire
+    app.drafts.start(draft.id, new Date());
+
+    const options = app.drafts.currentPackOptions(draft.id, yugi.id);
+    expect(options.length).toBeGreaterThan(0);
+    const cardId = options[0].id;
+
+    const result = app.drafts.recordManualPick(draft.id, yugi.id, cardId);
+
+    expect(result).toEqual({ alreadyPicked: false });
+
+    // A pick row with pick_method = 'manual' must exist
+    const pickRow = app.db
+      .prepare("select * from draft_picks where draft_id = ? and player_id = ?")
+      .get(draft.id, yugi.id) as { pick_method: string } | undefined;
+
+    expect(pickRow).toBeTruthy();
+    expect(pickRow?.pick_method).toBe("manual");
+  });
+
   it("exports a completed deck in YGOPro YDK format", () => {
     const app = setup();
     const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");

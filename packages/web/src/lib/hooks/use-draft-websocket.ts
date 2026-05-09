@@ -11,6 +11,7 @@ const WS_URL =
 interface UseDraftWebsocketOptions {
   onStatusChange?: (status: "active" | "cancelled" | "completed") => void;
   onResync?: () => void;
+  onSeatsChange?: () => void;
 }
 
 export function useDraftWebsocket(slug: string, options: UseDraftWebsocketOptions = {}) {
@@ -56,6 +57,10 @@ export function useDraftWebsocket(slug: string, options: UseDraftWebsocketOption
     socket.on("draft:complete", () => {
       setFromServer({ completed: true, isMyTurn: false });
       optionsRef.current.onStatusChange?.("completed");
+    });
+
+    socket.on("draft:seats", () => {
+      optionsRef.current.onSeatsChange?.();
     });
 
     socket.on("connect_error", (err) => {

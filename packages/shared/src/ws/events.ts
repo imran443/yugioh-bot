@@ -24,10 +24,16 @@ export type DraftCompleteBroadcast = {
   slug: string;
 };
 
+export type DraftSeatsBroadcast = {
+  kind: "seats";
+  slug: string;
+};
+
 export type DraftBroadcastPayload =
   | DraftStatusBroadcast
   | DraftPickBroadcast
   | DraftResyncBroadcast
-  | DraftCompleteBroadcast;
+  | DraftCompleteBroadcast
+  | DraftSeatsBroadcast;
 
-export const DRAFT_BROADCAST_KINDS = ["status", "pick", "resync", "complete"] as const;
+export const DRAFT_BROADCAST_KINDS = ["status", "pick", "resync", "complete", "seats"] as const;
