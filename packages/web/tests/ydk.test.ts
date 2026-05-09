@@ -141,7 +141,7 @@ describe("downloadYdk", () => {
     expect(removeChildSpy).toHaveBeenCalledWith(mockAnchor);
     expect(revokeObjectURLSpy).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(0);
+    vi.advanceTimersByTime(60000);
     expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:test-url");
 
     vi.useRealTimers();

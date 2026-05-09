@@ -160,7 +160,7 @@ describe("PoolPanel", () => {
     renderPoolPanel(draftedPool);
     const poolPanel = getPoolPanelContainer();
 
-    fireEvent.change(within(poolPanel).getByRole("textbox", { name: /filter cards/i }), {
+    fireEvent.change(within(poolPanel).getByRole("textbox", { name: /search cards/i }), {
       target: { value: "blue" },
     });
 
@@ -190,7 +190,7 @@ describe("PoolPanel", () => {
     const poolPanel = getPoolPanelContainer();
 
     fireEvent.click(within(poolPanel).getByRole("button", { name: /monsters/i }));
-    fireEvent.change(within(poolPanel).getByRole("textbox", { name: /filter cards/i }), {
+    fireEvent.change(within(poolPanel).getByRole("textbox", { name: /search cards/i }), {
       target: { value: "summoned" },
     });
 
@@ -212,6 +212,6 @@ describe("PoolPanel", () => {
 
     fireEvent.click(within(poolPanel).getByRole("button", { name: /spells/i }));
     expect(within(poolPanel).queryByText("Breaker the Magical Warrior")).toBeNull();
-    expect(within(poolPanel).getByText(/no cards match this filter/i)).toBeTruthy();
+    expect(within(poolPanel).getByText(/no cards match/i)).toBeTruthy();
   });
 });

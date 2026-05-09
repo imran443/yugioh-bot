@@ -132,7 +132,7 @@ describe("DraftSummaryView", () => {
     expect(screen.getByText("Mirror Force")).toBeTruthy();
   });
 
-  it("renders correct type badges (M/S/T) for monster, spell, and trap cards", () => {
+  it("renders card metadata for monster, spell, and trap cards", () => {
     render(
       <DraftSummaryView
         draft={baseDraft as any}
@@ -144,11 +144,10 @@ describe("DraftSummaryView", () => {
       />
     );
 
-    const badges = screen.getAllByText(/^[MST]$/);
-    const badgeTexts = badges.map((b) => b.textContent);
-    expect(badgeTexts).toContain("M");
-    expect(badgeTexts).toContain("S");
-    expect(badgeTexts).toContain("T");
+    expect(screen.getByText(/Normal Monster/)).toBeTruthy();
+    expect(screen.getByText(/Spell Card/)).toBeTruthy();
+    expect(screen.getByText(/Trap Card/)).toBeTruthy();
+    expect(screen.getByText("3000/2500")).toBeTruthy();
   });
 
   it("shows monster attribute but hides SPELL/TRAP attribute labels", () => {
@@ -163,7 +162,7 @@ describe("DraftSummaryView", () => {
       />
     );
 
-    expect(screen.getByText("LIGHT")).toBeTruthy();
+    expect(screen.getByText(/LIGHT/)).toBeTruthy();
     expect(screen.queryByText("SPELL")).toBeNull();
     expect(screen.queryByText("TRAP")).toBeNull();
   });
@@ -213,7 +212,7 @@ describe("DraftSummaryView", () => {
     expect(screen.queryByText(/your pool/i)).toBeNull();
   });
 
-  it("renders S badge for Quick-Play Spell Card and T badge for Counter/Continuous Trap Card subtypes", () => {
+  it("renders spell and trap subtype metadata", () => {
     render(
       <DraftSummaryView
         draft={baseDraft as any}
@@ -225,13 +224,8 @@ describe("DraftSummaryView", () => {
       />
     );
 
-    const badges = screen.getAllByText(/^[MST]$/);
-    const badgeTexts = badges.map((b) => b.textContent);
-    // Quick-Play Spell Card → S
-    expect(badgeTexts.filter((t) => t === "S").length).toBe(1);
-    // Counter Trap Card and Continuous Trap Card → T (two traps)
-    expect(badgeTexts.filter((t) => t === "T").length).toBe(2);
-    // No monsters in subtypePool, so no M badges
-    expect(badgeTexts.filter((t) => t === "M").length).toBe(0);
+    expect(screen.getByText("Quick-Play Spell Card")).toBeTruthy();
+    expect(screen.getByText("Counter Trap Card")).toBeTruthy();
+    expect(screen.getByText("Continuous Trap Card")).toBeTruthy();
   });
 });
