@@ -55,9 +55,10 @@ export async function POST(
 
     const drafts = createDraftService(db);
 
+    const currentStep = drafts.findById(draft.id);
+
     // alreadyPicked: true means auto-pick fired inside the transaction before the manual pick ran — that's fine, continue normally
     const { alreadyPicked: _alreadyPicked } = drafts.recordManualPick(draft.id, player.id, cardId);
-    const currentStep = drafts.findById(draft.id);
 
     // Auto-pick for fake players and dev bots who haven't picked yet this step
     const fakePlayers = db
