@@ -69,7 +69,7 @@ COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/packages/web/package*.json packages/web/
 COPY --from=build /app/packages/web/next.config.ts packages/web/next.config.ts
 COPY --from=build /app/packages/web/.next packages/web/.next
-RUN mkdir -p /app/packages/web/public
+COPY --from=build /app/packages/web/public packages/web/public
 RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 EXPOSE 3000
