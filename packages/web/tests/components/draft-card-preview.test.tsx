@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DraftCardPreview } from "../../src/components/draft/draft-card-preview";
 import { useDraftStore } from "../../src/lib/stores/draft-store";
@@ -57,7 +57,7 @@ describe("DraftCardPreview", () => {
     expect(screen.queryByTestId("draft-card-preview-image")).toBeNull();
   });
 
-  it("renders the full-resolution image without card detail text", () => {
+  it("only shows the fixed preview on wide desktops and keeps the image request sharp", () => {
     useDraftStore.setState({ ...baseState, currentPack: samplePack, previewCardId: 101 });
 
     render(<DraftCardPreview />);
@@ -71,12 +71,15 @@ describe("DraftCardPreview", () => {
     expect(preview).toHaveClass("bottom-[5.625rem]");
     expect(preview).toHaveClass("left-[17.5rem]");
     expect(preview).toHaveClass("hidden");
-    expect(preview).toHaveClass("xl:block");
-    expect(preview).toHaveClass("w-full");
+    expect(preview).toHaveClass("2xl:block");
+    expect(preview).toHaveClass("w-[calc(14.5rem+max(0px,(100vw-114rem)/2))]");
     expect(preview).toHaveClass("max-w-[30.45rem]");
     expect(art).toHaveClass("aspect-[421/614]");
     expect(image).toHaveAttribute("src", "https://img/full/101");
-    expect(image).toHaveAttribute("sizes", "(min-width: 1536px) 488px, 0px");
+    expect(image).toHaveAttribute(
+      "sizes",
+      "(min-width: 146rem) 30.45rem, (min-width: 114rem) calc(14.5rem + (100vw - 114rem) / 2), (min-width: 96rem) 14.5rem, 0px"
+    );
     expect(image).toHaveClass("object-contain");
     expect(screen.queryByText("Mirror Force")).toBeNull();
     expect(screen.queryByText(/destroy all attack position/i)).toBeNull();
@@ -87,7 +90,9 @@ describe("DraftCardPreview", () => {
 
     render(<DraftCardPreview />);
 
-    fireEvent.error(screen.getByTestId("draft-card-preview-image"));
+    act(() => {
+      fireEvent.error(screen.getByTestId("draft-card-preview-image"));
+    });
 
     expect(screen.getByTestId("draft-card-preview-art")).toHaveTextContent(/no image/i);
   });

@@ -55,7 +55,8 @@ export const {
         nextUrl.pathname === "/login" ||
         nextUrl.pathname.startsWith("/api/auth") ||
         nextUrl.pathname.startsWith("/_next") ||
-        nextUrl.pathname === "/favicon.ico";
+        nextUrl.pathname === "/favicon.ico" ||
+        nextUrl.pathname.startsWith("/icons/");
 
       if (!isLoggedIn && !isPublicRoute) {
         return Response.redirect(new URL("/login", nextUrl));

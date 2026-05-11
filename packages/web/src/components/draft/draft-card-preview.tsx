@@ -21,7 +21,7 @@ export function DraftCardPreview({ className }: DraftCardPreviewProps) {
     <div
       data-testid="draft-card-preview"
       className={cn(
-        "pointer-events-none fixed bottom-[5.625rem] left-[17.5rem] z-30 hidden w-full max-w-[30.45rem] rounded-xl border border-border bg-surface p-2 shadow-card xl:block",
+        "pointer-events-none fixed bottom-[5.625rem] left-[17.5rem] z-30 hidden w-[calc(14.5rem+max(0px,(100vw-114rem)/2))] max-w-[30.45rem] rounded-xl border border-border bg-surface p-2 shadow-card 2xl:block",
         className
       )}
       aria-label="Card preview"
@@ -42,7 +42,7 @@ export function DraftCardPreview({ className }: DraftCardPreviewProps) {
             fill
             priority
             className="object-contain"
-            sizes="(min-width: 1536px) 488px, 0px"
+            sizes="(min-width: 146rem) 30.45rem, (min-width: 114rem) calc(14.5rem + (100vw - 114rem) / 2), (min-width: 96rem) 14.5rem, 0px"
             onError={() => setImageErrors((prev) => new Set(prev).add(previewCard.id))}
           />
         )}
