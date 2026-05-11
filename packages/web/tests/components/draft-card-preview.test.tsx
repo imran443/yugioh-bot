@@ -48,12 +48,12 @@ describe("DraftCardPreview", () => {
     useDraftStore.setState(baseState);
   });
 
-  it("shows an empty image-only preview prompt before a card is hovered", () => {
+  it("stays hidden before a card is hovered", () => {
     useDraftStore.setState({ ...baseState, currentPack: samplePack });
 
     render(<DraftCardPreview />);
 
-    expect(screen.getByTestId("draft-card-preview-empty")).toHaveTextContent(/hover or focus/i);
+    expect(screen.queryByTestId("draft-card-preview")).toBeNull();
     expect(screen.queryByTestId("draft-card-preview-image")).toBeNull();
   });
 
@@ -67,6 +67,7 @@ describe("DraftCardPreview", () => {
     const image = screen.getByTestId("draft-card-preview-image");
 
     expect(preview).toHaveClass("fixed");
+    expect(preview).toHaveClass("pointer-events-none");
     expect(preview).toHaveClass("bottom-[5.625rem]");
     expect(preview).toHaveClass("left-[17.5rem]");
     expect(preview).toHaveClass("hidden");

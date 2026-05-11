@@ -68,7 +68,7 @@ describe("TimerBar", () => {
   });
 
   it("centers timer and drafted count in the sticky draft HUD", () => {
-    render(<TimerBar />);
+    render(<TimerBar totalDraftCards={30} />);
 
     const hud = screen.getByRole("timer", { name: /time remaining/i }).closest("div");
 
@@ -76,7 +76,7 @@ describe("TimerBar", () => {
     expect(screen.getByText("Pack 1 · Pick 4")).toBeTruthy();
     expect(screen.getByRole("timer", { name: /time remaining/i })).toHaveTextContent("0:38");
     expect(within(hud as HTMLElement).getByText("Drafted")).toBeTruthy();
-    expect(within(hud as HTMLElement).getByText("3 / 40")).toBeTruthy();
+    expect(within(hud as HTMLElement).getByText("3 / 30")).toBeTruthy();
   });
 
   it("places the larger live label beside the progress bar", () => {

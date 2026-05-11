@@ -243,6 +243,7 @@ export default function DraftDetailPage() {
 
   const isCreator = currentUserId === draft.createdByUserId;
   const isParticipant = draft.isParticipant;
+  const totalDraftCards = (draft.config.packSize ?? 8) * (draft.config.packsPerPlayer ?? 5);
 
   const handleJoin = async () => {
     const res = await fetch(`/api/drafts/${slug}/join`, { method: "POST" });
@@ -286,7 +287,7 @@ export default function DraftDetailPage() {
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
         <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
           <div className="mx-auto max-w-[1600px]">
-            <TimerBar className="rounded-none border-0 bg-transparent p-0" />
+            <TimerBar className="rounded-none border-0 bg-transparent p-0" totalDraftCards={totalDraftCards} />
           </div>
         </div>
 

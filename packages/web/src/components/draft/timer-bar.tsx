@@ -6,9 +6,10 @@ import { Clock } from "lucide-react";
 
 interface TimerBarProps {
   className?: string;
+  totalDraftCards?: number;
 }
 
-export function TimerBar({ className }: TimerBarProps) {
+export function TimerBar({ className, totalDraftCards = 40 }: TimerBarProps) {
   const packRound = useDraftStore((s) => s.packRound);
   const pickStep = useDraftStore((s) => s.pickStep);
   const timerSeconds = useDraftStore((s) => s.timerSeconds);
@@ -68,7 +69,7 @@ export function TimerBar({ className }: TimerBarProps) {
             Drafted
           </span>
           <span className="font-display text-xl tracking-wide text-text-primary">
-            {draftedCount} / 40
+            {draftedCount} / {totalDraftCards}
           </span>
         </div>
       </div>
