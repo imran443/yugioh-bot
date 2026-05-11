@@ -20,6 +20,7 @@ const baseState: DraftState = {
   isMyTurn: false,
   completed: false,
   pickSeconds: 60,
+  previewCardId: null,
   selectedCardId: null,
   highlightedIndex: -1,
 };
@@ -68,6 +69,19 @@ const draftedPool: DraftCardDetail[] = [
     def: 1200,
     imageUrl: "https://img/full/404",
     imageUrlSmall: "https://img/small/404",
+  },
+  {
+    id: 505,
+    name: "Breaker the Magical Warrior",
+    type: "Spellcaster / Effect Monster",
+    frameType: "effect",
+    effectText: "If this card is Normal Summoned: Place 1 Spell Counter on it.",
+    attribute: "DARK",
+    level: 4,
+    atk: 1600,
+    def: 1000,
+    imageUrl: "https://img/full/505",
+    imageUrlSmall: "https://img/small/505",
   },
 ];
 
@@ -150,10 +164,17 @@ describe("PoolPanel", () => {
     renderPoolPanel(draftedPool);
 
     expect(screen.getByText("Drafted so far")).toBeTruthy();
-    expectDraftedSoFarCount(4);
-    expectSummaryCount("Monsters", 2);
+    expectDraftedSoFarCount(5);
+    expectSummaryCount("Monsters", 3);
     expectSummaryCount("Spells", 1);
     expectSummaryCount("Traps", 1);
+  });
+
+  it("uses game spell and trap SVG icons in the summary cards", () => {
+    renderPoolPanel(draftedPool);
+
+    expect(screen.getByAltText("Spell cards")).toHaveAttribute("src", "/icons/spell.svg");
+    expect(screen.getByAltText("Trap cards")).toHaveAttribute("src", "/icons/trap.svg");
   });
 
   it("filters visible cards by name", () => {
@@ -185,19 +206,27 @@ describe("PoolPanel", () => {
     expect(within(poolPanel).queryByText("Summoned Skull")).toBeNull();
   });
 
-  it("combines name and type filters", () => {
+  it("filters visible cards by normal and effect monster pills", () => {
     renderPoolPanel(draftedPool);
     const poolPanel = getPoolPanelContainer();
+    const normalButton = within(poolPanel).getByRole("button", { name: /normal monsters/i });
+    const effectButton = within(poolPanel).getByRole("button", { name: /effect monsters/i });
 
-    fireEvent.click(within(poolPanel).getByRole("button", { name: /monsters/i }));
-    fireEvent.change(within(poolPanel).getByRole("textbox", { name: /search cards/i }), {
-      target: { value: "summoned" },
-    });
+    fireEvent.click(normalButton);
 
+    expect(normalButton).toHaveAttribute("aria-pressed", "true");
+    expect(within(poolPanel).getByText("Blue-Eyes White Dragon")).toBeTruthy();
     expect(within(poolPanel).getByText("Summoned Skull")).toBeTruthy();
-    expect(within(poolPanel).queryByText("Blue-Eyes White Dragon")).toBeNull();
+    expect(within(poolPanel).queryByText("Breaker the Magical Warrior")).toBeNull();
     expect(within(poolPanel).queryByText("Mystical Space Typhoon")).toBeNull();
     expect(within(poolPanel).queryByText("Trap Hole")).toBeNull();
+
+    fireEvent.click(effectButton);
+
+    expect(effectButton).toHaveAttribute("aria-pressed", "true");
+    expect(within(poolPanel).getByText("Breaker the Magical Warrior")).toBeTruthy();
+    expect(within(poolPanel).queryByText("Blue-Eyes White Dragon")).toBeNull();
+    expect(within(poolPanel).queryByText("Summoned Skull")).toBeNull();
   });
 
   it("treats spellcaster monsters as monsters instead of spells", () => {
@@ -207,7 +236,7 @@ describe("PoolPanel", () => {
     expectSummaryCount("Monsters", 1);
     expectSummaryCount("Spells", 0);
 
-    fireEvent.click(within(poolPanel).getByRole("button", { name: /monsters/i }));
+    fireEvent.click(within(poolPanel).getByRole("button", { name: /effect monsters/i }));
     expect(within(poolPanel).getByText("Breaker the Magical Warrior")).toBeTruthy();
 
     fireEvent.click(within(poolPanel).getByRole("button", { name: /spells/i }));

@@ -33,6 +33,7 @@ export interface DraftState {
   isMyTurn: boolean;
   completed: boolean;
   pickSeconds: number;
+  previewCardId: number | null;
   selectedCardId: number | null;
   highlightedIndex: number;
 }
@@ -41,6 +42,7 @@ export interface DraftActions {
   setFromServer: (state: Partial<DraftState>) => void;
   pickCard: (cardId: number) => void;
   tick: () => void;
+  setPreviewCard: (cardId: number | null) => void;
   setSelectedCard: (cardId: number | null) => void;
   setHighlightedIndex: (index: number) => void;
 }
@@ -56,6 +58,7 @@ const initialState: DraftState = {
   isMyTurn: false,
   completed: false,
   pickSeconds: 60,
+  previewCardId: null,
   selectedCardId: null,
   highlightedIndex: -1,
 };
@@ -90,6 +93,10 @@ export const useDraftStore = create<DraftState & DraftActions>((set) => ({
         nextState.selectedCardId = null;
       }
 
+      if (!nextIsMyTurn || nextCompleted || packChanged || !nextPack.some((card) => card.id === nextState.previewCardId)) {
+        nextState.previewCardId = null;
+      }
+
       if (!nextIsMyTurn || nextCompleted || packChanged || !highlightedStillAvailable) {
         nextState.highlightedIndex = -1;
       }
@@ -107,6 +114,7 @@ export const useDraftStore = create<DraftState & DraftActions>((set) => ({
         currentPack: state.currentPack.filter((c) => c.id !== cardId),
         myPool: [...state.myPool, card],
         isMyTurn: false,
+        previewCardId: null,
         selectedCardId: null,
         highlightedIndex: -1,
       };
@@ -116,6 +124,12 @@ export const useDraftStore = create<DraftState & DraftActions>((set) => ({
     set((state) => ({
       ...state,
       timerSeconds: Math.max(0, state.timerSeconds - 1),
+    })),
+
+  setPreviewCard: (cardId) =>
+    set((state) => ({
+      ...state,
+      previewCardId: cardId,
     })),
 
   setSelectedCard: (cardId) =>

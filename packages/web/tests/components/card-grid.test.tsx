@@ -22,6 +22,7 @@ const baseState = {
   isMyTurn: false,
   completed: false,
   pickSeconds: 60,
+  previewCardId: null,
   selectedCardId: null,
   highlightedIndex: -1,
 };
@@ -134,7 +135,7 @@ describe("CardGrid", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("renders a fixed overlapping hover preview for desktop inspection", async () => {
+  it("updates the active preview card without rendering a floating overlay", async () => {
     useDraftStore.setState({ ...baseState, currentPack: samplePack, isMyTurn: true });
 
     render(<CardGrid />);
@@ -143,26 +144,52 @@ describe("CardGrid", () => {
       fireEvent.mouseEnter(screen.getByRole("option", { name: /mirror force/i }));
     });
 
-    expect(screen.getAllByAltText("Mirror Force").length).toBeGreaterThan(1);
-    expect(document.querySelector(".pointer-events-none.fixed.z-30")).toBeTruthy();
-    expect(screen.getByTestId("hover-preview-card").className).toContain("bg-bg-surface");
-    expect(screen.getByTestId("hover-preview-art").className).toContain("bg-bg-elevated");
-    expect(screen.getAllByAltText("Mirror Force")[1]).toHaveClass("object-contain");
+    expect(useDraftStore.getState().previewCardId).toBe(101);
+    expect(document.querySelector(".pointer-events-none.fixed.z-30")).toBeNull();
+
+    await act(async () => {
+      fireEvent.mouseLeave(screen.getByRole("option", { name: /mirror force/i }));
+    });
+
+    expect(useDraftStore.getState().previewCardId).toBeNull();
   });
 
-  it("shows effect text and monster stats in the hover preview", async () => {
+  it("uses a dense six-column desktop grid without cropping card art", () => {
+    useDraftStore.setState({ ...baseState, currentPack: samplePack, isMyTurn: true });
+
+    render(<CardGrid />);
+
+    const listbox = screen.getByRole("listbox", { name: /current pack cards/i });
+    const mirrorForceImage = screen.getByAltText("Mirror Force");
+    const artFrame = mirrorForceImage.closest("div");
+
+    expect(listbox).toHaveClass("2xl:grid-cols-[repeat(6,minmax(120px,1fr))]");
+    expect(mirrorForceImage).toHaveClass("object-contain");
+    expect(mirrorForceImage).not.toHaveClass("object-cover");
+    expect(artFrame).toHaveClass("aspect-[421/614]");
+  });
+
+  it("updates the active preview card from focus and keyboard highlighting", async () => {
     useDraftStore.setState({ ...baseState, currentPack: samplePack, isMyTurn: true });
 
     render(<CardGrid />);
 
     await act(async () => {
-      fireEvent.mouseEnter(screen.getByRole("option", { name: /summoned skull/i }));
+      fireEvent.focus(screen.getByRole("option", { name: /mystical space typhoon/i }));
     });
 
-    expect(screen.getByText(/fiend with dark powers/i)).toBeTruthy();
-    expect(screen.getByText("ATK 2500")).toBeTruthy();
-    expect(screen.getByText("DEF 1200")).toBeTruthy();
-    expect(screen.getByText("DARK")).toBeTruthy();
-    expect(screen.getByText("Level 6")).toBeTruthy();
+    expect(useDraftStore.getState().previewCardId).toBe(202);
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "3" });
+    });
+
+    expect(useDraftStore.getState().previewCardId).toBe(303);
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+
+    expect(useDraftStore.getState().previewCardId).toBeNull();
   });
 });

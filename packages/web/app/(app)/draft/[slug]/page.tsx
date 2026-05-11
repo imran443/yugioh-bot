@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { DraftManageView } from "@/components/draft/draft-manage-view";
 import { DraftSummaryView } from "@/components/draft/draft-summary-view";
 import { CardGrid } from "@/components/draft/card-grid";
+import { DraftCardPreview } from "@/components/draft/draft-card-preview";
 import { TimerBar } from "@/components/draft/timer-bar";
 import { SeatList } from "@/components/draft/seat-list";
 import { PoolPanel } from "@/components/draft/pool-panel";
@@ -242,6 +243,7 @@ export default function DraftDetailPage() {
 
   const isCreator = currentUserId === draft.createdByUserId;
   const isParticipant = draft.isParticipant;
+  const totalDraftCards = (draft.config.packSize ?? 8) * (draft.config.packsPerPlayer ?? 5);
 
   const handleJoin = async () => {
     const res = await fetch(`/api/drafts/${slug}/join`, { method: "POST" });
@@ -285,7 +287,7 @@ export default function DraftDetailPage() {
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
         <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
           <div className="mx-auto max-w-[1600px]">
-            <TimerBar className="rounded-none border-0 bg-transparent p-0" />
+            <TimerBar className="rounded-none border-0 bg-transparent p-0" totalDraftCards={totalDraftCards} />
           </div>
         </div>
 
@@ -294,7 +296,7 @@ export default function DraftDetailPage() {
             <SeatList />
           </div>
 
-          <div className="grid gap-8 xl:grid-cols-[15rem_minmax(0,1fr)_17.5rem]">
+          <div className="grid gap-8 xl:grid-cols-[15rem_minmax(0,1fr)_22rem]">
             {/* Left aside — SeatList only (TimerBar moved to sticky top) */}
             <aside className="hidden flex-col gap-4 xl:flex">
               <SeatList />
@@ -345,6 +347,8 @@ export default function DraftDetailPage() {
               <PoolPanel />
             </aside>
           </div>
+
+          <DraftCardPreview />
 
           <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-bg-deep/95 backdrop-blur-sm p-4 sm:hidden">
             <PoolPanel />

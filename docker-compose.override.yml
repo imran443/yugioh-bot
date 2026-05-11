@@ -9,6 +9,7 @@ services:
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./packages/web/app:/app/packages/web/app
+      - ./packages/web/public:/app/packages/web/public
       - ./packages/web/src:/app/packages/web/src
       - ./packages/shared/src:/app/packages/shared/src
       - ./packages/shared/dist:/app/packages/shared/dist
