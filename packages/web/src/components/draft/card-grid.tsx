@@ -2,18 +2,12 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Shield, Swords } from "lucide-react";
 import { useDraftStore, DraftCardDetail } from "@/lib/stores/draft-store";
 import { cn } from "@/lib/utils";
 
 interface CardGridProps {
   className?: string;
 }
-
-const desktopPreviewWidth = 288;
-const desktopPreviewHeight = 560;
-const previewMargin = 16;
-const previewOverlap = 36;
 
 function isInputTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -31,32 +25,10 @@ function parseNumberKey(key: string): number | null {
   return null;
 }
 
-function getDesktopPreviewPosition(rect: DOMRect) {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const rightAlignedLeft = rect.right - previewOverlap;
-  const leftAlignedLeft = rect.left - desktopPreviewWidth + previewOverlap;
-  const centeredLeft = rect.left + rect.width / 2 - desktopPreviewWidth / 2;
-  const left =
-    rightAlignedLeft + desktopPreviewWidth + previewMargin <= viewportWidth
-      ? rightAlignedLeft
-      : leftAlignedLeft >= previewMargin
-        ? leftAlignedLeft
-        : Math.min(
-            viewportWidth - desktopPreviewWidth - previewMargin,
-            Math.max(previewMargin, centeredLeft)
-          );
-  const top = Math.min(
-    viewportHeight - desktopPreviewHeight - previewMargin,
-    Math.max(previewMargin, rect.top + rect.height / 2 - desktopPreviewHeight / 2)
-  );
-
-  return { left, top };
-}
-
 export function CardGrid({ className }: CardGridProps) {
   const currentPack = useDraftStore((s) => s.currentPack);
   const highlightedIndex = useDraftStore((s) => s.highlightedIndex);
+  const setPreviewCard = useDraftStore((s) => s.setPreviewCard);
   const setHighlightedIndex = useDraftStore((s) => s.setHighlightedIndex);
   const pickCard = useDraftStore((s) => s.pickCard);
   const setFromServer = useDraftStore((s) => s.setFromServer);
@@ -64,7 +36,6 @@ export function CardGrid({ className }: CardGridProps) {
   const slug = useDraftStore((s) => s.slug);
 
   const [hoveredCard, setHoveredCard] = React.useState<DraftCardDetail | null>(null);
-  const [hoveredRect, setHoveredRect] = React.useState<DOMRect | null>(null);
   const [imageErrors, setImageErrors] = React.useState<Set<number>>(new Set());
   const [picking, setPicking] = React.useState(false);
 
@@ -72,15 +43,15 @@ export function CardGrid({ className }: CardGridProps) {
     setImageErrors((prev) => new Set(prev).add(cardId));
   };
 
-  const updateHoveredCard = React.useCallback((card: DraftCardDetail, element: HTMLElement | null) => {
+  const updateHoveredCard = React.useCallback((card: DraftCardDetail) => {
     setHoveredCard(card);
-    setHoveredRect(element?.getBoundingClientRect() ?? null);
-  }, []);
+    setPreviewCard(card.id);
+  }, [setPreviewCard]);
 
   const clearHoveredCard = React.useCallback(() => {
     setHoveredCard(null);
-    setHoveredRect(null);
-  }, []);
+    setPreviewCard(null);
+  }, [setPreviewCard]);
 
   React.useEffect(() => {
     if (!hoveredCard) {
@@ -161,8 +132,7 @@ export function CardGrid({ className }: CardGridProps) {
           state.setHighlightedIndex(index);
           const card = state.currentPack[index];
           if (card) {
-            const element = document.querySelector<HTMLElement>(`[data-card-id="${card.id}"]`);
-            updateHoveredCard(card, element);
+            updateHoveredCard(card);
           }
         }
       }
@@ -193,9 +163,6 @@ export function CardGrid({ className }: CardGridProps) {
     handleConfirmPick(card.id);
   };
 
-  const previewPosition = hoveredRect ? getDesktopPreviewPosition(hoveredRect) : null;
-  const hoveredCardIsMonster = hoveredCard?.type.toLowerCase().includes("monster") ?? false;
-
   if (currentPack.length === 0) {
     return (
       <div className={cn("relative flex min-h-[24rem] flex-col items-center justify-center", className)}>
@@ -218,10 +185,11 @@ export function CardGrid({ className }: CardGridProps) {
     <div className={cn("relative", className)}>
       <div
         className={cn(
-          "grid gap-4",
-          "grid-cols-[repeat(2,minmax(180px,1fr))]",
-          "sm:grid-cols-[repeat(3,minmax(180px,1fr))]",
-          "xl:grid-cols-[repeat(4,minmax(180px,1fr))]"
+          "grid gap-3 sm:gap-4",
+          "grid-cols-[repeat(2,minmax(140px,1fr))]",
+          "sm:grid-cols-[repeat(3,minmax(140px,1fr))]",
+          "lg:grid-cols-[repeat(4,minmax(130px,1fr))]",
+          "2xl:grid-cols-[repeat(6,minmax(120px,1fr))]"
         )}
         role="listbox"
         aria-label="Current pack cards"
@@ -237,7 +205,7 @@ export function CardGrid({ className }: CardGridProps) {
               aria-selected={isHighlighted}
               tabIndex={0}
               className={cn(
-                "group relative flex flex-col items-center rounded-xl border bg-bg-surface p-2.5 motion-safe:transition-all",
+                "group relative flex flex-col items-center rounded-xl border bg-bg-surface p-2 motion-safe:transition-all sm:p-2.5",
                 "hover:shadow-card hover:border-accent-primary/50",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary",
                 isHighlighted
@@ -245,13 +213,13 @@ export function CardGrid({ className }: CardGridProps) {
                   : "border-border"
               )}
               data-card-id={card.id}
-              onMouseEnter={(event) => {
-                updateHoveredCard(card, event.currentTarget);
+              onMouseEnter={() => {
+                updateHoveredCard(card);
               }}
               onMouseLeave={clearHoveredCard}
               onClick={() => handleCardClick(card, index)}
-              onFocus={(event) => {
-                updateHoveredCard(card, event.currentTarget);
+              onFocus={() => {
+                updateHoveredCard(card);
               }}
             >
               {/* Position number */}
@@ -260,7 +228,7 @@ export function CardGrid({ className }: CardGridProps) {
               </span>
 
               {/* Card image or placeholder */}
-              <div className="relative mb-3 aspect-[3/4] w-full overflow-hidden rounded-lg bg-bg-elevated">
+              <div className="relative mb-3 aspect-[421/614] w-full overflow-hidden rounded-lg bg-bg-elevated">
                 {hasImageError ? (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-text-secondary">
                     <span className="text-xs">No image</span>
@@ -270,8 +238,8 @@ export function CardGrid({ className }: CardGridProps) {
                     src={card.imageUrlSmall || card.imageUrl}
                     alt={card.name}
                     fill
-                    className="object-cover motion-safe:transition-transform motion-safe:duration-300 group-hover:scale-105"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    className="object-contain motion-safe:transition-opacity motion-safe:duration-300 group-hover:opacity-95"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1536px) 25vw, 16vw"
                     onError={() => handleImageError(card.id)}
                   />
                 )}
@@ -285,82 +253,6 @@ export function CardGrid({ className }: CardGridProps) {
           );
         })}
       </div>
-
-      {/* Desktop hover preview */}
-      {hoveredCard && previewPosition && (
-        <div
-          className="pointer-events-none fixed z-30 hidden lg:block"
-          style={{
-            left: `${previewPosition.left}px`,
-            top: `${previewPosition.top}px`,
-          }}
-        >
-          <div
-            data-testid="hover-preview-card"
-            className="max-h-[calc(100vh-2rem)] w-72 overflow-auto rounded-xl border border-border bg-bg-surface shadow-card"
-          >
-            <div
-              data-testid="hover-preview-art"
-              className="relative isolate aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-bg-elevated"
-            >
-              {imageErrors.has(hoveredCard.id) ? (
-                <div className="flex h-full items-center justify-center text-text-secondary">
-                  No image
-                </div>
-              ) : (
-                <Image
-                  src={hoveredCard.imageUrl}
-                  alt={hoveredCard.name}
-                  fill
-                  className="object-contain"
-                  sizes="288px"
-                  onError={() => handleImageError(hoveredCard.id)}
-                />
-              )}
-            </div>
-            <div className="space-y-3 p-4">
-              <h3 className="mb-1 font-display text-lg text-text-primary">
-                {hoveredCard.name}
-              </h3>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-                {hoveredCard.attribute && (
-                  <span className="rounded-md bg-bg-elevated px-2 py-1">
-                    {hoveredCard.attribute}
-                  </span>
-                )}
-                {hoveredCard.level !== undefined && (
-                  <span className="rounded-md bg-bg-elevated px-2 py-1">
-                    Level {hoveredCard.level}
-                  </span>
-                )}
-                <span className="rounded-md bg-bg-elevated px-2 py-1">{hoveredCard.type}</span>
-                <span className="rounded-md bg-bg-elevated px-2 py-1 capitalize">
-                  {hoveredCard.frameType}
-                </span>
-              </div>
-              <p className="text-sm leading-relaxed text-text-secondary">
-                {hoveredCard.effectText}
-              </p>
-              {hoveredCardIsMonster && (hoveredCard.atk !== undefined || hoveredCard.def !== undefined) && (
-                <div className="flex items-center gap-4 text-sm font-semibold text-text-primary">
-                  {hoveredCard.atk !== undefined && (
-                    <div className="flex items-center gap-1.5">
-                      <Swords className="h-4 w-4 text-accent-cta" aria-hidden="true" />
-                      <span>ATK {hoveredCard.atk}</span>
-                    </div>
-                  )}
-                  {hoveredCard.def !== undefined && (
-                    <div className="flex items-center gap-1.5">
-                      <Shield className="h-4 w-4 text-accent-primary" aria-hidden="true" />
-                      <span>DEF {hoveredCard.def}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { CardHoverPopup } from "@/components/draft/card-hover-popup";
-import { Layers, Swords, Scroll, ShieldAlert, ChevronUp, Download, ArrowUpDown } from "lucide-react";
+import { Layers, Swords, ChevronUp, Download, ArrowUpDown } from "lucide-react";
 
-type PoolFilter = "all" | "monster" | "spell" | "trap";
+type PoolFilter = "all" | "effect" | "normal" | "spell" | "trap";
 type PoolSort = "newest" | "oldest" | "name" | "type";
 
 interface PoolPanelProps {
@@ -40,6 +40,16 @@ function getPopupPosition(rect: DOMRect): { left: number; top: number } {
 function isMonster(type: string) { return type.trim().toLowerCase().includes("monster"); }
 function isSpell(type: string) { return type.trim().toLowerCase().includes("spell card"); }
 function isTrap(type: string) { return type.trim().toLowerCase().includes("trap card"); }
+
+function isEffectMonster(card: DraftCardDetail) {
+  const frameType = card.frameType.trim().toLowerCase();
+  return isMonster(card.type) && (frameType === "effect" || card.type.toLowerCase().includes("effect monster"));
+}
+
+function isNormalMonster(card: DraftCardDetail) {
+  const frameType = card.frameType.trim().toLowerCase();
+  return isMonster(card.type) && (frameType === "normal" || card.type.toLowerCase().includes("normal monster"));
+}
 
 function getTypeBadgeClass(type: string) {
   return isMonster(type)
@@ -103,7 +113,8 @@ export function PoolPanel({ className }: PoolPanelProps) {
       const matchesSearch = needle.length === 0 || card.name.toLowerCase().includes(needle);
       const matchesFilter =
         activeFilter === "all" ||
-        (activeFilter === "monster" && isMonster(card.type)) ||
+        (activeFilter === "effect" && isEffectMonster(card)) ||
+        (activeFilter === "normal" && isNormalMonster(card)) ||
         (activeFilter === "spell" && isSpell(card.type)) ||
         (activeFilter === "trap" && isTrap(card.type));
       return matchesSearch && matchesFilter;
@@ -124,7 +135,8 @@ export function PoolPanel({ className }: PoolPanelProps) {
 
   const filterButtons: Array<{ label: string; value: PoolFilter }> = [
     { label: "All", value: "all" },
-    { label: "Monsters", value: "monster" },
+    { label: "Effect Monsters", value: "effect" },
+    { label: "Normal Monsters", value: "normal" },
     { label: "Spells", value: "spell" },
     { label: "Traps", value: "trap" },
   ];
@@ -139,11 +151,11 @@ export function PoolPanel({ className }: PoolPanelProps) {
   const panelContent = (
     <div className="flex flex-col gap-4">
       {/* Drafted count */}
-      <div className="flex items-center justify-between rounded-xl border border-border bg-bg-elevated/40 px-3 py-2">
-        <span className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+      <div className="flex items-center justify-between rounded-xl border border-border/70 bg-bg-elevated/25 px-3 py-2">
+        <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-text-muted">
           Drafted so far
         </span>
-        <span className="font-display text-xl text-text-primary">{myPool.length}</span>
+        <span className="font-display text-lg text-text-secondary">{myPool.length}</span>
       </div>
 
       {/* Summary stats */}
@@ -154,12 +166,12 @@ export function PoolPanel({ className }: PoolPanelProps) {
           <span className="text-xs text-text-secondary">Monsters</span>
         </div>
         <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-1.5">
-          <Scroll className="mb-1 h-4 w-4 text-accent-gold" aria-hidden="true" />
+          <img src="/icons/spell.svg" alt="Spell cards" width={20} height={20} className="mb-1 h-5 w-5" />
           <span className="font-display text-lg text-text-primary">{spellCount}</span>
           <span className="text-xs text-text-secondary">Spells</span>
         </div>
         <div className="flex flex-col items-center rounded-lg bg-bg-elevated p-1.5">
-          <ShieldAlert className="mb-1 h-4 w-4 text-accent-cta" aria-hidden="true" />
+          <img src="/icons/trap.svg" alt="Trap cards" width={20} height={20} className="mb-1 h-5 w-5" />
           <span className="font-display text-lg text-text-primary">{trapCount}</span>
           <span className="text-xs text-text-secondary">Traps</span>
         </div>
