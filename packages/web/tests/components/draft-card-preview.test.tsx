@@ -69,14 +69,13 @@ describe("DraftCardPreview", () => {
     expect(preview).toHaveClass("fixed");
     expect(preview).toHaveClass("pointer-events-none");
     expect(preview).toHaveClass("bottom-[5.625rem]");
-    expect(preview).toHaveClass("left-[17.5rem]");
+    expect(preview).toHaveClass("left-[15.5rem]");
     expect(preview).toHaveClass("hidden");
     expect(preview).toHaveClass("xl:block");
-    expect(preview).toHaveClass("w-full");
-    expect(preview).toHaveClass("max-w-[30.45rem]");
+    expect(preview).toHaveClass("w-[clamp(11rem,14vw,20rem)]");
     expect(art).toHaveClass("aspect-[421/614]");
     expect(image).toHaveAttribute("src", "https://img/full/101");
-    expect(image).toHaveAttribute("sizes", "(min-width: 1536px) 488px, 0px");
+    expect(image).toHaveAttribute("sizes", "(min-width: 1280px) 14vw, 0px");
     expect(image).toHaveClass("object-contain");
     expect(screen.queryByText("Mirror Force")).toBeNull();
     expect(screen.queryByText(/destroy all attack position/i)).toBeNull();
