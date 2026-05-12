@@ -86,6 +86,37 @@ describe("CardPoolManager", () => {
     await waitFor(() => expect(screen.queryByText("Pauper")).toBeNull());
   });
 
+  it("shows an error when delete fails", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.startsWith("/api/sets")) return Response.json({ sets: [] });
+      if (url === "/api/cards/resolve") return Response.json({ cards: [], unknownIds: [] });
+      if (url === "/api/draft-templates" && method === "GET")
+        return Response.json({ templates: [{ id: 1, name: "Goat Cube", setNames: [], customCardIds: [1] }] });
+      if (url.startsWith("/api/draft-templates/") && method === "DELETE")
+        return Response.json({ error: "Not found" }, { status: 404 });
+      return Response.json({}, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CardPoolManager />);
+    await waitFor(() => screen.getByText("Goat Cube"));
+    fireEvent.click(screen.getByRole("button", { name: /delete pool goat cube/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => expect(screen.getByText(/not found|delete failed/i)).toBeTruthy());
+  });
+
+  it("shows validation error for empty pool name", async () => {
+    stubFetch();
+    render(<CardPoolManager />);
+    await waitFor(() => screen.getByText("Goat Cube"));
+    fireEvent.click(screen.getByRole("button", { name: /new pool/i }));
+    // Leave name empty, add a card ID
+    fireEvent.change(screen.getByLabelText(/custom card ids/i), { target: { value: "11111111" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByText(/pool name is required/i)).toBeTruthy());
+  });
+
   it("surfaces a 409 rename collision", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input); const method = (init?.method ?? "GET").toUpperCase();

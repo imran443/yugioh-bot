@@ -27,16 +27,24 @@ function summaryLine(p: PoolListItem): string {
 export function CardPoolManager() {
   const [pools, setPools] = React.useState<PoolListItem[]>([]);
   const [loaded, setLoaded] = React.useState(false);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [editor, setEditor] = React.useState<EditorState>({ mode: "closed" });
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<number | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [editorError, setEditorError] = React.useState<string | null>(null);
 
   const reload = React.useCallback(async () => {
-    const res = await fetch("/api/draft-templates");
-    if (res.ok) {
-      const data = (await res.json()) as { templates: PoolListItem[] };
-      setPools(data.templates);
+    setLoadError(null);
+    try {
+      const res = await fetch("/api/draft-templates");
+      if (res.ok) {
+        const data = (await res.json()) as { templates: PoolListItem[] };
+        setPools(data.templates);
+      } else {
+        setLoadError("Failed to load pools.");
+      }
+    } catch {
+      setLoadError("Failed to load pools.");
     }
     setLoaded(true);
   }, []);
@@ -87,7 +95,12 @@ export function CardPoolManager() {
   const doDelete = async (id: number) => {
     const res = await fetch(`/api/draft-templates/${id}`, { method: "DELETE" });
     setConfirmDeleteId(null);
-    if (res.ok) await reload();
+    if (res.ok) {
+      await reload();
+    } else {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      setEditorError(body.error ?? `Delete failed (${res.status}).`);
+    }
   };
 
   return (
@@ -99,7 +112,11 @@ export function CardPoolManager() {
         </Button>
       </div>
 
-      {loaded && pools.length === 0 && editor.mode === "closed" && (
+      {loadError && <p className="text-sm text-destructive">{loadError}</p>}
+      {editorError && editor.mode === "closed" && (
+        <p className="text-sm text-destructive">{editorError}</p>
+      )}
+      {loaded && pools.length === 0 && editor.mode === "closed" && !loadError && (
         <p className="text-sm text-text-secondary">No saved pools yet. Create one to reuse it across drafts.</p>
       )}
 
@@ -147,7 +164,7 @@ export function CardPoolManager() {
           </div>
           <PoolBuilder value={editor.pool} onChange={(pool) => setEditor({ ...editor, pool })} />
           <div className="flex gap-3">
-            <Button variant="primary" size="sm" onClick={() => void save()}>Save</Button>
+            <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()}>Save</Button>
             <Button variant="ghost" size="sm" onClick={closeEditor} disabled={saving}>Cancel</Button>
           </div>
         </div>
