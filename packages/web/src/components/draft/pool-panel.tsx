@@ -1,4 +1,3 @@
-// packages/web/src/components/draft/pool-panel.tsx
 "use client";
 
 import { useState } from "react";
@@ -35,9 +34,7 @@ export function PoolPanel({ className }: PoolPanelProps) {
         Export YDK
       </Button>
       <div className="rounded-xl border border-border bg-bg-elevated/40 p-3">
-        <div data-testid="pool-panel-card-grid">
-          <CardPoolGrid cards={myPool} heightClassName="h-[26rem] xl:h-[34rem]" emptyMessage="No cards drafted yet." />
-        </div>
+        <CardPoolGrid cards={myPool} heightClassName="h-[26rem] xl:h-[34rem]" emptyMessage="No cards drafted yet." />
       </div>
     </div>
   );

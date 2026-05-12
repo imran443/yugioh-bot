@@ -68,4 +68,14 @@ describe("CardPoolGrid", () => {
     // CardHoverPopup renders the card name as a heading
     expect(screen.getAllByText("Mirror Force").length).toBeGreaterThan(1);
   });
+
+  it("opens the preview popup on click and dismisses on Escape", () => {
+    render(<CardPoolGrid cards={cards} />);
+    fireEvent.click(screen.getByRole("button", { name: /preview mirror force/i }));
+    // tapped popup renders the card name in a heading inside the popup
+    expect(screen.getAllByText("Mirror Force").length).toBeGreaterThan(1);
+    fireEvent.keyDown(window, { key: "Escape" });
+    // after dismiss, only the button label text remains
+    expect(screen.getAllByText("Mirror Force").length).toBe(1);
+  });
 });
