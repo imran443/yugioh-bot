@@ -43,6 +43,7 @@ interface DraftData {
     packsPerPlayer?: number;
     pickSeconds?: number;
     setNames?: string[];
+    customCardIds?: number[];
   };
   players: DraftPlayer[];
   playerCount: number;

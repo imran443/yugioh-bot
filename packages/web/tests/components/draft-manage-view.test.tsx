@@ -93,4 +93,16 @@ describe("DraftManageView — card pool section", () => {
     render(<DraftManageView draft={baseDraft} slug="my-slug" isCreator isParticipant={false} onStart={noop} onCancel={noop} onUpdate={noop} onJoin={noop} />);
     await waitFor(() => expect(screen.getByText(/hasn't been resolved yet/i)).toBeTruthy());
   });
+
+  it("shows error UI and Retry button when the pool fetch fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/drafts/my-slug/pool") {
+        return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
+      }
+      return Response.json({}, { status: 404 });
+    }));
+    render(<DraftManageView draft={baseDraft} slug="my-slug" isCreator isParticipant={false} onStart={noop} onCancel={noop} onUpdate={noop} onJoin={noop} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy());
+    expect(screen.getByText(/couldn't load the pool/i)).toBeTruthy();
+  });
 });

@@ -88,6 +88,7 @@ export function DraftManageView({
   const [poolError, setPoolError] = React.useState(false);
   const loadPool = React.useCallback(() => {
     if (!slug) return;
+    setPoolCards(null);
     setPoolError(false);
     fetch(`/api/drafts/${slug}/pool`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
