@@ -46,15 +46,15 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
       const myReq = ++reqId.current;
       setLoading(true);
       setApiError(null);
-      const { hits } = getCached(customCardIds);
+      const { hits, missing } = getCached(customCardIds);
       try {
         const res = await fetch("/api/cards/resolve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ setNames, customCardIds }),
+          body: JSON.stringify({ setNames, cardIds: missing }),
         });
         if (myReq !== reqId.current) return;
-        if (!res.ok) { setApiError("Failed to resolve cards. Please try again."); setLoading(false); return; }
+        if (!res.ok) { setApiError("Failed to resolve cards. Please try again."); return; }
         const data = (await res.json()) as { cards: CardSummary[]; unknownIds: number[] };
         if (myReq !== reqId.current) return;
         putCards(data.cards);
@@ -63,7 +63,7 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
         setCards([...byId.values()]);
         setUnknownIds(data.unknownIds);
       } catch {
-        if (myReq === reqId.current) { /* keep prior cards */ }
+        if (myReq === reqId.current) { setApiError("Failed to resolve cards. Please try again."); }
       } finally {
         if (myReq === reqId.current) setLoading(false);
       }
