@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { createDraftService, createPlayerService } from "@yugidraft/shared/services";
+import { createCardCatalogService, createDraftService, createPlayerService } from "@yugidraft/shared/services";
 import type { DraftConfig } from "@yugidraft/shared/types";
 import { announceToBot } from "@/lib/announce-bot";
 import { toUtcIso } from "@/lib/utils";
@@ -124,11 +124,27 @@ export async function POST(request: NextRequest) {
   const player = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
   const drafts = createDraftService(db);
 
+  const cards = createCardCatalogService(db);
+  await cards.syncDraftPool({
+    setNames: config.setNames ?? [],
+    customCardIds: config.customCardIds ?? [],
+    includeNames: config.includeNames ?? [],
+    excludeNames: config.excludeNames ?? [],
+  });
+  const poolCardIds = drafts.resolvePoolCardIds(config);
+  if (poolCardIds.length === 0) {
+    return NextResponse.json(
+      { error: "No cards matched the selected sets / passcodes" },
+      { status: 400 }
+    );
+  }
+  const configWithPool: typeof config = { ...config, poolCardIds };
+
   const draft = drafts.create(
     guildId,
     resolvedChannelId,
     name,
-    config,
+    configWithPool,
     session.user.id,
     player.id,
   );
