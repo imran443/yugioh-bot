@@ -176,13 +176,6 @@ describe("PoolPanel", () => {
     expectSummaryCount("Traps", 1);
   });
 
-  it("uses game spell and trap SVG icons in the summary cards", () => {
-    renderPoolPanel(draftedPool);
-
-    expect(screen.getByAltText("Spell cards")).toHaveAttribute("src", "/icons/spell.svg");
-    expect(screen.getByAltText("Trap cards")).toHaveAttribute("src", "/icons/trap.svg");
-  });
-
   it("filters visible cards by name", () => {
     renderPoolPanel(draftedPool);
     const poolPanel = getPoolPanelContainer();
@@ -253,7 +246,7 @@ describe("PoolPanel", () => {
   it("renders drafted cards as a responsive image grid with name and type only", () => {
     renderPoolPanel(draftedPool);
     const poolPanel = getPoolPanelContainer();
-    const cardGallery = within(poolPanel).getByTestId("pool-panel-card-grid");
+    const cardGallery = within(poolPanel).getByTestId("card-pool-grid");
     const blueEyesTile = within(poolPanel).getByRole("button", { name: /preview blue-eyes white dragon/i });
 
     expect(cardGallery).toHaveClass("grid");

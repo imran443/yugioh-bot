@@ -1,18 +1,7 @@
 import { create } from "zustand";
+import type { CardSummary } from "@/lib/card-types";
 
-export interface DraftCardDetail {
-  id: number;
-  name: string;
-  type: string;
-  frameType: string;
-  attribute?: string;
-  level?: number;
-  effectText: string;
-  atk?: number;
-  def?: number;
-  imageUrl: string;
-  imageUrlSmall: string;
-}
+export type DraftCardDetail = CardSummary;
 
 export interface Seat {
   seatIndex: number;
