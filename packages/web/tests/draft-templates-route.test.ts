@@ -63,8 +63,19 @@ describe("/api/draft-templates", () => {
         {
           name: "Goat Cube",
           config: { customCardIds: [46986414, 83764718] },
+          setNames: [],
+          customCardIds: [46986414, 83764718],
         },
       ],
     });
+
+    // Verify pool-only storage: extra numeric config fields are stripped
+    const SqliteDb = (await import("better-sqlite3")).default;
+    const verifyDb = new SqliteDb(process.env.DATABASE_PATH!);
+    const row = verifyDb.prepare("select config_json from draft_templates where name = 'Goat Cube'").get() as { config_json: string };
+    verifyDb.close();
+    const stored = JSON.parse(row.config_json) as Record<string, unknown>;
+    expect(stored).not.toHaveProperty("packSize");
+    expect(stored).toHaveProperty("customCardIds");
   });
 });

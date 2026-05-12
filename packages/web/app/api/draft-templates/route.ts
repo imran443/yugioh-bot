@@ -19,15 +19,20 @@ type DraftTemplate = {
   guildId: string;
   name: string;
   config: DraftConfig;
+  setNames: string[];
+  customCardIds: number[];
   createdByUserId: string;
 };
 
 function mapTemplate(row: DraftTemplateRow): DraftTemplate {
+  const config = JSON.parse(row.config_json) as { setNames?: string[]; customCardIds?: number[] };
   return {
     id: row.id,
     guildId: row.guild_id,
     name: row.name,
     config: JSON.parse(row.config_json) as DraftConfig,
+    setNames: Array.isArray(config.setNames) ? config.setNames : [],
+    customCardIds: Array.isArray(config.customCardIds) ? config.customCardIds : [],
     createdByUserId: row.created_by_user_id,
   };
 }
@@ -62,9 +67,11 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as { name?: string; config?: DraftConfig };
   const name = body.name?.trim();
-  const config = body.config;
+  const incoming = (body.config ?? {}) as { setNames?: unknown; customCardIds?: unknown };
+  const setNames = Array.isArray(incoming.setNames) ? incoming.setNames.filter((s): s is string => typeof s === "string") : [];
+  const customCardIds = Array.isArray(incoming.customCardIds) ? incoming.customCardIds.filter((n): n is number => Number.isInteger(n)) : [];
 
-  if (!name || (!config?.setNames?.length && !config?.customCardIds?.length)) {
+  if (!name || (setNames.length === 0 && customCardIds.length === 0)) {
     return NextResponse.json({ error: "name and a draft pool are required" }, { status: 400 });
   }
 
@@ -79,7 +86,7 @@ export async function POST(request: NextRequest) {
           created_by_user_id = excluded.created_by_user_id
       `,
     )
-    .run(env.discordGuildId, name, JSON.stringify(config), session.user.id);
+    .run(env.discordGuildId, name, JSON.stringify({ setNames, customCardIds }), session.user.id);
 
   const row = db
     .prepare("select * from draft_templates where guild_id = ? and name = ?")
