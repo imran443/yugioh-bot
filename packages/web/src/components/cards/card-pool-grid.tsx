@@ -64,6 +64,7 @@ export function CardPoolGrid({
   const [activeFilter, setActiveFilter] = useState<PoolFilter>("all");
   const [activeSort, setActiveSort] = useState<PoolSort>("newest");
   const [hoveredCard, setHoveredCard] = useState<CardSummary | null>(null);
+  const [tapped, setTapped] = useState<CardSummary | null>(null);
   const [popupPosition, setPopupPosition] = useState<{ left: number; top: number } | null>(null);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const deferredSearch = useDeferredValue(searchTerm);
@@ -175,6 +176,7 @@ export function CardPoolGrid({
                 type="button"
                 aria-label={`Preview ${card.name}`}
                 className="group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
+                onClick={(e) => { setTapped(card); setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect())); }}
                 onMouseEnter={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
                 onMouseLeave={handleLeave}
                 onFocus={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
@@ -209,12 +211,22 @@ export function CardPoolGrid({
         )}
       </div>
 
-      {hoveredCard && popupPosition && (
+      {hoveredCard && popupPosition && !tapped && (
         <CardHoverPopup
-          card={hoveredCard as any}
+          card={hoveredCard}
           position={popupPosition}
           imageError={imageErrors.has(hoveredCard.id)}
           onImageError={() => handleImageError(hoveredCard.id)}
+        />
+      )}
+      {tapped && popupPosition && (
+        <CardHoverPopup
+          card={tapped}
+          position={popupPosition}
+          imageError={imageErrors.has(tapped.id)}
+          onImageError={() => handleImageError(tapped.id)}
+          dismissible
+          onDismiss={() => setTapped(null)}
         />
       )}
     </div>
