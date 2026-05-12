@@ -47,6 +47,7 @@ interface DraftData {
   players: DraftPlayer[];
   playerCount: number;
   participantPickCount?: number;
+  tournamentId?: number | null;
   isParticipant: boolean;
   currentPack?: Array<{
     id: number;
@@ -364,6 +365,7 @@ export default function DraftDetailPage() {
     <div>
       <DraftSummaryView
         draft={draft}
+        slug={slug}
         isParticipant={isParticipant}
         isCreator={isCreator}
         onExportYdk={handleExportYdk}

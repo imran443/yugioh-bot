@@ -34,7 +34,9 @@ interface DraftSummaryViewProps {
     }>;
     playerCount: number;
     participantPickCount?: number;
+    tournamentId?: number | null;
   };
+  slug: string;
   isParticipant: boolean;
   isCreator: boolean;
   onExportYdk: () => Promise<string>;
@@ -54,6 +56,7 @@ function formatDate(iso: string) {
 
 export function DraftSummaryView({
   draft,
+  slug,
   isParticipant,
   isCreator,
   onExportYdk,
@@ -67,6 +70,10 @@ export function DraftSummaryView({
   const [hoveredCard, setHoveredCard] = React.useState<DraftCardDetail | null>(null);
   const [popupPosition, setPopupPosition] = React.useState<{ left: number; top: number } | null>(null);
   const [imageErrors, setImageErrors] = React.useState<Set<number>>(new Set());
+  const [tournamentFormat, setTournamentFormat] = React.useState<"round_robin" | "single_elim">("round_robin");
+  const [creatingTournament, setCreatingTournament] = React.useState(false);
+  const [tournamentError, setTournamentError] = React.useState<string | null>(null);
+  const [linkedTournament, setLinkedTournament] = React.useState<{ id: number; name: string; webSlug: string | null } | null>(null);
 
   const handleCardHover = React.useCallback((card: DraftCardDetail, rect: DOMRect) => {
     const POPUP_WIDTH = 288;
@@ -126,6 +133,31 @@ export function DraftSummaryView({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete draft");
       setDeleting(false);
+    }
+  };
+
+  const handleCreateTournament = async () => {
+    setCreatingTournament(true);
+    setTournamentError(null);
+    try {
+      const res = await fetch(`/api/drafts/${slug}/tournament`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format: tournamentFormat }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 409 && data.webSlug) {
+          setLinkedTournament({ id: data.id, name: data.name, webSlug: data.webSlug });
+          return;
+        }
+        throw new Error(data.error ?? "Failed to create tournament");
+      }
+      setLinkedTournament({ id: data.id, name: data.name, webSlug: data.webSlug });
+    } catch (err) {
+      setTournamentError(err instanceof Error ? err.message : "Failed to create tournament");
+    } finally {
+      setCreatingTournament(false);
     }
   };
 
@@ -308,6 +340,55 @@ export function DraftSummaryView({
               }
             />
           )}
+        </div>
+      )}
+
+      {isCompleted && isCreator && !linkedTournament && !draft.tournamentId && (
+        <div className="rounded-xl border border-border bg-surface p-6">
+          <h2 className="mb-4 font-display text-lg text-text-primary">Create Tournament</h2>
+          <p className="mb-4 text-sm text-text-secondary">
+            Create a tournament seeded with all {draft.playerCount} players from this draft.
+          </p>
+          {tournamentError && (
+            <div className="mb-4 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
+              {tournamentError}
+            </div>
+          )}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div>
+              <label htmlFor="tournament-format" className="mb-1 block text-sm font-medium text-text-primary">
+                Format
+              </label>
+              <select
+                id="tournament-format"
+                value={tournamentFormat}
+                onChange={(e) => setTournamentFormat(e.target.value as "round_robin" | "single_elim")}
+                className="native-select rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              >
+                <option value="round_robin">Round Robin</option>
+                <option value="single_elim">Single Elimination</option>
+              </select>
+            </div>
+            <Button variant="primary" loading={creatingTournament} onClick={handleCreateTournament}>
+              Create Tournament
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isCompleted && isCreator && (linkedTournament ?? draft.tournamentId) && (
+        <div className="rounded-xl border border-border bg-surface p-6">
+          <p className="text-sm text-text-secondary">
+            Tournament created.{" "}
+            {linkedTournament?.webSlug && (
+              <a
+                href={`/tournament/${linkedTournament.webSlug}`}
+                className="font-semibold text-accent-primary underline"
+              >
+                View tournament
+              </a>
+            )}
+          </p>
         </div>
       )}
 

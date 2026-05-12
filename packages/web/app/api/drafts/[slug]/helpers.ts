@@ -79,6 +79,7 @@ export async function buildDraftResponse(slug: string, userId: string) {
           d.created_at,
           d.started_at,
           d.ended_at,
+          d.tournament_id,
           count(dp.player_id) as player_count
         from drafts d
         left join draft_players dp on dp.draft_id = d.id
@@ -186,6 +187,7 @@ export async function buildDraftResponse(slug: string, userId: string) {
     startedAt: toUtcIso(draft.started_at),
     endedAt: toUtcIso(draft.ended_at),
     playerCount: draft.player_count,
+    tournamentId: draft.tournament_id ?? null,
     players,
     participantPickCount,
     isParticipant,
