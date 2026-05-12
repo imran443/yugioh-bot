@@ -286,17 +286,17 @@ export default function DraftDetailPage() {
       <div>
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
         <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
-          <div className="mx-auto max-w-[1600px]">
+          <div className="mx-auto max-w-[1800px]">
             <TimerBar className="rounded-none border-0 bg-transparent p-0" totalDraftCards={totalDraftCards} />
           </div>
         </div>
 
-        <div className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8">
+        <div className="mx-auto max-w-[1800px] p-4 sm:p-6 lg:p-8">
           <div className="mb-6 sm:hidden">
             <SeatList />
           </div>
 
-          <div className="grid gap-8 xl:grid-cols-[15rem_minmax(0,1fr)_22rem]">
+          <div className="grid gap-8 xl:grid-cols-[15rem_minmax(0,1fr)_clamp(22rem,18rem+12vw,32rem)]">
             {/* Left aside — SeatList only (TimerBar moved to sticky top) */}
             <aside className="hidden flex-col gap-4 xl:flex">
               <SeatList />

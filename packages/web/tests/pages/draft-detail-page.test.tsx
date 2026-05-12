@@ -142,6 +142,34 @@ describe("DraftDetailPage — completion transition", () => {
     expect(screen.queryByTestId("draft-manage-view")).toBeNull();
   });
 
+  it("keeps the active draft lane anchored while the right pool pane can grow outward", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/auth/session") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { id: "user-1" } }) } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(activeDraftResponse),
+      } as Response);
+    });
+
+    const { container } = render(<DraftDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("card-grid")).toBeTruthy();
+    });
+
+    const desktopContainers = container.querySelectorAll(".mx-auto");
+    const timerContainer = desktopContainers[0] as HTMLElement | undefined;
+    const pageContainer = desktopContainers[1] as HTMLElement | undefined;
+    const desktopGrid = container.querySelector(".grid.gap-8") as HTMLElement | null;
+
+    expect(timerContainer).toHaveClass("max-w-[1800px]");
+    expect(pageContainer).toHaveClass("max-w-[1800px]");
+    expect(desktopGrid).not.toBeNull();
+    expect(desktopGrid).toHaveClass("xl:grid-cols-[15rem_minmax(0,1fr)_clamp(22rem,18rem+12vw,32rem)]");
+  });
+
   it("transitions to DraftSummaryView when storeCompleted becomes true while draft.status is active", async () => {
     // Track how many times the draft API has been called so we can serve
     // active on the first call and completed on the second.
