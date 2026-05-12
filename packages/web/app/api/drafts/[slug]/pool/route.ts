@@ -23,27 +23,32 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: "Draft not found" }, { status: 404 });
   }
 
-  const config = JSON.parse(row.config_json) as DraftConfig;
-  const drafts = createDraftService(db);
-  const catalog = createCardCatalogService(db);
+  try {
+    const config = JSON.parse(row.config_json) as DraftConfig;
+    const drafts = createDraftService(db);
+    const catalog = createCardCatalogService(db);
 
-  const ids = config.poolCardIds && config.poolCardIds.length > 0
-    ? config.poolCardIds
-    : drafts.resolvePoolCardIds(config);
+    const ids = config.poolCardIds && config.poolCardIds.length > 0
+      ? config.poolCardIds
+      : drafts.resolvePoolCardIds(config);
 
-  const cards: CardSummary[] = catalog.findByIds(ids).map((c) => ({
-    id: c.ygoprodeckId,
-    name: c.name,
-    type: c.type,
-    frameType: c.frameType,
-    attribute: c.attribute,
-    level: c.level,
-    effectText: c.effectText,
-    atk: c.atk,
-    def: c.def,
-    imageUrl: c.imageUrl,
-    imageUrlSmall: c.imageUrlSmall,
-  }));
+    const cards: CardSummary[] = catalog.findByIds(ids).map((c) => ({
+      id: c.ygoprodeckId,
+      name: c.name,
+      type: c.type,
+      frameType: c.frameType,
+      attribute: c.attribute,
+      level: c.level,
+      effectText: c.effectText,
+      atk: c.atk,
+      def: c.def,
+      imageUrl: c.imageUrl,
+      imageUrlSmall: c.imageUrlSmall,
+    }));
 
-  return NextResponse.json({ cards });
+    return NextResponse.json({ cards });
+  } catch (error) {
+    console.error("[GET /api/drafts/[slug]/pool]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
