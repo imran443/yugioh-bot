@@ -5,11 +5,13 @@ import {
   TextInputStyle,
   type InteractionReplyOptions,
 } from "discord.js";
+import type Database from "better-sqlite3";
 import type { DiscordUserLike, DraftMessenger } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
 import type { DraftService } from "../services/drafts.js";
+import { createDraftTournamentService } from "@yugidraft/shared/services";
 import type { TournamentService } from "@yugidraft/shared/services";
 
 type SelectMenuDependencies = {
@@ -18,6 +20,7 @@ type SelectMenuDependencies = {
   drafts: DraftService;
   cards: CardCatalogService;
   messenger: DraftMessenger;
+  db: Database.Database;
 };
 
 export type SelectMenuInteractionLike = {
@@ -95,6 +98,50 @@ export async function handleSelectMenu(
       await deps.messenger.updateStatus(updatedDraft);
     }
 
+    return;
+  }
+
+  const draftTournamentFormat = /^draft:tournament-format:([a-z0-9-]+)$/.exec(interaction.customId);
+
+  if (draftTournamentFormat) {
+    const webSlug = draftTournamentFormat[1];
+    const format = interaction.values[0];
+
+    if (format !== "round_robin" && format !== "single_elim") {
+      await interaction.reply({ content: "Invalid format.", ephemeral: true });
+      return;
+    }
+
+    const draftRow = deps.db
+      .prepare("select id, created_by_user_id, status from drafts where web_slug = ?")
+      .get(webSlug) as { id: number; created_by_user_id: string; status: string } | undefined;
+
+    if (!draftRow) {
+      await interaction.reply({ content: "Draft not found.", ephemeral: true });
+      return;
+    }
+
+    if (draftRow.created_by_user_id !== interaction.user.id) {
+      await interaction.reply({ content: "Only the draft creator can create a tournament.", ephemeral: true });
+      return;
+    }
+
+    const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
+    const service = createDraftTournamentService(deps.db);
+    try {
+      const result = service.createTournamentFromDraft({
+        draftId: draftRow.id,
+        format,
+        createdByUserId: interaction.user.id,
+      });
+      const link = result.webSlug ? ` View: ${WEB_URL}/tournament/${result.webSlug}` : "";
+      await interaction.reply({ content: `Tournament **${result.tournamentName}** created.${link}`, ephemeral: true });
+    } catch (err) {
+      await interaction.reply({
+        content: err instanceof Error ? err.message : "Failed to create tournament.",
+        ephemeral: true,
+      });
+    }
     return;
   }
 

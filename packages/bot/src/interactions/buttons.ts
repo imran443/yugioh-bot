@@ -8,6 +8,7 @@ import {
   TextInputStyle,
   type InteractionReplyOptions,
 } from "discord.js";
+import type Database from "better-sqlite3";
 import type { Tournament, TournamentMatch } from "@yugidraft/shared/types";
 import { formatStats } from "../formatters/stats.js";
 import type { DiscordUserLike } from "../commands/handlers.js";
@@ -34,6 +35,7 @@ type ButtonDependencies = {
   tournaments: TournamentService;
   drafts: DraftService;
   cards: CardCatalogService;
+  db: Database.Database;
 };
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
@@ -814,6 +816,60 @@ export async function handleButton(
       content: `Exported ${draft.name}.`,
       ephemeral: true,
       files: [{ attachment: Buffer.from(ydk, "utf8"), name: `${safeName}.ydk` }],
+    });
+    return;
+  }
+
+  const createTournament = /^draft:create-tournament:([a-z0-9-]+)$/.exec(interaction.customId);
+
+  if (createTournament) {
+    const webSlug = createTournament[1];
+
+    // Look up the draft by webSlug via the db passed in deps
+    const draftRow = deps.db
+      .prepare("select id, created_by_user_id, status, tournament_id, channel_id, name from drafts where web_slug = ?")
+      .get(webSlug) as {
+        id: number;
+        created_by_user_id: string;
+        status: string;
+        tournament_id: number | null;
+        channel_id: string;
+        name: string;
+      } | undefined;
+
+    if (!draftRow) {
+      await interaction.reply({ content: "Draft not found.", ephemeral: true });
+      return;
+    }
+
+    if (draftRow.created_by_user_id !== interaction.user.id) {
+      await interaction.reply({ content: "Only the draft creator can create a tournament.", ephemeral: true });
+      return;
+    }
+
+    if (draftRow.tournament_id !== null) {
+      const existingTournament = deps.db
+        .prepare("select web_slug from tournaments where id = ?")
+        .get(draftRow.tournament_id) as { web_slug: string | null } | undefined;
+      const link = existingTournament?.web_slug ? ` View: ${WEB_URL}/tournament/${existingTournament.web_slug}` : "";
+      await interaction.reply({ content: `Tournament already created.${link}`, ephemeral: true });
+      return;
+    }
+
+    await interaction.reply({
+      content: "Choose a tournament format:",
+      ephemeral: true,
+      components: [
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`draft:tournament-format:${webSlug}`)
+            .setPlaceholder("Select format")
+            .addOptions(
+              { label: "Round Robin", value: "round_robin" },
+              { label: "Single Elimination", value: "single_elim" },
+            ),
+        ),
+      ],
     });
     return;
   }

@@ -125,6 +125,7 @@ function buildDraftStatus(draft: Draft) {
 }
 
 const deps = {
+  db,
   matches: createMatchService(db),
   players: createPlayerRepository(db),
   tournaments: createTournamentService(db),
