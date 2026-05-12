@@ -63,15 +63,6 @@ function getTypeLabel(type: string) {
   return isMonster(type) ? "Monster" : isSpell(type) ? "Spell" : isTrap(type) ? "Trap" : "Other";
 }
 
-function getMonsterSubtype(type: string) {
-  if (!isMonster(type)) {
-    return null;
-  }
-
-  const [subtype] = type.split("/").map((part) => part.trim()).filter(Boolean);
-  return subtype || null;
-}
-
 export function PoolPanel({ className }: PoolPanelProps) {
   const myPool = useDraftStore((s) => s.myPool);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -243,16 +234,14 @@ export function PoolPanel({ className }: PoolPanelProps) {
             ) : filteredAndSorted.length === 0 ? (
               <p className="px-3 py-4 text-sm text-text-secondary">No cards match.</p>
             ) : (
-              <div className="flex flex-col p-2">
+              <div data-testid="pool-panel-card-grid" className="grid grid-cols-2 gap-3 p-3 2xl:grid-cols-3">
                 {filteredAndSorted.map((card) => {
-                  const monsterSubtype = getMonsterSubtype(card.type);
-
                   return (
                     <button
                       key={card.id}
                       type="button"
                       aria-label={`Preview ${card.name}`}
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
+                      className="group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
                       onMouseEnter={(e) =>
                         handleMouseEnter(card, e.currentTarget.getBoundingClientRect())
                       }
@@ -262,10 +251,9 @@ export function PoolPanel({ className }: PoolPanelProps) {
                       }
                       onBlur={handleMouseLeave}
                     >
-                      {/* 28×40 thumbnail */}
-                      <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-bg-elevated">
+                      <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
                         {imageErrors.has(card.id) ? (
-                          <div className="flex h-full w-full items-center justify-center text-[0.5rem] text-text-muted">
+                          <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">
                             ?
                           </div>
                         ) : (
@@ -274,34 +262,22 @@ export function PoolPanel({ className }: PoolPanelProps) {
                             alt=""
                             fill
                             className="object-cover"
-                            sizes="28px"
+                            sizes="(min-width: 1536px) 120px, 160px"
                             onError={() => handleImageError(card.id)}
                           />
                         )}
                       </div>
 
-                      {/* Name + type badge + attribute + level */}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-text-primary">{card.name}</p>
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={cn(
-                              "rounded px-1 py-0.5 text-[0.6rem] font-semibold uppercase",
-                              getTypeBadgeClass(card.type),
-                            )}
-                          >
-                            {getTypeLabel(card.type)}
-                          </span>
-                          {monsterSubtype && (
-                            <span className="text-[0.65rem] text-text-muted">{monsterSubtype}</span>
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-sm font-medium leading-snug text-text-primary">{card.name}</p>
+                        <span
+                          className={cn(
+                            "mt-1 inline-flex rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase",
+                            getTypeBadgeClass(card.type),
                           )}
-                          {card.attribute && !["SPELL", "TRAP"].includes(card.attribute) && (
-                            <span className="text-[0.65rem] text-text-muted">{card.attribute}</span>
-                          )}
-                          {card.level !== undefined && (
-                            <span className="text-[0.65rem] text-text-muted">Lv{card.level}</span>
-                          )}
-                        </div>
+                        >
+                          {getTypeLabel(card.type)}
+                        </span>
                       </div>
                     </button>
                   );

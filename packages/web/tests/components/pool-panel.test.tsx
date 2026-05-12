@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PoolPanel } from "../../src/components/draft/pool-panel";
 import { useDraftStore, type DraftCardDetail, type DraftState } from "../../src/lib/stores/draft-store";
 
+vi.mock("next/image", () => ({
+  default: ({ alt, fill: _fill, priority: _priority, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; priority?: boolean }) => (
+    <img alt={alt} {...props} />
+  ),
+}));
+
 vi.mock("../../src/lib/ydk", () => ({
   downloadYdk: vi.fn(),
 }));
@@ -244,12 +250,46 @@ describe("PoolPanel", () => {
     expect(within(poolPanel).getByText(/no cards match/i)).toBeTruthy();
   });
 
-  it("shows monster subtypes in drafted card rows", () => {
+  it("renders drafted cards as a responsive image grid with name and type only", () => {
     renderPoolPanel(draftedPool);
     const poolPanel = getPoolPanelContainer();
+    const cardGallery = within(poolPanel).getByTestId("pool-panel-card-grid");
+    const blueEyesTile = within(poolPanel).getByRole("button", { name: /preview blue-eyes white dragon/i });
 
-    expect(within(poolPanel).getByText("Dragon")).toBeTruthy();
-    expect(within(poolPanel).getByText("Fiend")).toBeTruthy();
-    expect(within(poolPanel).getByText("Spell")).toBeTruthy();
+    expect(cardGallery).toHaveClass("grid");
+    expect(cardGallery).toHaveClass("grid-cols-2");
+    expect(cardGallery).toHaveClass("2xl:grid-cols-3");
+    expect(within(blueEyesTile).getByText("Blue-Eyes White Dragon")).toBeTruthy();
+    expect(within(blueEyesTile).getByText("Monster")).toBeTruthy();
+    expect(within(blueEyesTile).queryByText("Dragon")).toBeNull();
+    expect(within(blueEyesTile).queryByText("LIGHT")).toBeNull();
+    expect(within(blueEyesTile).queryByText("Lv8")).toBeNull();
+    expect(blueEyesTile.querySelector('img[src="https://img/small/101"]')).toBeTruthy();
+  });
+
+  it("keeps the hover popup when a drafted grid tile is hovered", () => {
+    renderPoolPanel(draftedPool);
+    const poolPanel = getPoolPanelContainer();
+    const trapHoleTile = within(poolPanel).getByRole("button", { name: /preview trap hole/i });
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 900 });
+
+    vi.spyOn(trapHoleTile, "getBoundingClientRect").mockReturnValue({
+      x: 1200,
+      y: 280,
+      width: 120,
+      height: 210,
+      top: 280,
+      right: 1320,
+      bottom: 490,
+      left: 1200,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.mouseEnter(trapHoleTile);
+
+    expect(screen.getAllByText("Trap Hole")).toHaveLength(2);
+    expect(screen.getByText(/when your opponent normal or flip summons/i)).toBeTruthy();
   });
 });
