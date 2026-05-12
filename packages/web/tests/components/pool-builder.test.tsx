@@ -3,7 +3,14 @@ import React from "react";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PoolBuilder } from "../../src/components/cards/pool-builder";
-import { clearCardsCache } from "../../src/lib/cards-cache";
+
+vi.mock("@/lib/cards-cache", () => ({
+  getCached: vi.fn().mockReturnValue({ hits: [], misses: [] }),
+  putCards: vi.fn(),
+  clearCardsCache: vi.fn(),
+}));
+
+import { getCached, putCards } from "../../src/lib/cards-cache";
 
 vi.mock("next/image", () => ({
   default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
@@ -31,7 +38,11 @@ function stubFetch() {
 }
 
 describe("PoolBuilder", () => {
-  beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); clearCardsCache(); });
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(getCached).mockReturnValue({ hits: [], misses: [] });
+    vi.mocked(putCards).mockReset();
+  });
   afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
   it("resolves typed custom ids after debounce and shows them in the preview grid", async () => {
@@ -53,6 +64,16 @@ describe("PoolBuilder", () => {
     });
     await waitFor(() => expect(screen.getByRole("button", { name: /preview dark magician/i })).toBeTruthy());
     expect(screen.getAllByText(/99999999/).length).toBeGreaterThan(0); // unknown placeholder
+  });
+
+  it("shows an error when the API returns non-ok", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+
+    render(<PoolBuilder value={{ setNames: [], customCardText: "12345678" }} onChange={vi.fn()} />);
+    await act(async () => { vi.advanceTimersByTime(400); });
+    await waitFor(() => {
+      expect(screen.getByText(/failed to resolve/i)).toBeTruthy();
+    });
   });
 
   it("surfaces invalid passcode tokens", () => {

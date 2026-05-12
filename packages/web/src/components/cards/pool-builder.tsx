@@ -25,6 +25,7 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
   const [cards, setCards] = useState<CardSummary[]>([]);
   const [unknownIds, setUnknownIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   const reqId = useRef(0);
 
   const signature = useMemo(
@@ -44,6 +45,7 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
     const handle = setTimeout(async () => {
       const myReq = ++reqId.current;
       setLoading(true);
+      setApiError(null);
       const { hits } = getCached(customCardIds);
       try {
         const res = await fetch("/api/cards/resolve", {
@@ -52,7 +54,7 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
           body: JSON.stringify({ setNames, customCardIds }),
         });
         if (myReq !== reqId.current) return;
-        if (!res.ok) { setLoading(false); return; }
+        if (!res.ok) { setApiError("Failed to resolve cards. Please try again."); setLoading(false); return; }
         const data = (await res.json()) as { cards: CardSummary[]; unknownIds: number[] };
         if (myReq !== reqId.current) return;
         putCards(data.cards);
@@ -94,6 +96,8 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
           {parsed.errors.length > 0 && <p className="text-accent-cta">Invalid: {parsed.errors.slice(0, 3).join(", ")}</p>}
         </div>
       </div>
+
+      {apiError && <p className="text-sm text-destructive">{apiError}</p>}
 
       <div>
         <div className="mb-1 flex items-center gap-2 text-sm font-medium text-text-primary">
