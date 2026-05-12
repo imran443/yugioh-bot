@@ -368,7 +368,7 @@ client.once("ready", () => {
   if (announceSecret) {
     const announceServer = createAnnounceServer({
       secret: announceSecret,
-      handlers: createAnnounceHandlers({ client, drafts: deps.drafts, messenger: deps.messenger }),
+      handlers: createAnnounceHandlers({ client, db, drafts: deps.drafts, messenger: deps.messenger }),
     });
     announceServer.listen(announcePort);
   } else {

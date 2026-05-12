@@ -1,3 +1,5 @@
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+
 const DEFAULT_WEB_URL = "http://localhost:3000";
 
 function webBaseUrl(webUrl?: string): string {
@@ -14,4 +16,21 @@ export function tournamentCreatedAnnouncement(input: { name: string; format: str
 
 export function tournamentStartedAnnouncement(input: { name: string; webSlug: string; webUrl?: string }): string {
   return `**${input.name}** has started. Bracket: ${webBaseUrl(input.webUrl)}/tournament/${input.webSlug}`;
+}
+
+export function draftCompletedAnnouncement(input: { name: string; webSlug: string; webUrl?: string }): {
+  content: string;
+  components: ActionRowBuilder<ButtonBuilder>[];
+} {
+  return {
+    content: `**${input.name}** has completed! View results: ${webBaseUrl(input.webUrl)}/draft/${input.webSlug}`,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`draft:create-tournament:${input.webSlug}`)
+          .setLabel("Create Tournament")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    ],
+  };
 }

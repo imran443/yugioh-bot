@@ -8,6 +8,7 @@ describe("announce handlers", () => {
     const messenger = { postStatus: vi.fn(), updateStatus: vi.fn() };
     const handlers = createAnnounceHandlers({
       client: { channels: { fetch: vi.fn() } } as any,
+      db: { prepare: vi.fn() } as any,
       drafts: drafts as any,
       messenger,
     });
@@ -23,6 +24,7 @@ describe("announce handlers", () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const handlers = createAnnounceHandlers({
       client: { channels: { fetch: vi.fn().mockResolvedValue({ type: ChannelType.GuildText, send }) } } as any,
+      db: { prepare: vi.fn() } as any,
       drafts: {} as any,
       messenger: {} as any,
     });

@@ -4,6 +4,7 @@ import { verifyAnnounceSignature } from "./auth.js";
 export type AnnouncePayload =
   | { kind: "draft-created"; draftId: number; channelId: string; name: string; webSlug: string }
   | { kind: "draft-started"; draftId: number; channelId: string; name: string; webSlug: string }
+  | { kind: "draft-completed"; draftId: number; channelId: string; name: string; webSlug: string }
   | { kind: "tournament-created"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string }
   | { kind: "tournament-started"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string };
 
@@ -12,6 +13,7 @@ type OmitKind<T extends { kind: string }> = Omit<T, "kind">;
 export interface AnnounceHandlers {
   onDraftCreated(payload: OmitKind<Extract<AnnouncePayload, { kind: "draft-created" }>>): Promise<void>;
   onDraftStarted(payload: OmitKind<Extract<AnnouncePayload, { kind: "draft-started" }>>): Promise<void>;
+  onDraftCompleted(payload: OmitKind<Extract<AnnouncePayload, { kind: "draft-completed" }>>): Promise<void>;
   onTournamentCreated(payload: OmitKind<Extract<AnnouncePayload, { kind: "tournament-created" }>>): Promise<void>;
   onTournamentStarted(payload: OmitKind<Extract<AnnouncePayload, { kind: "tournament-started" }>>): Promise<void>;
 }
@@ -23,6 +25,7 @@ export function createAnnounceServer(opts: {
   const routes: Record<string, (data: any) => Promise<void>> = {
     "/internal/announce/draft-created": (d) => opts.handlers.onDraftCreated(d),
     "/internal/announce/draft-started": (d) => opts.handlers.onDraftStarted(d),
+    "/internal/announce/draft-completed": (d) => opts.handlers.onDraftCompleted(d),
     "/internal/announce/tournament-created": (d) => opts.handlers.onTournamentCreated(d),
     "/internal/announce/tournament-started": (d) => opts.handlers.onTournamentStarted(d),
   };
