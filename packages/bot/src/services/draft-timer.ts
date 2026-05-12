@@ -6,10 +6,12 @@ export function createDraftTimerService({
   drafts,
   messenger,
   wsCfg,
+  onDraftCompleted,
 }: {
   drafts: DraftService;
   messenger: DraftMessenger;
   wsCfg: { url: string; secret: string };
+  onDraftCompleted?: (draftId: number) => Promise<void>;
 }) {
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -36,6 +38,11 @@ export function createDraftTimerService({
 
         if (updatedDraft.status === "completed") {
           await notifyWs(wsCfg, "complete", updatedDraft.webSlug);
+          if (onDraftCompleted) {
+            await onDraftCompleted(updatedDraft.id).catch((err) =>
+              console.warn(`[draft-timer] onDraftCompleted failed for ${updatedDraft.id}:`, err),
+            );
+          }
         } else {
           await notifyWs(wsCfg, "resync", updatedDraft.webSlug, {
             packRound: updatedDraft.currentPackRound,

@@ -183,6 +183,22 @@ const draftTimer = createDraftTimerService({
     url: process.env.WS_INTERNAL_URL ?? "",
     secret: process.env.WS_INTERNAL_SECRET ?? "",
   },
+  onDraftCompleted: async (draftId) => {
+    const draft = deps.drafts.findById(draftId);
+    if (!draft.webSlug || !draft.channelId) return;
+    const announceHandlers = createAnnounceHandlers({
+      client,
+      db,
+      drafts: deps.drafts,
+      messenger: deps.messenger,
+    });
+    await announceHandlers.onDraftCompleted({
+      draftId: draft.id,
+      channelId: draft.channelId,
+      name: draft.name,
+      webSlug: draft.webSlug,
+    });
+  },
 });
 
 function toCommandInteraction(
