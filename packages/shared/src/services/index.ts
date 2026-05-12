@@ -9,3 +9,5 @@ export { createMatchService } from "./matches.js";
 export type { MatchService, Match, MatchStats, LeaderboardRow, MatchSource, MatchStatus } from "./matches.js";
 export { createTournamentService } from "./tournaments.js";
 export type { TournamentService, TournamentFormat, TournamentStatus } from "./tournaments.js";
+export { createDraftTournamentService } from "./draft-tournament.js";
+export type { DraftTournamentService, CreateTournamentFromDraftInput, CreateTournamentFromDraftResult } from "./draft-tournament.js";
