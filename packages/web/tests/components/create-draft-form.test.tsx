@@ -52,7 +52,7 @@ describe("CreateDraftForm", () => {
     });
   });
 
-  it("loads a saved template into the draft pool and options", async () => {
+  it("loads a saved pool's sets and custom IDs without touching the numeric options", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === "/api/discord/channels") {
         return Response.json({ channels: [] });
@@ -89,10 +89,11 @@ describe("CreateDraftForm", () => {
 
     expect(screen.getByText("Metal Raiders")).toBeInTheDocument();
     expect(screen.getByLabelText(/custom card ids/i)).toHaveValue("46986414\n83764718");
-    expect(screen.getByLabelText(/packs per player/i)).toHaveValue(4);
-    expect(screen.getByLabelText(/pick timer/i)).toHaveValue(30);
-    expect(screen.getByLabelText(/alternate pass direction/i)).not.toBeChecked();
-    expect(screen.getByLabelText(/randomize seats/i)).toBeChecked();
+    // Numeric options should remain at their defaults, NOT overwritten by the pool
+    expect(screen.getByLabelText(/packs per player/i)).toHaveValue(5);
+    expect(screen.getByLabelText(/pick timer/i)).toHaveValue(45);
+    expect(screen.getByLabelText(/alternate pass direction/i)).toBeChecked();
+    expect(screen.getByLabelText(/randomize seats/i)).not.toBeChecked();
   });
 
   it("saves the current pool as a reusable template", async () => {
@@ -124,13 +125,16 @@ describe("CreateDraftForm", () => {
     const postCall = fetchMock.mock.calls.find(
       ([input, init]) => String(input) === "/api/draft-templates" && init?.method === "POST",
     );
-    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
+    const body = JSON.parse(String(postCall?.[1]?.body));
+    expect(body).toMatchObject({
       name: "Goat Cube",
       config: {
+        setNames: [],
         customCardIds: [46986414, 83764718],
-        packSize: 8,
-        packsPerPlayer: 5,
       },
     });
+    expect(body.config).not.toHaveProperty("packSize");
+    expect(body.config).not.toHaveProperty("packsPerPlayer");
+    expect(body.config).not.toHaveProperty("pickSeconds");
   });
 });

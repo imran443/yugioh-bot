@@ -60,14 +60,11 @@ export function CreateDraftForm() {
     const c = template.config;
     setSelectedTemplateName(template.name);
     setTemplateName(template.name);
-    setFields({
+    setFields((f) => ({
+      ...f,
       setNames: c.setNames ?? [],
       customCardText: (c.customCardIds ?? []).join("\n"),
-      packsPerPlayerText: String(c.packsPerPlayer ?? 5),
-      pickSecondsText: String(c.pickSeconds ?? 45),
-      alternatePass: c.alternatePassDirection ?? true,
-      randomizeSeats: c.randomizeSeats ?? false,
-    });
+    }));
     setTemplateStatus(`Loaded ${template.name}`);
   };
 
@@ -83,10 +80,11 @@ export function CreateDraftForm() {
     const poolError = validateFields(fields);
     if (poolError) { setError(poolError); return; }
 
+    const { cardIds: customCardIds } = parseCustomCardIds(fields.customCardText);
     const res = await fetch("/api/draft-templates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: templateName.trim(), config: configFromFields(fields) }),
+      body: JSON.stringify({ name: templateName.trim(), config: { setNames: fields.setNames, customCardIds } }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
