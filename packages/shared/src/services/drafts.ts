@@ -340,7 +340,9 @@ export function createDraftService(db: Database.Database) {
       .map((row: any) => row as DraftPlayerProgressRow);
 
   const openWave = (draftId: number, waveNumber: number, playerCount: number, config: DraftConfig) => {
-    const catalogCardIds = catalogCardIdsForDraft(config);
+    const catalogCardIds = config.poolCardIds && config.poolCardIds.length > 0
+      ? config.poolCardIds
+      : catalogCardIdsForDraft(config);
 
     if (catalogCardIds.length === 0) {
       throw new Error("Draft pool is empty");
@@ -919,6 +921,10 @@ export function createDraftService(db: Database.Database) {
       db.prepare("update drafts set status = 'cancelled', ended_at = current_timestamp where id = ?").run(draftId);
 
       return findById(draftId);
+    },
+
+    resolvePoolCardIds(config: DraftConfig): number[] {
+      return catalogCardIdsForDraft(config);
     },
 
     autocomplete(input: {
