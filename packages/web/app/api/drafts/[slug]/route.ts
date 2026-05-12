@@ -154,7 +154,44 @@ export async function PUT(
     }
 
     if (config !== undefined) {
-      db.prepare("update drafts set config_json = ? where id = ?").run(JSON.stringify(config), draft.id);
+      const drafts = createDraftService(db);
+      const existing = drafts.findById(draft.id);
+      const mergedConfig = { ...existing.config, ...(config as object) };
+
+      const clampedPacks = Math.min(10, Math.max(1, Number((mergedConfig as any).packsPerPlayer) || 5));
+      (mergedConfig as any).packsPerPlayer = clampedPacks;
+      (mergedConfig as any).packSize = Math.ceil(40 / clampedPacks);
+
+      const hasPool =
+        ((mergedConfig as any).setNames?.length ?? 0) > 0 ||
+        ((mergedConfig as any).customCardIds?.length ?? 0) > 0;
+      if (!hasPool) {
+        return NextResponse.json(
+          { error: "Select at least one set or paste custom card IDs" },
+          { status: 400 }
+        );
+      }
+
+      const cards = createCardCatalogService(db);
+      await cards.syncDraftPool({
+        setNames: (mergedConfig as any).setNames ?? [],
+        customCardIds: (mergedConfig as any).customCardIds ?? [],
+        includeNames: (mergedConfig as any).includeNames ?? [],
+        excludeNames: (mergedConfig as any).excludeNames ?? [],
+      });
+      const poolCardIds = drafts.resolvePoolCardIds(mergedConfig as any);
+      if (poolCardIds.length === 0) {
+        return NextResponse.json(
+          { error: "No cards matched the selected sets / passcodes" },
+          { status: 400 }
+        );
+      }
+      (mergedConfig as any).poolCardIds = poolCardIds;
+
+      db.prepare("update drafts set config_json = ? where id = ?").run(
+        JSON.stringify(mergedConfig),
+        draft.id,
+      );
     }
 
     const updated = db.prepare("select * from drafts where id = ?").get(draft.id) as any;
@@ -205,12 +242,14 @@ export async function POST(
     const draftModel = drafts.findById(draft.id);
     const cards = createCardCatalogService(db);
 
-    await cards.syncDraftPool({
-      setNames: draftModel.config.setNames ?? [],
-      customCardIds: draftModel.config.customCardIds ?? [],
-      includeNames: draftModel.config.includeNames ?? [],
-      excludeNames: draftModel.config.excludeNames ?? [],
-    });
+    if (!draftModel.config.poolCardIds || draftModel.config.poolCardIds.length === 0) {
+      await cards.syncDraftPool({
+        setNames: draftModel.config.setNames ?? [],
+        customCardIds: draftModel.config.customCardIds ?? [],
+        includeNames: draftModel.config.includeNames ?? [],
+        excludeNames: draftModel.config.excludeNames ?? [],
+      });
+    }
 
     const started = drafts.start(draft.id);
 
