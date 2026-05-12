@@ -24,7 +24,7 @@ async function loadAuthorizedCallback() {
   authState.config = null;
   vi.resetModules();
   await import("../src/lib/auth");
-  return (authState.config as {
+  return (authState.config as unknown as {
     callbacks: {
       authorized: (args: {
         auth: { user?: unknown } | null;

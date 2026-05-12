@@ -17,6 +17,7 @@ const baseState: DraftState = {
   pickSeconds: 60,
   selectedCardId: null,
   highlightedIndex: -1,
+  previewCardId: null,
 };
 
 describe("TimerBar", () => {
