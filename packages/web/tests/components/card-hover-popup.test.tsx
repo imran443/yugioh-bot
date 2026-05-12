@@ -31,4 +31,12 @@ describe("CardHoverPopup", () => {
     fireEvent.click(screen.getByRole("button", { name: /close preview/i }));
     expect(onDismiss).toHaveBeenCalled();
   });
+
+  it("fires onDismiss when the backdrop overlay is clicked", () => {
+    const onDismiss = vi.fn();
+    render(<CardHoverPopup card={card} position={{ left: 0, top: 0 }} imageError onImageError={() => {}} dismissible onDismiss={onDismiss} />);
+    const backdrop = screen.getByTestId("card-hover-popup-backdrop");
+    fireEvent.click(backdrop);
+    expect(onDismiss).toHaveBeenCalled();
+  });
 });

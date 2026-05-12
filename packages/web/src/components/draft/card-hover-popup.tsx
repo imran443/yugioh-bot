@@ -26,7 +26,7 @@ export function CardHoverPopup({ card, position, imageError, onImageError, dismi
   return (
     <>
       {dismissible && (
-        <div className="fixed inset-0 z-40" aria-hidden="true" onClick={onDismiss} />
+        <div className="fixed inset-0 z-40" aria-hidden="true" data-testid="card-hover-popup-backdrop" onClick={() => onDismiss?.()} />
       )}
       <div
         className={cn(
