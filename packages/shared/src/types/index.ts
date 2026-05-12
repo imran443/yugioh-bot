@@ -8,6 +8,7 @@ export interface DraftConfig {
   pickSeconds?: number;
   alternatePassDirection?: boolean;
   randomizeSeats?: boolean;
+  poolCardIds?: number[];
 }
 
 export interface Draft {
