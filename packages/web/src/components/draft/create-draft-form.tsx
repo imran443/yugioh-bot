@@ -5,18 +5,15 @@ import { useRouter } from "next/navigation";
 import type { DraftConfig } from "@yugidraft/shared/types";
 import { Button } from "@/components/ui/button";
 import { parseCustomCardIds } from "@/lib/custom-card-pool";
-import { SetPicker } from "./set-picker";
+import {
+  DraftConfigFields,
+  type DraftConfigFieldsValue,
+  configFromFields,
+  validateFields,
+} from "./draft-config-fields";
 
-type Channel = {
-  id: string;
-  name: string;
-};
-
-type DraftTemplate = {
-  id: number;
-  name: string;
-  config: DraftConfig;
-};
+type Channel = { id: string; name: string };
+type DraftTemplate = { id: number; name: string; config: DraftConfig };
 
 export function CreateDraftForm() {
   const router = useRouter();
@@ -28,119 +25,78 @@ export function CreateDraftForm() {
   const [selectedTemplateName, setSelectedTemplateName] = React.useState("");
   const [templateName, setTemplateName] = React.useState("");
   const [templateStatus, setTemplateStatus] = React.useState<string | null>(null);
-  const [selectedSets, setSelectedSets] = React.useState<string[]>([]);
-  const [customCardText, setCustomCardText] = React.useState("");
-  const [packSize, setPackSize] = React.useState(8);
-  const [packsPerPlayer, setPacksPerPlayer] = React.useState(5);
-  const [pickSeconds, setPickSeconds] = React.useState(45);
-  const [alternatePass, setAlternatePass] = React.useState(true);
-  const [randomizeSeats, setRandomizeSeats] = React.useState(false);
+  const [fields, setFields] = React.useState<DraftConfigFieldsValue>({
+    setNames: [],
+    customCardText: "",
+    packsPerPlayerText: "5",
+    pickSecondsText: "45",
+    alternatePass: true,
+    randomizeSeats: false,
+  });
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const customCardParse = parseCustomCardIds(customCardText);
 
   React.useEffect(() => {
     let cancelled = false;
     setChannelsLoading(true);
     fetch("/api/discord/channels")
       .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled) setChannels(data.channels ?? []);
-      })
+      .then((data) => { if (!cancelled) setChannels(data.channels ?? []); })
       .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setChannelsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setChannelsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   React.useEffect(() => {
     let cancelled = false;
     fetch("/api/draft-templates")
       .then((res) => (res.ok ? res.json() : { templates: [] }))
-      .then((data) => {
-        if (!cancelled) setTemplates(data.templates ?? []);
-      })
+      .then((data) => { if (!cancelled) setTemplates(data.templates ?? []); })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  const buildConfig = (): DraftConfig => ({
-    setNames: selectedSets,
-    customCardIds: customCardParse.cardIds,
-    includeNames: [],
-    excludeNames: [],
-    packSize,
-    packsPerPlayer,
-    pickSeconds,
-    alternatePassDirection: alternatePass,
-    randomizeSeats,
-  });
-
-  const validatePool = () => {
-    if (selectedSets.length === 0 && customCardParse.cardIds.length === 0) {
-      return "Select at least one set or paste custom card IDs";
-    }
-    if (customCardParse.errors.length > 0) {
-      return `Remove invalid card IDs: ${customCardParse.errors.slice(0, 3).join(", ")}`;
-    }
-
-    return null;
-  };
-
   const applyTemplate = (template: DraftTemplate) => {
-    const config = template.config;
+    const c = template.config;
     setSelectedTemplateName(template.name);
     setTemplateName(template.name);
-    setSelectedSets(config.setNames ?? []);
-    setCustomCardText((config.customCardIds ?? []).join("\n"));
-    setPackSize(config.packSize ?? 8);
-    setPacksPerPlayer(config.packsPerPlayer ?? 5);
-    setPickSeconds(config.pickSeconds ?? 45);
-    setAlternatePass(config.alternatePassDirection ?? true);
-    setRandomizeSeats(config.randomizeSeats ?? false);
+    setFields({
+      setNames: c.setNames ?? [],
+      customCardText: (c.customCardIds ?? []).join("\n"),
+      packsPerPlayerText: String(c.packsPerPlayer ?? 5),
+      pickSecondsText: String(c.pickSeconds ?? 45),
+      alternatePass: c.alternatePassDirection ?? true,
+      randomizeSeats: c.randomizeSeats ?? false,
+    });
     setTemplateStatus(`Loaded ${template.name}`);
   };
 
-  const handleTemplateChange = (templateName: string) => {
-    const template = templates.find((item) => item.name === templateName);
-    if (template) applyTemplate(template);
+  const handleTemplateChange = (tName: string) => {
+    const t = templates.find((item) => item.name === tName);
+    if (t) applyTemplate(t);
   };
 
   const handleSaveTemplate = async () => {
     setTemplateStatus(null);
     setError(null);
-
-    if (!templateName.trim()) {
-      setError("Template name is required");
-      return;
-    }
-    const poolError = validatePool();
-    if (poolError) {
-      setError(poolError);
-      return;
-    }
+    if (!templateName.trim()) { setError("Template name is required"); return; }
+    const poolError = validateFields(fields);
+    if (poolError) { setError(poolError); return; }
 
     const res = await fetch("/api/draft-templates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: templateName.trim(), config: buildConfig() }),
+      body: JSON.stringify({ name: templateName.trim(), config: configFromFields(fields) }),
     });
-
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "Failed to save pool");
       return;
     }
-
     const data = await res.json();
     const saved = data.template as DraftTemplate;
-    setTemplates((current) =>
-      [...current.filter((item) => item.name !== saved.name), saved].sort((a, b) => a.name.localeCompare(b.name)),
+    setTemplates((cur) =>
+      [...cur.filter((item) => item.name !== saved.name), saved].sort((a, b) => a.name.localeCompare(b.name)),
     );
     setSelectedTemplateName(saved.name);
     setTemplateStatus(`Saved ${saved.name}`);
@@ -149,16 +105,9 @@ export function CreateDraftForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (!name.trim()) {
-      setError("Draft name is required");
-      return;
-    }
-    const poolError = validatePool();
-    if (poolError) {
-      setError(poolError);
-      return;
-    }
+    if (!name.trim()) { setError("Draft name is required"); return; }
+    const poolError = validateFields(fields);
+    if (poolError) { setError(poolError); return; }
 
     setSubmitting(true);
     try {
@@ -168,27 +117,23 @@ export function CreateDraftForm() {
         body: JSON.stringify({
           name: name.trim(),
           channelId: channelId || undefined,
-          config: buildConfig(),
+          config: configFromFields(fields),
         }),
       });
-
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Failed to create draft");
       }
-
       const draft = await res.json();
-      if (draft.webSlug) {
-        router.push(`/draft/${draft.webSlug}`);
-      } else {
-        router.push("/drafts");
-      }
+      router.push(draft.webSlug ? `/draft/${draft.webSlug}` : "/drafts");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setSubmitting(false);
     }
   };
+
+  const { cardIds } = parseCustomCardIds(fields.customCardText);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -228,9 +173,7 @@ export function CreateDraftForm() {
             <option disabled>Loading channels...</option>
           ) : (
             channels.map((ch) => (
-              <option key={ch.id} value={ch.id}>
-                #{ch.name}
-              </option>
+              <option key={ch.id} value={ch.id}>#{ch.name}</option>
             ))
           )}
         </select>
@@ -243,8 +186,8 @@ export function CreateDraftForm() {
             <p className="mt-1 text-sm text-text-secondary">Combine synced sets with exact passcodes for a server-ready cube.</p>
           </div>
           <div className="flex gap-2 text-xs text-text-secondary">
-            <span className="rounded-full border border-border px-2 py-1">{selectedSets.length} sets</span>
-            <span className="rounded-full border border-border px-2 py-1">{customCardParse.cardIds.length} cards</span>
+            <span className="rounded-full border border-border px-2 py-1">{fields.setNames.length} sets</span>
+            <span className="rounded-full border border-border px-2 py-1">{cardIds.length} cards</span>
           </div>
         </div>
 
@@ -261,10 +204,8 @@ export function CreateDraftForm() {
                 className="native-select w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
               >
                 <option value="">Choose a saved pool</option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.name}>
-                    {template.name}
-                  </option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.name}>{t.name}</option>
                 ))}
               </select>
             </div>
@@ -291,94 +232,8 @@ export function CreateDraftForm() {
             {templateStatus && <p className="text-xs text-accent-primary sm:col-span-3">{templateStatus}</p>}
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-primary">Sets</label>
-            <SetPicker selectedSets={selectedSets} onSetsChange={setSelectedSets} />
-          </div>
-
-          <div>
-            <label htmlFor="custom-card-ids" className="mb-1 block text-sm font-medium text-text-primary">
-              Custom Card IDs
-            </label>
-            <textarea
-              id="custom-card-ids"
-              value={customCardText}
-              onChange={(e) => setCustomCardText(e.target.value)}
-              placeholder="46986414\n83764718, 12345678"
-              rows={4}
-              className="w-full resize-y rounded-lg border border-border bg-bg-elevated px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
-            />
-            <div className="mt-2 flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-text-secondary">Paste YGOPRODeck passcodes separated by new lines, commas, or spaces.</p>
-              {customCardParse.errors.length > 0 && (
-                <p className="text-accent-cta">Invalid: {customCardParse.errors.slice(0, 3).join(", ")}</p>
-              )}
-            </div>
-          </div>
+          <DraftConfigFields value={fields} onChange={setFields} />
         </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label htmlFor="pack-size" className="mb-1 block text-sm font-medium text-text-primary">
-            Pack Size
-          </label>
-          <input
-            id="pack-size"
-            type="number"
-            value={packSize}
-            onChange={(e) => setPackSize(Math.max(1, parseInt(e.target.value) || 1))}
-            min={1}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="packs-per-player" className="mb-1 block text-sm font-medium text-text-primary">
-            Packs/Player
-          </label>
-          <input
-            id="packs-per-player"
-            type="number"
-            value={packsPerPlayer}
-            onChange={(e) => setPacksPerPlayer(Math.max(1, parseInt(e.target.value) || 1))}
-            min={1}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="pick-seconds" className="mb-1 block text-sm font-medium text-text-primary">
-            Pick Timer (s)
-          </label>
-          <input
-            id="pick-seconds"
-            type="number"
-            value={pickSeconds}
-            onChange={(e) => setPickSeconds(Math.max(5, parseInt(e.target.value) || 45))}
-            min={5}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-          />
-        </div>
-      </div>
-
-      <div className="flex gap-6">
-        <label className="flex items-center gap-2 text-sm text-text-primary">
-          <input
-            type="checkbox"
-            checked={alternatePass}
-            onChange={(e) => setAlternatePass(e.target.checked)}
-            className="h-4 w-4 rounded border-border accent-accent-primary"
-          />
-          Alternate pass direction
-        </label>
-        <label className="flex items-center gap-2 text-sm text-text-primary">
-          <input
-            type="checkbox"
-            checked={randomizeSeats}
-            onChange={(e) => setRandomizeSeats(e.target.checked)}
-            className="h-4 w-4 rounded border-border accent-accent-primary"
-          />
-          Randomize seats
-        </label>
       </div>
 
       <Button type="submit" loading={submitting} size="lg" className="w-full">
