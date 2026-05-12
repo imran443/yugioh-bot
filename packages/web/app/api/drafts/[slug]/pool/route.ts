@@ -32,7 +32,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       ? config.poolCardIds
       : drafts.resolvePoolCardIds(config);
 
-    const cards: CardSummary[] = catalog.findByIds(ids).map((c) => ({
+    const qtyCounts = new Map<number, number>();
+    for (const id of ids) qtyCounts.set(id, (qtyCounts.get(id) ?? 0) + 1);
+
+    const cards: CardSummary[] = catalog.findByIds([...qtyCounts.keys()]).map((c) => ({
       id: c.ygoprodeckId,
       name: c.name,
       type: c.type,
@@ -44,6 +47,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       def: c.def,
       imageUrl: c.imageUrl,
       imageUrlSmall: c.imageUrlSmall,
+      qty: qtyCounts.get(c.ygoprodeckId) ?? 1,
     }));
 
     return NextResponse.json({ cards });

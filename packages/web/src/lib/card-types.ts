@@ -10,6 +10,7 @@ export interface CardSummary {
   def?: number;
   imageUrl: string;
   imageUrlSmall: string;
+  qty?: number;
 }
 
 export function isMonster(type: string): boolean {

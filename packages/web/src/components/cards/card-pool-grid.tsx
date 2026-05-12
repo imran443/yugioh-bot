@@ -189,6 +189,11 @@ export function CardPoolGrid({
                     <Image src={card.imageUrlSmall || card.imageUrl} alt="" fill className="object-cover"
                       sizes="(min-width: 1536px) 120px, 160px" onError={() => handleImageError(card.id)} />
                   )}
+                  {(card.qty ?? 1) > 1 && (
+                    <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 text-[0.65rem] font-bold tabular-nums text-white">
+                      ×{card.qty}
+                    </span>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="line-clamp-2 text-sm font-medium leading-snug text-text-primary">{card.name}</p>

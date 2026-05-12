@@ -60,7 +60,9 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
         putCards(data.cards);
         const byId = new Map<number, CardSummary>();
         for (const c of [...hits, ...data.cards]) byId.set(c.id, c);
-        setCards([...byId.values()]);
+        const qtyMap = new Map<number, number>();
+        for (const id of customCardIds) qtyMap.set(id, (qtyMap.get(id) ?? 0) + 1);
+        setCards([...byId.values()].map((c) => ({ ...c, qty: qtyMap.get(c.id) ?? 1 })));
         setUnknownIds(data.unknownIds);
       } catch {
         if (myReq === reqId.current) { setApiError("Failed to resolve cards. Please try again."); }
