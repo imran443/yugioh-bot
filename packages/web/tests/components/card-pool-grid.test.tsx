@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
+import React from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CardPoolGrid } from "../../src/components/cards/card-pool-grid";
+
+vi.mock("next/image", () => ({
+  default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
+    <img alt={alt} {...props} />
+  ),
+}));
 import type { CardSummary } from "../../src/lib/card-types";
 
 const cards: CardSummary[] = [
