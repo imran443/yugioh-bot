@@ -89,8 +89,7 @@ describe("CreateDraftForm", () => {
 
     expect(screen.getByText("Metal Raiders")).toBeInTheDocument();
     expect(screen.getByLabelText(/custom card ids/i)).toHaveValue("46986414\n83764718");
-    expect(screen.getByLabelText(/pack size/i)).toHaveValue(9);
-    expect(screen.getByLabelText(/packs\/player/i)).toHaveValue(4);
+    expect(screen.getByLabelText(/packs per player/i)).toHaveValue(4);
     expect(screen.getByLabelText(/pick timer/i)).toHaveValue(30);
     expect(screen.getByLabelText(/alternate pass direction/i)).not.toBeChecked();
     expect(screen.getByLabelText(/randomize seats/i)).toBeChecked();
