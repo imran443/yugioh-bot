@@ -7,6 +7,7 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  root: __dirname,
   test: {
     // Component tests use jsdom; pure unit tests run in node by default.
     // Individual test files opt-in via `// @vitest-environment jsdom`.

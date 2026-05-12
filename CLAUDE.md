@@ -20,8 +20,11 @@ npm test --workspace=packages/bot
 npm test --workspace=packages/shared
 npm test --workspace=packages/web
 
-# Run a single test file
+# Run a single test file (bot/shared — no config needed)
 npx vitest run packages/bot/tests/services/drafts.test.ts
+
+# Run a single web test file (must specify the web vitest config)
+npx vitest run packages/web/tests/cards-resolve-route.test.ts -c packages/web/vitest.config.ts
 
 # Docker (local dev with hot reload)
 docker compose up -d --build
