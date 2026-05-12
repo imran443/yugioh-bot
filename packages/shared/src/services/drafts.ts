@@ -48,6 +48,8 @@ function mapDraft(row: any): Draft {
     pickDeadlineAt: row.pick_deadline_at,
     statusMessageId: row.status_message_id,
     webSlug: row.web_slug ?? undefined,
+    tournamentId: row.tournament_id ?? undefined,
+    completeMessageId: row.complete_message_id ?? undefined,
   };
 }
 

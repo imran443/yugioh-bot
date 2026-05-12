@@ -62,6 +62,8 @@ describe("shared database schema", () => {
       "started_at",
       "ended_at",
       "web_slug",
+      "tournament_id",
+      "complete_message_id",
     ]);
     expect(getTableInfo(db, "draft_players").map((column) => column.name)).toEqual([
       "draft_id",

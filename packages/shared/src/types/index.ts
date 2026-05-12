@@ -23,6 +23,8 @@ export interface Draft {
   pickDeadlineAt: string | null;
   statusMessageId: string | null;
   webSlug?: string;
+  tournamentId?: number | null;
+  completeMessageId?: string | null;
 }
 
 export interface DraftPlayer {
