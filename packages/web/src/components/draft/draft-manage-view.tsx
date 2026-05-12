@@ -11,6 +11,8 @@ import {
   validateFields,
   fieldsFromConfig,
 } from "./draft-config-fields";
+import { CardPoolGrid } from "@/components/cards/card-pool-grid";
+import type { CardSummary } from "@/lib/card-types";
 
 interface DraftManageViewProps {
   draft: {
@@ -46,6 +48,7 @@ interface DraftManageViewProps {
   onJoin: () => Promise<void>;
   onAddBot?: () => Promise<void>;
   isDev?: boolean;
+  slug?: string;
 }
 
 function formatDate(iso: string) {
@@ -68,6 +71,7 @@ export function DraftManageView({
   onJoin,
   onAddBot,
   isDev,
+  slug,
 }: DraftManageViewProps) {
   const [editing, setEditing] = React.useState(false);
   const [nameValue, setNameValue] = React.useState(draft.name);
@@ -78,6 +82,23 @@ export function DraftManageView({
   const [addingBot, setAddingBot] = React.useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Card pool
+  const [poolCards, setPoolCards] = React.useState<CardSummary[] | null>(null);
+  const [poolError, setPoolError] = React.useState(false);
+  const loadPool = React.useCallback(() => {
+    if (!slug) return;
+    setPoolError(false);
+    fetch(`/api/drafts/${slug}/pool`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data: { cards: CardSummary[] }) => setPoolCards(data.cards))
+      .catch(() => setPoolError(true));
+  }, [slug]);
+  React.useEffect(() => { loadPool(); }, [loadPool]);
+  const onUpdateWithPoolRefresh = React.useCallback(async (data: { name?: string; config?: unknown }) => {
+    await onUpdate(data);
+    if (data.config !== undefined) loadPool();
+  }, [onUpdate, loadPool]);
 
   // Config edit mode
   const [isEditingConfig, setIsEditingConfig] = React.useState(false);
@@ -93,7 +114,7 @@ export function DraftManageView({
     setSaving(true);
     setError(null);
     try {
-      await onUpdate({ name: trimmed });
+      await onUpdateWithPoolRefresh({ name: trimmed });
       setEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update name");
@@ -171,7 +192,7 @@ export function DraftManageView({
 
     setConfigSaving(true);
     try {
-      await onUpdate({ config: configFromFields(editFields) });
+      await onUpdateWithPoolRefresh({ config: configFromFields(editFields) });
       setIsEditingConfig(false);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to save configuration");
@@ -464,6 +485,28 @@ export function DraftManageView({
           </>
         )}
       </div>
+
+      {slug && (
+        <div className="rounded-xl border border-border bg-surface p-6">
+          <h2 className="mb-4 font-display text-lg text-text-primary">
+            <Layers className="mr-2 inline h-5 w-5 text-accent-primary" aria-hidden="true" />
+            Card Pool {poolCards ? <span className="tabular-nums">({poolCards.length} card{poolCards.length === 1 ? "" : "s"})</span> : null}
+          </h2>
+          {poolError ? (
+            <div className="flex items-center justify-between rounded-lg border border-accent-cta/40 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
+              <span>Couldn&apos;t load the pool.</span>
+              <Button variant="ghost" size="sm" onClick={loadPool}>Retry</Button>
+            </div>
+          ) : (
+            <CardPoolGrid
+              cards={poolCards ?? []}
+              loading={poolCards === null}
+              heightClassName="h-[32rem]"
+              emptyMessage="This draft's pool hasn't been resolved yet."
+            />
+          )}
+        </div>
+      )}
 
       {getActionSection()}
     </div>

@@ -269,6 +269,7 @@ export default function DraftDetailPage() {
       <div>
         <DraftManageView
           draft={draft}
+          slug={slug}
           isCreator={isCreator}
           isParticipant={isParticipant}
           onStart={handleStart}

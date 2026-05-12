@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DraftManageView } from "../../src/components/draft/draft-manage-view";
+import type { CardSummary } from "../../src/lib/card-types";
+
+vi.mock("next/image", () => ({
+  default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
+    <img alt={alt} {...props} />
+  ),
+}));
 
 const baseDraft = {
   id: 1,
@@ -57,5 +64,33 @@ describe("DraftManageView — Add Bot button", () => {
     render(<DraftManageView {...baseProps} isDev={true} onAddBot={onAddBot} />);
     await userEvent.click(screen.getByRole("button", { name: /add bot/i }));
     expect(onAddBot).toHaveBeenCalledOnce();
+  });
+});
+
+const noop = async () => {};
+
+afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+
+describe("DraftManageView — card pool section", () => {
+  it("fetches and renders the resolved pool", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/drafts/my-slug/pool") {
+        return Response.json({ cards: [{ id: 46986414, name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", effectText: "", imageUrl: "u", imageUrlSmall: "s" } as CardSummary] });
+      }
+      return Response.json({}, { status: 404 });
+    }));
+    render(<DraftManageView draft={baseDraft} slug="my-slug" isCreator isParticipant={false} onStart={noop} onCancel={noop} onUpdate={noop} onJoin={noop} />);
+    await waitFor(() => expect(screen.getByText(/card pool/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: /preview dark magician/i })).toBeTruthy());
+    expect(screen.getByText((_, el) => !!el && el.tagName === "H2" && /card pool/i.test(el.textContent ?? "") && /1 card/.test(el.textContent ?? ""))).toBeTruthy();
+  });
+
+  it("shows the empty state when the pool resolves empty", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/drafts/my-slug/pool") return Response.json({ cards: [] });
+      return Response.json({}, { status: 404 });
+    }));
+    render(<DraftManageView draft={baseDraft} slug="my-slug" isCreator isParticipant={false} onStart={noop} onCancel={noop} onUpdate={noop} onJoin={noop} />);
+    await waitFor(() => expect(screen.getByText(/hasn't been resolved yet/i)).toBeTruthy());
   });
 });
