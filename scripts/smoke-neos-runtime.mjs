@@ -40,7 +40,7 @@ function signalServer(server, signal) {
 }
 
 async function stopServer(server) {
-  if (server.exitCode !== null) {
+  if (serverClosed || server.exitCode !== null || server.signalCode !== null) {
     return;
   }
 
@@ -72,6 +72,24 @@ const server = spawn(
     stdio: ["ignore", "pipe", "pipe"],
   },
 );
+
+let serverClosed = false;
+server.once("close", () => {
+  serverClosed = true;
+});
+
+async function handleSignal(signal) {
+  const exitCode = signal === "SIGINT" ? 130 : 143;
+  await stopServer(server);
+  process.exit(exitCode);
+}
+
+process.once("SIGINT", () => {
+  void handleSignal("SIGINT");
+});
+process.once("SIGTERM", () => {
+  void handleSignal("SIGTERM");
+});
 
 let output = "";
 server.stdout.on("data", (chunk) => {
