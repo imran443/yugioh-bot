@@ -141,7 +141,6 @@ export function DraftConfigFields({ value, onChange, poolBuilderShowPreview, onP
             value={value.packSizeText}
             onChange={(e) => onChange({ ...value, packSizeText: e.target.value })}
             min={PACK_SIZE_MIN}
-            max={cardsPerPlayer}
             className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
           />
         </div>
