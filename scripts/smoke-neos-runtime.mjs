@@ -1,9 +1,14 @@
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const host = "127.0.0.1";
 const port = Number(process.env.NEOS_SMOKE_PORT ?? "5174");
 const baseUrl = `http://${host}:${port}`;
 const timeoutMs = Number(process.env.NEOS_SMOKE_TIMEOUT_MS ?? "45000");
+const repoRoot = new URL("..", import.meta.url);
+const neosDir = new URL("vendor/neos-ts/", repoRoot);
+const viteBin = new URL("node_modules/vite/bin/vite.js", neosDir);
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,7 +55,7 @@ async function stopServer(server) {
 
   signalServer(server, "SIGTERM");
   const killTimer = setTimeout(() => {
-    if (server.exitCode === null) {
+    if (!serverClosed && server.exitCode === null && server.signalCode === null) {
       signalServer(server, "SIGKILL");
     }
   }, 3000);
@@ -62,11 +67,16 @@ async function stopServer(server) {
   }
 }
 
+if (!existsSync(viteBin)) {
+  console.error("Neos Vite binary not found. Run `npm run setup:duel-web` before running this smoke test.");
+  process.exit(1);
+}
+
 const server = spawn(
-  "npm",
-  ["--prefix", "vendor/neos-ts", "run", "dev", "--", "--host", host, "--port", String(port)],
+  process.execPath,
+  [fileURLToPath(viteBin), "--host", host, "--port", String(port)],
   {
-    cwd: new URL("..", import.meta.url),
+    cwd: fileURLToPath(neosDir),
     detached: true,
     env: { ...process.env, BROWSER: "none" },
     stdio: ["ignore", "pipe", "pipe"],
