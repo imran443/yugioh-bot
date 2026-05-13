@@ -15,7 +15,12 @@
     "snapshot:draft-catalog": "tsx scripts/generate-draft-catalog-snapshot.ts",
     "dev:bot": "npm run dev --workspace=@yugioh-discord-bot/bot",
     "dev:ws": "npm run dev --workspace=@yugioh-discord-bot/ws",
-    "dev:web": "npm run dev --workspace=@yugioh-discord-bot/web"
+    "dev:web": "npm run dev --workspace=@yugioh-discord-bot/web",
+    "dev:duel-web": "npm run dev --workspace=@yugioh-discord-bot/duel-web",
+    "setup:duel-web": "npm run setup --workspace=@yugioh-discord-bot/duel-web",
+    "build:duel-web": "npm run build:neos --workspace=@yugioh-discord-bot/duel-web",
+    "smoke:duel-web": "npm run smoke --workspace=@yugioh-discord-bot/duel-web",
+    "check:duel-vendor": "npm run check:vendor --workspace=@yugioh-discord-bot/duel-web"
   },
   "devDependencies": {
     "dotenv": "^17.4.2",
