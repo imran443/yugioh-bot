@@ -443,10 +443,10 @@ export function DraftManageView({
                 <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
                   <span className="block text-xs text-text-muted">
                     <Package className="mr-1 inline h-3.5 w-3.5" />
-                    Packs/Player
+                    Cards/Player
                   </span>
                   <span className="mt-1 block text-lg font-semibold text-text-primary">
-                    {draft.config.packsPerPlayer ?? "—"}
+                    {draft.config.cardsPerPlayer ?? 40}
                   </span>
                 </div>
                 <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">

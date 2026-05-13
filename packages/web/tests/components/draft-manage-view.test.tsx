@@ -21,6 +21,7 @@ const baseDraft = {
   config: {
     packSize: 5,
     packsPerPlayer: 3,
+    cardsPerPlayer: 45,
     pickSeconds: 60,
     setNames: ["Legend of Blue Eyes White Dragon"],
   },
@@ -37,6 +38,14 @@ const baseProps = {
   onUpdate: vi.fn().mockResolvedValue(undefined),
   onJoin: vi.fn().mockResolvedValue(undefined),
 };
+
+describe("DraftManageView — config summary", () => {
+  it("shows the configured cards-per-player in the read-only summary", () => {
+    render(<DraftManageView {...baseProps} />);
+    expect(screen.getByText("Cards/Player")).toBeInTheDocument();
+    expect(screen.getByText("45")).toBeInTheDocument();
+  });
+});
 
 describe("DraftManageView — Add Bot button", () => {
   it("shows Add Bot button when isDev=true and isCreator=true", () => {
