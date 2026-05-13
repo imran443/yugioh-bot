@@ -1,0 +1,3 @@
+[submodule "vendor/neos-ts"]
+	path = vendor/neos-ts
+	url = https://github.com/DarkNeos/neos-ts.git
