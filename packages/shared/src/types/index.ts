@@ -5,6 +5,7 @@ export interface DraftConfig {
   excludeNames?: string[];
   packSize?: number;
   packsPerPlayer?: number;
+  cardsPerPlayer?: number;
   pickSeconds?: number;
   alternatePassDirection?: boolean;
   randomizeSeats?: boolean;

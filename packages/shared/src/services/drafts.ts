@@ -83,16 +83,18 @@ function normalizeName(value: string) {
 const defaultDraftConfig = {
   packSize: 8,
   packsPerPlayer: 5,
+  cardsPerPlayer: 40,
   pickSeconds: 45,
   alternatePassDirection: true,
   randomizeSeats: false,
-} satisfies Required<Pick<DraftConfig, "packSize" | "packsPerPlayer" | "pickSeconds" | "alternatePassDirection" | "randomizeSeats">>;
+} satisfies Required<Pick<DraftConfig, "packSize" | "packsPerPlayer" | "cardsPerPlayer" | "pickSeconds" | "alternatePassDirection" | "randomizeSeats">>;
 
 function normalizeDraftConfig(config: DraftConfig): DraftConfig {
   return {
     ...config,
     packSize: config.packSize ?? defaultDraftConfig.packSize,
     packsPerPlayer: config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer,
+    cardsPerPlayer: config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer,
     pickSeconds: config.pickSeconds ?? defaultDraftConfig.pickSeconds,
     alternatePassDirection: config.alternatePassDirection ?? defaultDraftConfig.alternatePassDirection,
     randomizeSeats: config.randomizeSeats ?? defaultDraftConfig.randomizeSeats,
@@ -443,7 +445,8 @@ export function createDraftService(db: Database.Database) {
 
     const playerRow = playerProgress(draftId, playerId);
 
-    if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
+    const cardsPerPlayer = draft.config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer;
+    if (playerRow.finished_at !== null || playerRow.pick_count >= cardsPerPlayer) {
       throw new Error("Player has already finished drafting");
     }
 
@@ -503,10 +506,10 @@ export function createDraftService(db: Database.Database) {
       `
         update draft_players
         set pick_count = pick_count + 1,
-            finished_at = case when pick_count + 1 >= 40 then ? else finished_at end
+            finished_at = case when pick_count + 1 >= ? then ? else finished_at end
         where draft_id = ? and player_id = ?
       `,
-    ).run(now.toISOString(), draftId, playerId);
+    ).run(cardsPerPlayer, now.toISOString(), draftId, playerId);
 
     const currentStepPickCountRow = db
       .prepare(
@@ -671,12 +674,15 @@ export function createDraftService(db: Database.Database) {
 
   const currentPackOptionsInternal = (draftId: number, playerId: number): DraftCard[] => {
     const draft = findById(draftId);
+    if (draft.status === "completed") {
+      return [];
+    }
     assertActiveDraft(draft);
     assertJoinedPlayer(draftId, playerId);
 
     const playerRow = playerProgress(draftId, playerId);
 
-    if (playerRow.finished_at !== null || playerRow.pick_count >= 40) {
+    if (playerRow.finished_at !== null || playerRow.pick_count >= (draft.config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer)) {
       return [];
     }
 

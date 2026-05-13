@@ -92,6 +92,7 @@ describe("shared draft service", () => {
         excludeNames: ["Pot of Greed"],
         packSize: 8,
         packsPerPlayer: 5,
+        cardsPerPlayer: 40,
         pickSeconds: 45,
         alternatePassDirection: true,
         randomizeSeats: false,
@@ -309,5 +310,40 @@ describe("shared draft service", () => {
     for (let i = 1; i <= 40; i++) {
       expect(lines[i]).toMatch(/^\d+$/);
     }
+  });
+
+  it("respects a custom cardsPerPlayer cap above the default 40", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    // 5 packs of 10 => 50 cards available per player, target 50
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "big draft",
+      { packSize: 10, packsPerPlayer: 5, cardsPerPlayer: 50 },
+      "user-1",
+      yugi.id,
+    );
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 60);
+    app.drafts.start(draft.id);
+
+    for (let i = 0; i < 60; i++) {
+      const yugiOptions = app.drafts.currentPackOptions(draft.id, yugi.id);
+      const kaibaOptions = app.drafts.currentPackOptions(draft.id, kaiba.id);
+      if (yugiOptions.length > 0) app.drafts.pickCard(draft.id, yugi.id, yugiOptions[0].id);
+      if (kaibaOptions.length > 0) app.drafts.pickCard(draft.id, kaiba.id, kaibaOptions[0].id);
+    }
+
+    const yugiRow = app.db
+      .prepare("select pick_count, finished_at from draft_players where draft_id = ? and player_id = ?")
+      .get(draft.id, yugi.id) as { pick_count: number; finished_at: string | null };
+    expect(yugiRow.pick_count).toBe(50);
+    expect(yugiRow.finished_at).not.toBeNull();
+
+    const draftRow = app.db.prepare("select status from drafts where id = ?").get(draft.id) as { status: string };
+    expect(draftRow.status).toBe("completed");
   });
 });
