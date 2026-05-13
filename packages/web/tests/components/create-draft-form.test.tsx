@@ -90,10 +90,62 @@ describe("CreateDraftForm", () => {
     expect(screen.getByText("Metal Raiders")).toBeInTheDocument();
     expect(screen.getByLabelText(/custom card ids/i)).toHaveValue("46986414\n83764718");
     // Numeric options should remain at their defaults, NOT overwritten by the pool
-    expect(screen.getByLabelText(/packs per player/i)).toHaveValue(5);
-    expect(screen.getByLabelText(/pick timer/i)).toHaveValue(45);
-    expect(screen.getByLabelText(/alternate pass direction/i)).toBeChecked();
-    expect(screen.getByLabelText(/randomize seats/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/cards drafted per player/i)).toHaveValue(40);
+    expect(screen.getByLabelText(/size of each pack/i)).toHaveValue(15);
+    expect(screen.getByLabelText(/pick duration/i)).toHaveValue(45);
+    expect(screen.queryByLabelText(/alternate pass/i)).toBeNull();
+    expect(screen.queryByLabelText(/randomize seats/i)).toBeNull();
+  });
+
+  it("submits cardsPerPlayer, packSize, derived packsPerPlayer, and randomized seats", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/discord/channels") return Response.json({ channels: [] });
+      if (String(input) === "/api/draft-templates" && !init) return Response.json({ templates: [] });
+      if (String(input) === "/api/drafts" && init?.method === "POST") {
+        return Response.json({ webSlug: "cube" }, { status: 201 });
+      }
+      return Response.json({}, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CreateDraftForm />);
+
+    fireEvent.change(screen.getByLabelText(/draft name/i), { target: { value: "Cube" } });
+    fireEvent.change(screen.getByLabelText(/custom card ids/i), { target: { value: "46986414" } });
+    fireEvent.change(screen.getByLabelText(/cards drafted per player/i), { target: { value: "40" } });
+    fireEvent.change(screen.getByLabelText(/size of each pack/i), { target: { value: "15" } });
+    fireEvent.click(screen.getByRole("button", { name: /create draft/i }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/draft/cube"));
+
+    const postCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input) === "/api/drafts" && init?.method === "POST",
+    );
+    const body = JSON.parse(String(postCall?.[1]?.body));
+    expect(body.config).toMatchObject({
+      cardsPerPlayer: 40,
+      packSize: 15,
+      packsPerPlayer: 3,
+      randomizeSeats: true,
+      alternatePassDirection: true,
+    });
+  });
+
+  it("rejects a pack size larger than cards per player", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/discord/channels") return Response.json({ channels: [] });
+      return Response.json({}, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CreateDraftForm />);
+
+    fireEvent.change(screen.getByLabelText(/draft name/i), { target: { value: "Cube" } });
+    fireEvent.change(screen.getByLabelText(/custom card ids/i), { target: { value: "46986414" } });
+    fireEvent.change(screen.getByLabelText(/size of each pack/i), { target: { value: "99" } });
+    fireEvent.click(screen.getByRole("button", { name: /create draft/i }));
+
+    expect(await screen.findByText(/pack size cannot exceed/i)).toBeInTheDocument();
   });
 
   it("saves the current pool as a reusable template", async () => {
