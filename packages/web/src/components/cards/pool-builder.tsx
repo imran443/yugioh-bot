@@ -16,11 +16,19 @@ interface PoolBuilderProps {
   value: PoolBuilderValue;
   onChange: (value: PoolBuilderValue) => void;
   previewHeightClassName?: string;
+  showPreview?: boolean;
+  onPool?: (cards: CardSummary[], unknownIds: number[], loading: boolean) => void;
 }
 
 const DEBOUNCE_MS = 300;
 
-export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22rem]" }: PoolBuilderProps) {
+export function PoolBuilder({
+  value,
+  onChange,
+  previewHeightClassName = "h-[22rem]",
+  showPreview = true,
+  onPool,
+}: PoolBuilderProps) {
   const parsed = useMemo(() => parseCustomCardIds(value.customCardText), [value.customCardText]);
   const [cards, setCards] = useState<CardSummary[]>([]);
   const [unknownIds, setUnknownIds] = useState<number[]>([]);
@@ -74,6 +82,10 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
+  useEffect(() => {
+    onPool?.(cards, unknownIds, loading);
+  }, [cards, unknownIds, loading, onPool]);
+
   const count = cards.length;
 
   return (
@@ -101,21 +113,23 @@ export function PoolBuilder({ value, onChange, previewHeightClassName = "h-[22re
 
       {apiError && <p className="text-sm text-destructive">{apiError}</p>}
 
-      <div>
-        <div className="mb-1 flex items-center gap-2 text-sm font-medium text-text-primary">
-          <span>Pool preview</span>
-          <span aria-live="polite" className="text-text-secondary tabular-nums">— {count} card{count === 1 ? "" : "s"}</span>
-          {loading && <span className="text-xs text-text-muted">resolving…</span>}
+      {showPreview && (
+        <div>
+          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-text-primary">
+            <span>Pool preview</span>
+            <span aria-live="polite" className="text-text-secondary tabular-nums">— {count} card{count === 1 ? "" : "s"}</span>
+            {loading && <span className="text-xs text-text-muted">resolving…</span>}
+          </div>
+          <CardPoolGrid
+            cards={cards}
+            unknownIds={unknownIds}
+            loading={loading}
+            heightClassName={previewHeightClassName}
+            emptyMessage="Add sets or card IDs above to preview the pool."
+            showSummary={false}
+          />
         </div>
-        <CardPoolGrid
-          cards={cards}
-          unknownIds={unknownIds}
-          loading={loading}
-          heightClassName={previewHeightClassName}
-          emptyMessage="Add sets or card IDs above to preview the pool."
-          showSummary={false}
-        />
-      </div>
+      )}
     </div>
   );
 }
