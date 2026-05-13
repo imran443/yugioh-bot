@@ -15,15 +15,15 @@ function readJson(url) {
 }
 
 const neosPackageUrl = new URL("../vendor/neos-ts/package.json", import.meta.url);
-const neosProtobufUrl = new URL("../vendor/neos-ts/neos-protobuf", import.meta.url);
+const neosProtobufIdlUrl = new URL("../vendor/neos-ts/neos-protobuf/idl", import.meta.url);
 const gitmodulesUrl = new URL("../.gitmodules", import.meta.url);
 
 if (!existsSync(neosPackageUrl)) {
   fail("vendor/neos-ts/package.json is missing; run git submodule update --init --recursive vendor/neos-ts");
 }
 
-if (!existsSync(neosProtobufUrl)) {
-  fail("vendor/neos-ts/neos-protobuf is missing; initialize nested submodules with --recursive");
+if (!existsSync(neosProtobufIdlUrl)) {
+  fail("vendor/neos-ts/neos-protobuf/idl is missing; initialize nested submodules with --recursive");
 }
 
 if (!existsSync(gitmodulesUrl)) {
