@@ -44,6 +44,10 @@ Run Neos locally through the wrapper workspace:
 npm run dev:duel-web -- --host 0.0.0.0 --port 5173
 ```
 
+The launcher now forwards Vite flags directly, so `--host` and `--port` work as expected.
+
+If your chosen port is already in use, Vite will automatically choose the next free port and print the final URL in the terminal.
+
 The first spike does not mount Neos inside `packages/web`. Keep Neos isolated until the bridge/result contract work is planned and tested.
 
 ## Feasibility Gates

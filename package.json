@@ -16,7 +16,7 @@
     "dev:bot": "npm run dev --workspace=@yugioh-discord-bot/bot",
     "dev:ws": "npm run dev --workspace=@yugioh-discord-bot/ws",
     "dev:web": "npm run dev --workspace=@yugioh-discord-bot/web",
-    "dev:duel-web": "npm run dev --workspace=@yugioh-discord-bot/duel-web",
+    "dev:duel-web": "npm run dev --workspace=@yugioh-discord-bot/duel-web --",
     "setup:duel-web": "npm run setup --workspace=@yugioh-discord-bot/duel-web",
     "build:duel-web": "npm run build:neos --workspace=@yugioh-discord-bot/duel-web",
     "smoke:duel-web": "npm run smoke --workspace=@yugioh-discord-bot/duel-web",
