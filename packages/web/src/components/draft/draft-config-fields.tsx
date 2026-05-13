@@ -97,6 +97,34 @@ export function validateFields(fields: DraftConfigFieldsValue): string | null {
   return null;
 }
 
+interface NumberFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min: number;
+  max?: number;
+}
+
+function NumberField({ id, label, value, onChange, min, max }: NumberFieldProps) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-text-primary">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="number"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        min={min}
+        max={max}
+        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+      />
+    </div>
+  );
+}
+
 interface DraftConfigFieldsProps {
   value: DraftConfigFieldsValue;
   onChange: (value: DraftConfigFieldsValue) => void;
@@ -119,51 +147,33 @@ export function DraftConfigFields({ value, onChange, poolBuilderShowPreview, onP
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <label htmlFor="cards-per-player" className="mb-1 block text-sm font-medium text-text-primary">
-            Rounds &mdash; cards drafted per player
-          </label>
-          <input
-            id="cards-per-player"
-            type="number"
-            value={value.cardsPerPlayerText}
-            onChange={(e) => onChange({ ...value, cardsPerPlayerText: e.target.value })}
-            min={CARDS_PER_PLAYER_MIN}
-            max={CARDS_PER_PLAYER_MAX}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="pack-size" className="mb-1 block text-sm font-medium text-text-primary">
-            Size of each pack
-          </label>
-          <input
-            id="pack-size"
-            type="number"
-            value={value.packSizeText}
-            onChange={(e) => onChange({ ...value, packSizeText: e.target.value })}
-            min={PACK_SIZE_MIN}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="pick-seconds" className="mb-1 block text-sm font-medium text-text-primary">
-            Pick duration (seconds)
-          </label>
-          <input
-            id="pick-seconds"
-            type="number"
-            value={value.pickSecondsText}
-            onChange={(e) => onChange({ ...value, pickSecondsText: e.target.value })}
-            min={PICK_SECONDS_MIN}
-            max={PICK_SECONDS_MAX}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-          />
-        </div>
+        <NumberField
+          id="cards-per-player"
+          label="Rounds — cards drafted per player"
+          value={value.cardsPerPlayerText}
+          onChange={(v) => onChange({ ...value, cardsPerPlayerText: v })}
+          min={CARDS_PER_PLAYER_MIN}
+          max={CARDS_PER_PLAYER_MAX}
+        />
+        <NumberField
+          id="pack-size"
+          label="Size of each pack"
+          value={value.packSizeText}
+          onChange={(v) => onChange({ ...value, packSizeText: v })}
+          min={PACK_SIZE_MIN}
+        />
+        <NumberField
+          id="pick-seconds"
+          label="Pick duration (seconds)"
+          value={value.pickSecondsText}
+          onChange={(v) => onChange({ ...value, pickSecondsText: v })}
+          min={PICK_SECONDS_MIN}
+          max={PICK_SECONDS_MAX}
+        />
       </div>
       <p className="text-xs text-text-secondary">
         Each player drafts {cardsPerPlayer} cards across {packsPerPlayer} pack
-        {packsPerPlayer !== 1 ? "s" : ""} of {packSize} &mdash; extra cards in the last pack are left out.
+        {packsPerPlayer !== 1 ? "s" : ""} of {packSize} — extra cards in the last pack are left out.
       </p>
     </div>
   );
