@@ -8,9 +8,12 @@ import type { CardSummary } from "@/lib/card-types";
 
 export const CARDS_PER_PLAYER_MIN = 40;
 export const CARDS_PER_PLAYER_MAX = 60;
+export const CARDS_PER_PLAYER_DEFAULT = CARDS_PER_PLAYER_MIN;
 export const PACK_SIZE_MIN = 5;
+export const PACK_SIZE_DEFAULT = 15;
 export const PICK_SECONDS_MIN = 5;
 export const PICK_SECONDS_MAX = 300;
+export const PICK_SECONDS_DEFAULT = 45;
 
 export type DraftConfigFieldsValue = {
   setNames: string[];
@@ -23,15 +26,15 @@ export type DraftConfigFieldsValue = {
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 function parseCardsPerPlayer(text: string): number {
-  return clamp(parseInt(text) || CARDS_PER_PLAYER_MIN, CARDS_PER_PLAYER_MIN, CARDS_PER_PLAYER_MAX);
+  return clamp(parseInt(text) || CARDS_PER_PLAYER_DEFAULT, CARDS_PER_PLAYER_MIN, CARDS_PER_PLAYER_MAX);
 }
 
 function parsePackSize(text: string, cardsPerPlayer: number): number {
-  return clamp(parseInt(text) || 15, PACK_SIZE_MIN, cardsPerPlayer);
+  return clamp(parseInt(text) || PACK_SIZE_DEFAULT, PACK_SIZE_MIN, cardsPerPlayer);
 }
 
 function parsePickSeconds(text: string): number {
-  return clamp(parseInt(text) || 45, PICK_SECONDS_MIN, PICK_SECONDS_MAX);
+  return clamp(parseInt(text) || PICK_SECONDS_DEFAULT, PICK_SECONDS_MIN, PICK_SECONDS_MAX);
 }
 
 function derivePacksPerPlayer(cardsPerPlayer: number, packSize: number): number {
@@ -62,9 +65,9 @@ export function fieldsFromConfig(config: DraftConfig, customCardIds?: number[]):
   return {
     setNames: config.setNames ?? [],
     customCardText: ids.join("\n"),
-    cardsPerPlayerText: String(config.cardsPerPlayer ?? CARDS_PER_PLAYER_MIN),
-    packSizeText: String(config.packSize ?? 15),
-    pickSecondsText: String(config.pickSeconds ?? 45),
+    cardsPerPlayerText: String(config.cardsPerPlayer ?? CARDS_PER_PLAYER_DEFAULT),
+    packSizeText: String(config.packSize ?? PACK_SIZE_DEFAULT),
+    pickSecondsText: String(config.pickSeconds ?? PICK_SECONDS_DEFAULT),
   };
 }
 
@@ -103,9 +106,8 @@ interface DraftConfigFieldsProps {
 
 export function DraftConfigFields({ value, onChange, poolBuilderShowPreview, onPool }: DraftConfigFieldsProps) {
   const cardsPerPlayer = parseCardsPerPlayer(value.cardsPerPlayerText);
-  const packSizeRaw = parseInt(value.packSizeText) || 15;
-  const packSize = Math.max(PACK_SIZE_MIN, packSizeRaw);
-  const packsPerPlayer = derivePacksPerPlayer(cardsPerPlayer, Math.min(packSize, cardsPerPlayer));
+  const packSize = parsePackSize(value.packSizeText, cardsPerPlayer);
+  const packsPerPlayer = derivePacksPerPlayer(cardsPerPlayer, packSize);
 
   return (
     <div className="space-y-4">
@@ -160,8 +162,8 @@ export function DraftConfigFields({ value, onChange, poolBuilderShowPreview, onP
         </div>
       </div>
       <p className="text-xs text-text-secondary">
-        Each player drafts {cardsPerPlayer} card{cardsPerPlayer !== 1 ? "s" : ""} across {packsPerPlayer} pack
-        {packsPerPlayer !== 1 ? "s" : ""} of {Math.min(packSize, cardsPerPlayer)} &mdash; extra cards in the last pack are left out.
+        Each player drafts {cardsPerPlayer} cards across {packsPerPlayer} pack
+        {packsPerPlayer !== 1 ? "s" : ""} of {packSize} &mdash; extra cards in the last pack are left out.
       </p>
     </div>
   );

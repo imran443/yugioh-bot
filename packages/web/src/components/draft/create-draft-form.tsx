@@ -8,6 +8,9 @@ import { parseCustomCardIds } from "@/lib/custom-card-pool";
 import { CardPoolGrid } from "@/components/cards/card-pool-grid";
 import type { CardSummary } from "@/lib/card-types";
 import {
+  CARDS_PER_PLAYER_DEFAULT,
+  PACK_SIZE_DEFAULT,
+  PICK_SECONDS_DEFAULT,
   DraftConfigFields,
   type DraftConfigFieldsValue,
   configFromFields,
@@ -30,9 +33,9 @@ export function CreateDraftForm() {
   const [fields, setFields] = React.useState<DraftConfigFieldsValue>({
     setNames: [],
     customCardText: "",
-    cardsPerPlayerText: "40",
-    packSizeText: "15",
-    pickSecondsText: "45",
+    cardsPerPlayerText: String(CARDS_PER_PLAYER_DEFAULT),
+    packSizeText: String(PACK_SIZE_DEFAULT),
+    pickSecondsText: String(PICK_SECONDS_DEFAULT),
   });
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
