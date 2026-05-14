@@ -275,7 +275,8 @@ export async function POST(
       status: started.status,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to start tournament";
     console.error("[api/tournaments/[slug] POST] error:", error);
-    return NextResponse.json({ error: "Failed to start tournament" }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
