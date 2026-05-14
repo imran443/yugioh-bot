@@ -10,8 +10,21 @@ export function draftCreatedAnnouncement(input: { name: string; webSlug: string;
   return `Signups are open for **${input.name}**. Pick cards: ${webBaseUrl(input.webUrl)}/draft/${input.webSlug}`;
 }
 
-export function tournamentCreatedAnnouncement(input: { name: string; format: string; webSlug: string; webUrl?: string }): string {
-  return `Signups are open for **${input.name}** (${input.format}). Manage: ${webBaseUrl(input.webUrl)}/tournament/${input.webSlug}`;
+export function tournamentCreatedAnnouncement(input: {
+  name: string;
+  format: string;
+  webSlug: string;
+  organizerUserId: string;
+  participantCount: number;
+  webUrl?: string;
+}): string {
+  const formatLabel = input.format === "round_robin" ? "Round Robin" : input.format === "single_elim" ? "Single Elimination" : input.format;
+  return [
+    `🏆 **${input.name}** — Signups open`,
+    `Format: ${formatLabel} · Pending — ${input.participantCount} participant${input.participantCount === 1 ? "" : "s"}`,
+    `Organizer: <@${input.organizerUserId}>`,
+    `Join: ${webBaseUrl(input.webUrl)}/tournament/${input.webSlug}`,
+  ].join("\n");
 }
 
 export function tournamentStartedAnnouncement(input: { name: string; webSlug: string; webUrl?: string }): string {

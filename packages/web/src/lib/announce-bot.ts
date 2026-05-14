@@ -4,7 +4,7 @@ export type AnnouncePayload =
   | { kind: "draft-created"; draftId: number; channelId: string; name: string; webSlug: string }
   | { kind: "draft-started"; draftId: number; channelId: string; name: string; webSlug: string }
   | { kind: "draft-completed"; draftId: number; channelId: string; name: string; webSlug: string }
-  | { kind: "tournament-created"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string }
+  | { kind: "tournament-created"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string; organizerUserId: string; participantCount: number }
   | { kind: "tournament-started"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string };
 
 export async function announceToBot(

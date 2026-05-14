@@ -13,8 +13,8 @@ describe("announce messages", () => {
   });
 
   it("formats tournament announcements with the configured web URL", () => {
-    expect(tournamentCreatedAnnouncement({ name: "locals", format: "round_robin", webSlug: "abc", webUrl: "https://app.test" })).toBe(
-      "Signups are open for **locals** (round_robin). Manage: https://app.test/tournament/abc",
+    expect(tournamentCreatedAnnouncement({ name: "locals", format: "round_robin", webSlug: "abc", webUrl: "https://app.test", organizerUserId: "u123", participantCount: 3 })).toBe(
+      "🏆 **locals** — Signups open\nFormat: Round Robin · Pending — 3 participants\nOrganizer: <@u123>\nJoin: https://app.test/tournament/abc",
     );
     expect(tournamentStartedAnnouncement({ name: "locals", webSlug: "abc", webUrl: "https://app.test" })).toBe(
       "**locals** has started. Bracket: https://app.test/tournament/abc",

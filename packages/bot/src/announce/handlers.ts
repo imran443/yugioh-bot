@@ -40,10 +40,12 @@ export function createAnnounceHandlers({
       const msg = await channel.send(draftCompletedAnnouncement({ name, webSlug }));
       db.prepare("update drafts set complete_message_id = ? where id = ?").run(msg.id, draftId);
     },
-    async onTournamentCreated({ channelId, name, format, webSlug }) {
+    async onTournamentCreated({ channelId, name, format, webSlug, organizerUserId, participantCount }) {
       const channel = await client.channels.fetch(channelId);
       if (channel?.type !== ChannelType.GuildText) return;
-      await channel.send(tournamentCreatedAnnouncement({ name, format, webSlug }));
+      await channel.send(
+        tournamentCreatedAnnouncement({ name, format, webSlug, organizerUserId, participantCount }),
+      );
     },
     async onTournamentStarted({ channelId, name, webSlug }) {
       const channel = await client.channels.fetch(channelId);
