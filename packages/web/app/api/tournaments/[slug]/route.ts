@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createTournamentService } from "@yugidraft/shared/services";
 import { announceToBot } from "@/lib/announce-bot";
+import { notifyWsTournament } from "@/lib/notify-ws-tournament";
 
 export const runtime = "nodejs";
 
@@ -161,6 +162,11 @@ export async function DELETE(
 
     db.prepare("update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?").run(tournament.id);
 
+    void notifyWsTournament(
+      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+      { kind: "cancelled", slug },
+    );
+
     return NextResponse.json({ id: tournament.id, status: "cancelled" });
   } catch (error) {
     console.error("[api/tournaments/[slug] DELETE] error:", error);
@@ -268,6 +274,11 @@ export async function POST(
         format: started.format,
         webSlug: started.webSlug ?? "",
       },
+    );
+
+    void notifyWsTournament(
+      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+      { kind: "started", slug },
     );
 
     return NextResponse.json({

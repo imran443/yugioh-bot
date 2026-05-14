@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { createPlayerService } from "@yugidraft/shared/services";
+import { env } from "@/lib/env";
+import { notifyWsTournament } from "@/lib/notify-ws-tournament";
 
 export const runtime = "nodejs";
 
@@ -47,6 +49,16 @@ export async function POST(
     db.prepare(
       "insert into tournament_participants (tournament_id, player_id) values (?, ?)"
     ).run(tournamentId, player.id);
+
+    void notifyWsTournament(
+      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+      {
+        kind: "participant-joined",
+        slug,
+        playerId: player.id,
+        displayName: player.displayName,
+      },
+    );
 
     return NextResponse.json({ success: true, playerId: player.id, displayName: player.displayName });
   } catch (error) {
