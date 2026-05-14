@@ -48,7 +48,12 @@ SQLite data is stored in `./data/bot.sqlite` by default.
 | `DISCORD_DEFAULT_CHANNEL_ID` | No | Default channel for web-created drafts/tournaments |
 | `NEXTAUTH_SECRET` | Yes (web) | Generate with `openssl rand -base64 32` |
 | `NEXTAUTH_URL` | Yes (web) | `http://localhost:3000` for local, `http://<VM_IP>` or `https://yourdomain.com` for production |
-| `NEXT_PUBLIC_WS_URL` | Yes (web) | WebSocket URL: `http://localhost:3001` local, `http://<VM_IP>` or `wss://yourdomain.com` for production |
+| `WEB_URL` | Yes (bot) | Public web URL used in bot announcement links. Same value as `NEXTAUTH_URL` in production |
+| `NEXT_PUBLIC_WS_URL` | Yes (web) | WebSocket URL: `http://localhost:3001` local, `http://<VM_IP>` or `https://yourdomain.com` for production. Baked into the browser bundle at build time — rebuild the web image when this changes |
+| `WS_INTERNAL_SECRET` | Yes | Shared bearer secret for web/bot → ws internal broadcast endpoint. Generate with `openssl rand -hex 32` |
+| `WS_INTERNAL_URL` | Yes | Internal URL where web/bot reach the ws server. In Docker Compose this is `http://ws:4002` |
+| `BOT_ANNOUNCE_SECRET` | Yes | Shared bearer secret for web → bot announce endpoint. Generate with `openssl rand -hex 32` |
+| `BOT_ANNOUNCE_URL` | Yes (web) | Internal URL where web reaches the bot announce server. In Docker Compose this is `http://bot:4001` |
 | `DATABASE_PATH` | No | SQLite file path. Defaults to `./data/bot.sqlite` |
 | `REMINDER_CRON` | No | Cron schedule for daily reminders. Defaults to `0 10 * * *` |
 | `REMINDER_TIMEZONE` | No | Timezone for reminders. Defaults to `America/New_York` |
@@ -99,6 +104,12 @@ The app runs on a VM via Docker Compose with Caddy as a reverse proxy. GitHub Ac
 7. Add GitHub Actions secrets (`VM_HOST`, `VM_USER`, `VM_SSH_PRIVATE_KEY`, `VM_PORT`)
 
 See `docs/deployment/vm-runbook.md` for the full step-by-step guide.
+
+**SSH into the production VM:**
+
+```bash
+ssh -i ~/.ssh/hetzner_deploy root@178.105.36.104
+```
 
 ### Adding a Custom Domain (Optional)
 

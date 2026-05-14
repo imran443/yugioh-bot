@@ -54,7 +54,7 @@ export async function POST(
     const tournaments = createTournamentService(db);
     const participantCount = tournaments.participantCount(tournament.id);
 
-    void announceToBot(
+    const result = await announceToBot(
       { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
       {
         kind: "tournament-created",
@@ -67,6 +67,10 @@ export async function POST(
         participantCount,
       },
     );
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 502 });
+    }
 
     return NextResponse.json({ success: true, channelId });
   } catch (error) {

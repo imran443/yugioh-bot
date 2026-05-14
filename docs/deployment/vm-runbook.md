@@ -7,9 +7,46 @@ This runbook covers deploying the YuGiOh bot + web app to a VM. The stack runs v
 - GitHub repo: `https://github.com/imran443/yugioh-bot`
 - Production branch: `main`
 - Deploy workflow: `.github/workflows/deploy.yml`
+- VM provider: Hetzner Cloud
+- VM public IP: `178.105.36.104`
 - VM app path: `/opt/yugioh-bot`
 - Runtime user: `root`
 - Data path: `/opt/yugioh-bot/data/bot.sqlite`
+
+## SSH Access
+
+The deploy key lives at `~/.ssh/hetzner_deploy` on the maintainer's workstation.
+
+```bash
+ssh -i ~/.ssh/hetzner_deploy root@178.105.36.104
+```
+
+One-liners (run from your workstation, no interactive shell needed):
+
+```bash
+# Tail logs
+ssh -i ~/.ssh/hetzner_deploy root@178.105.36.104 \
+  'cd /opt/yugioh-bot && docker compose -f docker-compose.yml logs --tail=100'
+
+# Inspect production .env
+ssh -i ~/.ssh/hetzner_deploy root@178.105.36.104 \
+  'grep -E "^(NEXTAUTH_URL|NEXT_PUBLIC_WS_URL|WEB_URL)=" /opt/yugioh-bot/.env'
+
+# Restart a service
+ssh -i ~/.ssh/hetzner_deploy root@178.105.36.104 \
+  'cd /opt/yugioh-bot && docker compose -f docker-compose.yml restart bot'
+```
+
+Optional — add a `~/.ssh/config` entry so you can drop the `-i` flag:
+
+```sshconfig
+Host yugioh-bot
+    HostName 178.105.36.104
+    User root
+    IdentityFile ~/.ssh/hetzner_deploy
+```
+
+Then `ssh yugioh-bot` works.
 
 The deploy workflow requires these GitHub Actions secrets:
 

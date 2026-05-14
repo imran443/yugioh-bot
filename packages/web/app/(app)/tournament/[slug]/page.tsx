@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Trophy, Users, Swords, BarChart3, ChevronLeft, Play, X, Link as LinkIcon, LogOut, Megaphone } from "lucide-react";
+import { Trophy, Users, Swords, BarChart3, ChevronLeft, Play, X, Link as LinkIcon, LogOut, Megaphone, Check, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTournamentWebsocket } from "@/lib/hooks/use-tournament-websocket";
@@ -52,6 +52,7 @@ export default function TournamentDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [announced, setAnnounced] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -233,151 +234,266 @@ export default function TournamentDetailPage() {
           </div>
         </div>
 
-        {isCreator && (tournament.status === "pending" || tournament.status === "active") && (
-          <div className="mb-6 rounded-xl border border-border bg-surface p-5">
-            {showCancelConfirm ? (
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-text-secondary">
-                  Are you sure you want to cancel this tournament?
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="danger" size="sm" loading={actionLoading === "cancel"} onClick={handleCancel}>
-                    Yes, Cancel
+        {/* Invite & share — visible to anyone on a pending tournament */}
+        {tournament.status === "pending" && (
+          <section className="mb-6 rounded-xl border border-border bg-surface p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <LinkIcon className="h-4 w-4 text-accent-primary" />
+              <h2 className="font-body text-sm font-semibold uppercase tracking-wider text-text-secondary">
+                Invite link
+              </h2>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+              <code className="flex-1 truncate rounded-lg border border-border bg-bg-deep px-3 py-2 font-mono text-sm text-text-primary">
+                {typeof window !== "undefined" ? `${window.location.origin}/tournament/${id}` : `/tournament/${id}`}
+              </code>
+              <div className="flex gap-2">
+                <Button
+                  variant={copiedLink ? "secondary" : "primary"}
+                  size="md"
+                  onClick={async () => {
+                    const url = `${window.location.origin}/tournament/${id}`;
+                    await navigator.clipboard.writeText(url);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 1500);
+                  }}
+                >
+                  {copiedLink ? <Check className="h-4 w-4" /> : <LinkIcon className="h-4 w-4" />}
+                  {copiedLink ? "Copied" : "Copy"}
+                </Button>
+                {isCreator && (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    loading={actionLoading === "announce"}
+                    onClick={async () => {
+                      setActionLoading("announce");
+                      setActionError(null);
+                      try {
+                        const res = await fetch(`/api/tournaments/${id}/announce`, { method: "POST" });
+                        if (!res.ok) {
+                          const body = await res.json();
+                          throw new Error(body.error ?? "Failed to announce");
+                        }
+                        setAnnounced(true);
+                        setTimeout(() => setAnnounced(false), 2500);
+                      } catch (err) {
+                        setActionError(err instanceof Error ? err.message : "Failed to announce");
+                      } finally {
+                        setActionLoading(null);
+                      }
+                    }}
+                  >
+                    {announced ? <Check className="h-4 w-4 text-accent-success" /> : <Megaphone className="h-4 w-4" />}
+                    {announced ? "Announced" : "Announce"}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setShowCancelConfirm(false)}>
-                    Go Back
-                  </Button>
-                </div>
+                )}
               </div>
-            ) : (
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold text-text-primary">
-                    {tournament.status === "pending" ? "Ready to begin?" : "Tournament in progress"}
-                  </p>
-                  <p className="text-sm text-text-secondary">
-                    {tournament.status === "pending"
-                      ? "Start the tournament once all players have joined."
-                      : "You can cancel this tournament if needed."}
-                  </p>
-                  {tournament.status === "pending" && !canStart && (
-                    <p className="mt-1 text-xs text-text-muted">
-                      {participantCount} / 2 minimum participants
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  {tournament.status === "pending" && (
-                    <Button
-                      variant="primary"
-                      loading={actionLoading === "start"}
-                      disabled={!canStart}
-                      title={!canStart ? "Need at least 2 participants to start" : undefined}
-                      onClick={handleStart}
-                    >
-                      <Play className="h-4 w-4" />
-                      Start Tournament
-                    </Button>
-                  )}
-                  {tournament.status === "pending" && (
-                    <>
-                      <Button
-                        variant="ghost"
+            </div>
+            <p className="mt-2 text-xs text-text-secondary">
+              Share this link with players so they can join.
+            </p>
+          </section>
+        )}
+
+        {/* Players — chips + empty seats + progress + hosting/leave row */}
+        <section className="mb-6 rounded-xl border border-border bg-surface p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 font-body text-lg font-semibold text-text-primary">
+              <Users className="h-5 w-5 text-accent-primary" />
+              Players
+              <span className="text-text-secondary">({tournament.participants.length})</span>
+            </h2>
+            {tournament.status === "pending" && (
+              <span className="font-mono text-xs uppercase tracking-wider text-text-secondary">
+                {participantCount} / 2 minimum
+              </span>
+            )}
+          </div>
+
+          {tournament.status === "pending" && (
+            <div className="mb-4 h-1 w-full overflow-hidden rounded-full bg-bg-deep">
+              <div
+                className={`h-full motion-safe:transition-all motion-safe:duration-300 ${
+                  canStart ? "bg-accent-success" : "bg-accent-primary"
+                }`}
+                style={{ width: `${Math.min(100, (participantCount / 2) * 100)}%` }}
+              />
+            </div>
+          )}
+
+          {tournament.participants.length === 0 && tournament.status !== "pending" ? (
+            <p className="text-sm text-text-secondary">No participants.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {tournament.participants.map((p) => {
+                const isYou = p.playerId === tournament.currentUserPlayerId;
+                const isHost = isCreator && isYou;
+                const canKick = isCreator && tournament.status === "pending" && !isYou;
+                return (
+                  <span
+                    key={p.playerId}
+                    className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm motion-safe:transition-colors ${
+                      isYou
+                        ? "border-accent-primary/40 bg-accent-primary/10 text-text-primary"
+                        : "border-border bg-bg-elevated text-text-secondary"
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${isYou ? "bg-accent-primary" : "bg-text-secondary"}`} />
+                    <span className="font-body font-medium">{p.displayName}</span>
+                    {isHost && (
+                      <span className="rounded-sm bg-accent-gold/20 px-1 py-px font-mono text-[10px] uppercase tracking-wider text-accent-gold">
+                        Host
+                      </span>
+                    )}
+                    {isYou && !isHost && (
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">You</span>
+                    )}
+                    {canKick && (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${p.displayName}`}
+                        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-text-secondary motion-safe:transition-colors hover:bg-accent-cta/20 hover:text-accent-cta"
                         onClick={async () => {
-                          const url = `${window.location.origin}/tournament/${id}`;
-                          await navigator.clipboard.writeText(url);
-                          setCopiedLink(true);
-                          setTimeout(() => setCopiedLink(false), 1500);
-                        }}
-                      >
-                        <LinkIcon className="h-4 w-4" />
-                        {copiedLink ? "Copied!" : "Copy invite link"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        loading={actionLoading === "announce"}
-                        onClick={async () => {
-                          setActionLoading("announce");
+                          setActionLoading(`kick-${p.playerId}`);
                           setActionError(null);
                           try {
-                            const res = await fetch(`/api/tournaments/${id}/announce`, { method: "POST" });
+                            const res = await fetch(`/api/tournaments/${id}/kick`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ playerId: p.playerId }),
+                            });
                             if (!res.ok) {
                               const body = await res.json();
-                              throw new Error(body.error ?? "Failed to announce");
+                              throw new Error(body.error ?? "Failed to remove");
                             }
+                            fetchTournament();
                           } catch (err) {
-                            setActionError(err instanceof Error ? err.message : "Failed to announce");
+                            setActionError(err instanceof Error ? err.message : "Failed to remove");
                           } finally {
                             setActionLoading(null);
                           }
                         }}
                       >
-                        <Megaphone className="h-4 w-4" />
-                        Announce in Discord
-                      </Button>
-                    </>
-                  )}
-                  <Button
-                    variant="secondary"
-                    onClick={() => setShowCancelConfirm(true)}
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+              {tournament.status === "pending" &&
+                Array.from({ length: Math.max(0, 2 - tournament.participants.length) }).map((_, i) => (
+                  <span
+                    key={`empty-${i}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-text-secondary"
                   >
-                    <X className="h-4 w-4" />
-                    Cancel
-                  </Button>
-                </div>
-              </div>
+                    <UserPlus className="h-3.5 w-3.5" />
+                    <span className="font-mono text-xs uppercase tracking-wider">Open seat</span>
+                  </span>
+                ))}
+            </div>
+          )}
+
+          {tournament.status === "pending" && isParticipant && (
+            <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm">
+              <p className="text-text-secondary">
+                {isCreator
+                  ? "Hosting and playing in this tournament."
+                  : "You're in. Waiting for the organizer to start."}
+              </p>
+              <button
+                type="button"
+                disabled={actionLoading === "leave"}
+                className="inline-flex items-center gap-1.5 text-text-secondary motion-safe:transition-colors hover:text-text-primary disabled:opacity-50"
+                onClick={async () => {
+                  setActionLoading("leave");
+                  setActionError(null);
+                  try {
+                    const res = await fetch(`/api/tournaments/${id}/leave`, { method: "POST" });
+                    if (!res.ok) {
+                      const body = await res.json();
+                      throw new Error(body.error ?? "Failed to leave");
+                    }
+                    fetchTournament();
+                  } catch (err) {
+                    setActionError(err instanceof Error ? err.message : "Failed to leave");
+                  } finally {
+                    setActionLoading(null);
+                  }
+                }}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                {isCreator ? "Leave as participant" : "Leave tournament"}
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Primary action — Start (organizer pending) or Join (non-participant pending) */}
+        {tournament.status === "pending" && isCreator && (
+          <div className="mb-6 flex flex-col items-center gap-2">
+            <Button
+              variant="primary"
+              size="lg"
+              loading={actionLoading === "start"}
+              disabled={!canStart}
+              title={!canStart ? "Need at least 2 participants to start" : undefined}
+              onClick={handleStart}
+              className="min-w-[240px]"
+            >
+              <Play className="h-5 w-5" />
+              Start Tournament
+            </Button>
+            {!canStart && (
+              <p className="font-mono text-xs uppercase tracking-wider text-text-secondary">
+                Need {2 - participantCount} more {2 - participantCount === 1 ? "player" : "players"} to start
+              </p>
             )}
           </div>
         )}
 
-        {tournament.status === "pending" && isParticipant && (
-          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-text-secondary">
-              {isCreator
-                ? "You're hosting and playing in this tournament."
-                : "You have joined this tournament. Waiting for the organizer to start."}
-            </p>
+        {tournament.status === "pending" && !isParticipant && (
+          <div className="mb-6 flex flex-col items-center gap-2">
             <Button
-              variant="ghost"
-              loading={actionLoading === "leave"}
-              onClick={async () => {
-                setActionLoading("leave");
-                setActionError(null);
-                try {
-                  const res = await fetch(`/api/tournaments/${id}/leave`, { method: "POST" });
-                  if (!res.ok) {
-                    const body = await res.json();
-                    throw new Error(body.error ?? "Failed to leave");
-                  }
-                  fetchTournament();
-                } catch (err) {
-                  setActionError(err instanceof Error ? err.message : "Failed to leave");
-                } finally {
-                  setActionLoading(null);
-                }
-              }}
+              variant="primary"
+              size="lg"
+              loading={actionLoading === "join"}
+              onClick={handleJoin}
+              className="min-w-[240px]"
             >
-              <LogOut className="h-4 w-4" />
-              {isCreator ? "Leave as participant" : "Leave tournament"}
+              <UserPlus className="h-5 w-5" />
+              Join Tournament
             </Button>
           </div>
         )}
 
-        {!isCreator && tournament.status === "pending" && !isParticipant && (
-          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold text-text-primary">Want to compete?</p>
-              <p className="text-sm text-text-secondary">
-                Join this tournament to participate when it starts.
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              loading={actionLoading === "join"}
-              onClick={handleJoin}
-            >
-              Join Tournament
-            </Button>
+        {/* Cancel — quiet destructive footer link, organizer only */}
+        {isCreator && (tournament.status === "pending" || tournament.status === "active") && (
+          <div className="mb-8 flex justify-center">
+            {showCancelConfirm ? (
+              <div className="flex items-center gap-3 rounded-lg border border-accent-cta/40 bg-accent-cta/5 px-4 py-2 text-sm">
+                <span className="text-text-secondary">Cancel this tournament?</span>
+                <Button variant="danger" size="sm" loading={actionLoading === "cancel"} onClick={handleCancel}>
+                  Yes, cancel
+                </Button>
+                <button
+                  type="button"
+                  className="text-text-secondary hover:text-text-primary"
+                  onClick={() => setShowCancelConfirm(false)}
+                >
+                  Go back
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-text-secondary motion-safe:transition-colors hover:text-accent-cta"
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancel tournament
+              </button>
+            )}
           </div>
         )}
 
@@ -389,56 +505,6 @@ export default function TournamentDetailPage() {
             </Button>
           </Link>
         )}
-
-        <section className="mb-8 rounded-xl border border-border bg-surface p-5">
-          <h2 className="mb-4 flex items-center gap-2 font-body text-lg font-semibold text-text-primary">
-            <Users className="h-5 w-5 text-accent-primary" />
-            Participants ({tournament.participants.length})
-          </h2>
-          {tournament.participants.length === 0 ? (
-            <p className="text-sm text-text-secondary">No participants yet.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {tournament.participants.map((p) => (
-                <span
-                  key={p.playerId}
-                  className="inline-flex items-center gap-1 rounded-full bg-bg-elevated px-3 py-1 text-sm text-text-secondary"
-                >
-                  {p.displayName}
-                  {isCreator && tournament.status === "pending" && p.playerId !== tournament.currentUserPlayerId && (
-                    <button
-                      type="button"
-                      aria-label={`Remove ${p.displayName}`}
-                      className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-bg-default"
-                      onClick={async () => {
-                        setActionLoading(`kick-${p.playerId}`);
-                        setActionError(null);
-                        try {
-                          const res = await fetch(`/api/tournaments/${id}/kick`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ playerId: p.playerId }),
-                          });
-                          if (!res.ok) {
-                            const body = await res.json();
-                            throw new Error(body.error ?? "Failed to remove");
-                          }
-                          fetchTournament();
-                        } catch (err) {
-                          setActionError(err instanceof Error ? err.message : "Failed to remove");
-                        } finally {
-                          setActionLoading(null);
-                        }
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
-        </section>
 
         {tournament.matches.length > 0 && (
           <section>
