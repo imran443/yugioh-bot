@@ -49,6 +49,34 @@ function parseSeats(v: unknown): { slug: string } | null {
   return { slug: o.slug };
 }
 
+type TournamentJoinedBody = { slug: string; playerId: number; displayName: string };
+type TournamentLeftBody = { slug: string; playerId: number };
+type TournamentSlugOnlyBody = { slug: string };
+
+function parseTournamentJoined(v: unknown): TournamentJoinedBody | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (!isNonEmptyString(o.slug)) return null;
+  if (typeof o.playerId !== "number") return null;
+  if (!isNonEmptyString(o.displayName)) return null;
+  return { slug: o.slug, playerId: o.playerId, displayName: o.displayName };
+}
+
+function parseTournamentLeft(v: unknown): TournamentLeftBody | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (!isNonEmptyString(o.slug)) return null;
+  if (typeof o.playerId !== "number") return null;
+  return { slug: o.slug, playerId: o.playerId };
+}
+
+function parseTournamentSlugOnly(v: unknown): TournamentSlugOnlyBody | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (!isNonEmptyString(o.slug)) return null;
+  return { slug: o.slug };
+}
+
 export function createInternalHttpHandler(opts: { io: TypedServer; secret: string }) {
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -97,6 +125,34 @@ export function createInternalHttpHandler(opts: { io: TypedServer; secret: strin
         const data = parseSeats(parsed);
         if (!data) return new Response("Bad payload", { status: 400 });
         opts.io.to(data.slug).emit("draft:seats", {});
+        return new Response(null, { status: 204 });
+      }
+      case "/internal/tournament/participant-joined": {
+        const data = parseTournamentJoined(parsed);
+        if (!data) return new Response("Bad payload", { status: 400 });
+        opts.io
+          .to(`tournament:${data.slug}`)
+          .emit("tournament:participant-joined", { playerId: data.playerId, displayName: data.displayName });
+        return new Response(null, { status: 204 });
+      }
+      case "/internal/tournament/participant-left": {
+        const data = parseTournamentLeft(parsed);
+        if (!data) return new Response("Bad payload", { status: 400 });
+        opts.io
+          .to(`tournament:${data.slug}`)
+          .emit("tournament:participant-left", { playerId: data.playerId });
+        return new Response(null, { status: 204 });
+      }
+      case "/internal/tournament/started": {
+        const data = parseTournamentSlugOnly(parsed);
+        if (!data) return new Response("Bad payload", { status: 400 });
+        opts.io.to(`tournament:${data.slug}`).emit("tournament:started", {});
+        return new Response(null, { status: 204 });
+      }
+      case "/internal/tournament/cancelled": {
+        const data = parseTournamentSlugOnly(parsed);
+        if (!data) return new Response("Bad payload", { status: 400 });
+        opts.io.to(`tournament:${data.slug}`).emit("tournament:cancelled", {});
         return new Response(null, { status: 204 });
       }
       default:
