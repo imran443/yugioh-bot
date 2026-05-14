@@ -327,6 +327,49 @@ export function createTournamentService(db: Database.Database) {
       return participantsFor(tournamentId);
     },
 
+    leave(tournamentId: number, playerId: number): void {
+      const tournament = findById(tournamentId);
+
+      if (tournament.status !== "pending") {
+        throw new Error("Tournament is not pending; cannot leave");
+      }
+
+      const result = db
+        .prepare("delete from tournament_participants where tournament_id = ? and player_id = ?")
+        .run(tournamentId, playerId);
+
+      if (result.changes === 0) {
+        throw new Error("You are not a participant in this tournament");
+      }
+    },
+
+    kick(tournamentId: number, organizerUserId: string, playerId: number): void {
+      const tournament = findById(tournamentId);
+
+      if (tournament.createdByUserId !== organizerUserId) {
+        throw new Error("Only the organizer can kick participants");
+      }
+
+      if (tournament.status !== "pending") {
+        throw new Error("Tournament is not pending; cannot kick");
+      }
+
+      const result = db
+        .prepare("delete from tournament_participants where tournament_id = ? and player_id = ?")
+        .run(tournamentId, playerId);
+
+      if (result.changes === 0) {
+        throw new Error("That player is not a participant in this tournament");
+      }
+    },
+
+    participantCount(tournamentId: number): number {
+      const row = db
+        .prepare("select count(*) as c from tournament_participants where tournament_id = ?")
+        .get(tournamentId) as { c: number };
+      return row.c;
+    },
+
     participantRecords(tournamentId: number): TournamentParticipant[] {
       return db
         .prepare(
