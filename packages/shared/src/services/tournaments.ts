@@ -331,7 +331,7 @@ export function createTournamentService(db: Database.Database) {
       const tournament = findById(tournamentId);
 
       if (tournament.status !== "pending") {
-        throw new Error("Tournament is not pending; cannot leave");
+        throw new Error("Tournament has already started");
       }
 
       const result = db
@@ -346,12 +346,12 @@ export function createTournamentService(db: Database.Database) {
     kick(tournamentId: number, organizerUserId: string, playerId: number): void {
       const tournament = findById(tournamentId);
 
-      if (tournament.createdByUserId !== organizerUserId) {
-        throw new Error("Only the organizer can kick participants");
+      if (tournament.status !== "pending") {
+        throw new Error("Tournament has already started");
       }
 
-      if (tournament.status !== "pending") {
-        throw new Error("Tournament is not pending; cannot kick");
+      if (tournament.createdByUserId !== organizerUserId) {
+        throw new Error("Only the organizer can kick participants");
       }
 
       const result = db

@@ -38,7 +38,7 @@ describe("tournaments service", () => {
       tournaments.join(t.id, bob);
       tournaments.start(t.id);
 
-      expect(() => tournaments.leave(t.id, alice)).toThrow(/already started|not pending/i);
+      expect(() => tournaments.leave(t.id, alice)).toThrow(/already started/i);
     });
 
     it("throws when the participant is not in the tournament", () => {
@@ -83,7 +83,7 @@ describe("tournaments service", () => {
       tournaments.join(t.id, bob);
       tournaments.start(t.id);
 
-      expect(() => tournaments.kick(t.id, "u-alice", bob)).toThrow(/not pending|already started/i);
+      expect(() => tournaments.kick(t.id, "u-alice", bob)).toThrow(/already started/i);
     });
   });
 
