@@ -307,13 +307,6 @@ export default function DraftDetailPage() {
 
             <section className="min-w-0">
               <div className="mb-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-text-muted">
-                  Live Draft Room
-                </p>
-                <h1 className="mt-1 font-display text-2xl leading-tight text-text-primary sm:text-3xl">
-                  {draft.name}
-                </h1>
-
                 {draft.config.setNames && draft.config.setNames.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {draft.config.setNames.map((setName) => (
