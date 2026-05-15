@@ -94,6 +94,18 @@ The stack runs 4 services:
 
 The app runs on a VM via Docker Compose with Caddy as a reverse proxy. GitHub Actions deploys on every push to `main`.
 
+**SSH access:**
+
+```bash
+ssh -i ~/.ssh/hetzner_deploy root@178.105.36.104
+```
+
+If you need to set or reset the root password after logging in:
+
+```bash
+passwd
+```
+
 **Quick setup:**
 1. Create a VM (e.g., Hetzner CAX11, 4GB RAM, Ubuntu 24.04)
 2. Install Docker and Git on the VM

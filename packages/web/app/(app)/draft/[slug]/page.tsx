@@ -245,7 +245,7 @@ export default function DraftDetailPage() {
 
   const isCreator = currentUserId === draft.createdByUserId;
   const isParticipant = draft.isParticipant;
-  const totalDraftCards = (draft.config.packSize ?? 8) * (draft.config.packsPerPlayer ?? 5);
+  const totalDraftCards = draft.config.cardsPerPlayer ?? 40;
 
   const handleJoin = async () => {
     const res = await fetch(`/api/drafts/${slug}/join`, { method: "POST" });
