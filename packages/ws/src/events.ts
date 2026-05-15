@@ -17,6 +17,7 @@ export interface ServerToClientEvents {
   "tournament:participant-left": (data: { playerId: number }) => void;
   "tournament:started": (data: Record<string, never>) => void;
   "tournament:cancelled": (data: Record<string, never>) => void;
+  "tournament:match-updated": (data: Record<string, never>) => void;
 }
 
 export interface ClientToServerEvents {
