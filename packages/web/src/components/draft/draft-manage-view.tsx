@@ -297,220 +297,229 @@ export function DraftManageView({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
+      {/* Action at top (full width) */}
+      {getActionSection()}
+
       {error && (
         <div className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
           {error}
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-surface p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            {editing && isCreator ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={nameValue}
-                  onChange={(e) => setNameValue(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-bg-deep px-3 py-1.5 text-lg font-semibold text-text-primary focus:border-accent-primary focus:outline-none"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveName();
-                    if (e.key === "Escape") {
-                      setNameValue(draft.name);
-                      setEditing(false);
-                    }
-                  }}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+        {/* Left — sticky card pool */}
+        <aside className="lg:sticky lg:top-6 lg:self-start">
+          {slug && (
+            <div className="rounded-xl border border-border bg-surface p-6">
+              <h2 className="mb-4 font-display text-lg text-text-primary">
+                <Layers className="mr-2 inline h-5 w-5 text-accent-primary" aria-hidden="true" />
+                Card Pool{poolCards ? <span className="tabular-nums"> ({poolCards.length} card{poolCards.length === 1 ? "" : "s"})</span> : null}
+              </h2>
+              {poolError ? (
+                <div className="flex items-center justify-between rounded-lg border border-accent-cta/40 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
+                  <span>Couldn&apos;t load the pool.</span>
+                  <Button variant="ghost" size="sm" onClick={loadPool}>Retry</Button>
+                </div>
+              ) : (
+                <CardPoolGrid
+                  cards={poolCards ?? []}
+                  loading={poolCards === null}
+                  heightClassName="h-[calc(100vh-16rem)]"
+                  emptyMessage="This draft's pool hasn't been resolved yet."
                 />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={saving}
-                  onClick={handleSaveName}
-                >
-                  Save
+              )}
+            </div>
+          )}
+        </aside>
+
+        {/* Right — name, players, configuration */}
+        <div className="space-y-6">
+          <div className="rounded-xl border border-border bg-surface p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                {editing && isCreator ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={nameValue}
+                      onChange={(e) => setNameValue(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-bg-deep px-3 py-1.5 text-lg font-semibold text-text-primary focus:border-accent-primary focus:outline-none"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveName();
+                        if (e.key === "Escape") {
+                          setNameValue(draft.name);
+                          setEditing(false);
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      loading={saving}
+                      onClick={handleSaveName}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setNameValue(draft.name);
+                        setEditing(false);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <h1
+                    className="font-display text-xl text-text-primary sm:text-2xl"
+                    onClick={() => isCreator && setEditing(true)}
+                    role={isCreator ? "button" : undefined}
+                    tabIndex={isCreator ? 0 : undefined}
+                    onKeyDown={
+                      isCreator
+                        ? (e) => {
+                            if (e.key === "Enter") setEditing(true);
+                          }
+                        : undefined
+                    }
+                    style={isCreator ? { cursor: "text" } : undefined}
+                  >
+                    {draft.name}
+                  </h1>
+                )}
+                <div className="mt-2 flex items-center gap-3">
+                  <Badge variant="warning">Pending</Badge>
+                  <span className="flex items-center gap-1 text-sm text-text-secondary">
+                    <Clock className="h-3.5 w-3.5" />
+                    {formatDate(draft.createdAt)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-6">
+            <h2 className="mb-4 font-display text-lg text-text-primary">
+              <Users className="mr-2 inline h-5 w-5 text-accent-primary" />
+              Players ({draft.playerCount})
+            </h2>
+            {draft.players.length === 0 ? (
+              <p className="text-sm text-text-secondary">No players have joined yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-2" role="list">
+                {draft.players.map((player) => (
+                  <li
+                    key={player.playerId}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-bg-elevated/50 p-3"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-elevated text-text-secondary">
+                      <User className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-semibold text-text-primary">
+                        {player.displayName}
+                      </span>
+                      {player.seatIndex !== undefined && player.seatIndex !== null && (
+                        <span className="ml-2 text-xs text-text-muted">
+                          Seat {player.seatIndex + 1}
+                        </span>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-xs text-text-muted">
+                      {formatDate(player.joinedAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-lg text-text-primary">
+                <Layers className="mr-2 inline h-5 w-5 text-accent-primary" />
+                Configuration
+              </h2>
+              {isCreator && !isEditingConfig && (
+                <Button variant="secondary" size="sm" onClick={handleStartEditConfig}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                  Edit Configuration
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setNameValue(draft.name);
-                    setEditing(false);
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+              )}
+            </div>
+
+            {isEditingConfig ? (
+              <div className="space-y-5">
+                {editError && (
+                  <div className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
+                    {editError}
+                  </div>
+                )}
+                <DraftConfigFields value={editFields} onChange={setEditFields} />
+                <div className="flex gap-3">
+                  <Button variant="primary" size="sm" loading={configSaving} onClick={handleSaveConfig}>
+                    Save Configuration
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleCancelEditConfig} disabled={configSaving}>
+                    Cancel
+                  </Button>
+                </div>
               </div>
             ) : (
-              <h1
-                className="font-display text-xl text-text-primary sm:text-2xl"
-                onClick={() => isCreator && setEditing(true)}
-                role={isCreator ? "button" : undefined}
-                tabIndex={isCreator ? 0 : undefined}
-                onKeyDown={
-                  isCreator
-                    ? (e) => {
-                        if (e.key === "Enter") setEditing(true);
-                      }
-                    : undefined
-                }
-                style={isCreator ? { cursor: "text" } : undefined}
-              >
-                {draft.name}
-              </h1>
+              <>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
+                    <span className="block text-xs text-text-muted">
+                      <Package className="mr-1 inline h-3.5 w-3.5" />
+                      Cards/Player
+                    </span>
+                    <span className="mt-1 block text-lg font-semibold text-text-primary">
+                      {draft.config.cardsPerPlayer ?? 40}
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
+                    <span className="block text-xs text-text-muted">
+                      <Package className="mr-1 inline h-3.5 w-3.5" />
+                      Cards/Pack
+                    </span>
+                    <span className="mt-1 block text-lg font-semibold text-text-primary">
+                      {draft.config.packSize ?? "—"}
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
+                    <span className="block text-xs text-text-muted">
+                      <Clock className="mr-1 inline h-3.5 w-3.5" />
+                      Pick Timer
+                    </span>
+                    <span className="mt-1 block text-lg font-semibold text-text-primary">
+                      {draft.config.pickSeconds ? `${draft.config.pickSeconds}s` : "—"}
+                    </span>
+                  </div>
+                </div>
+                {draft.config.setNames && draft.config.setNames.length > 0 && (
+                  <div className="mt-4">
+                    <span className="mb-2 block text-xs text-text-muted">Sets</span>
+                    <div className="flex flex-wrap gap-2">
+                      {draft.config.setNames.map((setName) => (
+                        <span
+                          key={setName}
+                          className="rounded-lg border border-border bg-bg-elevated/50 px-2.5 py-1 text-sm text-text-secondary"
+                        >
+                          {setName}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
-            <div className="mt-2 flex items-center gap-3">
-              <Badge variant="warning">Pending</Badge>
-              <span className="flex items-center gap-1 text-sm text-text-secondary">
-                <Clock className="h-3.5 w-3.5" />
-                {formatDate(draft.createdAt)}
-              </span>
-            </div>
           </div>
         </div>
       </div>
-
-      <div className="rounded-xl border border-border bg-surface p-6">
-        <h2 className="mb-4 font-display text-lg text-text-primary">
-          <Users className="mr-2 inline h-5 w-5 text-accent-primary" />
-          Players ({draft.playerCount})
-        </h2>
-        {draft.players.length === 0 ? (
-          <p className="text-sm text-text-secondary">No players have joined yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-2" role="list">
-            {draft.players.map((player) => (
-              <li
-                key={player.playerId}
-                className="flex items-center gap-3 rounded-lg border border-border bg-bg-elevated/50 p-3"
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-elevated text-text-secondary">
-                  <User className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className="text-sm font-semibold text-text-primary">
-                    {player.displayName}
-                  </span>
-                  {player.seatIndex !== undefined && player.seatIndex !== null && (
-                    <span className="ml-2 text-xs text-text-muted">
-                      Seat {player.seatIndex + 1}
-                    </span>
-                  )}
-                </div>
-                <span className="shrink-0 text-xs text-text-muted">
-                  {formatDate(player.joinedAt)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-lg text-text-primary">
-            <Layers className="mr-2 inline h-5 w-5 text-accent-primary" />
-            Configuration
-          </h2>
-          {isCreator && !isEditingConfig && (
-            <Button variant="secondary" size="sm" onClick={handleStartEditConfig}>
-              <Pencil className="mr-1.5 h-3.5 w-3.5" />
-              Edit Configuration
-            </Button>
-          )}
-        </div>
-
-        {isEditingConfig ? (
-          <div className="space-y-5">
-            {editError && (
-              <div className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
-                {editError}
-              </div>
-            )}
-            <DraftConfigFields value={editFields} onChange={setEditFields} />
-            <div className="flex gap-3">
-              <Button variant="primary" size="sm" loading={configSaving} onClick={handleSaveConfig}>
-                Save Configuration
-              </Button>
-              <Button variant="ghost" size="sm" onClick={handleCancelEditConfig} disabled={configSaving}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
-                  <span className="block text-xs text-text-muted">
-                    <Package className="mr-1 inline h-3.5 w-3.5" />
-                    Cards/Player
-                  </span>
-                  <span className="mt-1 block text-lg font-semibold text-text-primary">
-                    {draft.config.cardsPerPlayer ?? 40}
-                  </span>
-                </div>
-                <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
-                  <span className="block text-xs text-text-muted">
-                    <Package className="mr-1 inline h-3.5 w-3.5" />
-                    Cards/Pack
-                  </span>
-                  <span className="mt-1 block text-lg font-semibold text-text-primary">
-                    {draft.config.packSize ?? "—"}
-                  </span>
-                </div>
-                <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
-                  <span className="block text-xs text-text-muted">
-                    <Clock className="mr-1 inline h-3.5 w-3.5" />
-                    Pick Timer
-                  </span>
-                  <span className="mt-1 block text-lg font-semibold text-text-primary">
-                    {draft.config.pickSeconds ? `${draft.config.pickSeconds}s` : "—"}
-                  </span>
-                </div>
-              </div>
-            {draft.config.setNames && draft.config.setNames.length > 0 && (
-              <div className="mt-4">
-                <span className="mb-2 block text-xs text-text-muted">Sets</span>
-                <div className="flex flex-wrap gap-2">
-                  {draft.config.setNames.map((setName) => (
-                    <span
-                      key={setName}
-                      className="rounded-lg border border-border bg-bg-elevated/50 px-2.5 py-1 text-sm text-text-secondary"
-                    >
-                      {setName}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {slug && (
-        <div className="rounded-xl border border-border bg-surface p-6">
-          <h2 className="mb-4 font-display text-lg text-text-primary">
-            <Layers className="mr-2 inline h-5 w-5 text-accent-primary" aria-hidden="true" />
-            Card Pool {poolCards ? <span className="tabular-nums">({poolCards.length} card{poolCards.length === 1 ? "" : "s"})</span> : null}
-          </h2>
-          {poolError ? (
-            <div className="flex items-center justify-between rounded-lg border border-accent-cta/40 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
-              <span>Couldn&apos;t load the pool.</span>
-              <Button variant="ghost" size="sm" onClick={loadPool}>Retry</Button>
-            </div>
-          ) : (
-            <CardPoolGrid
-              cards={poolCards ?? []}
-              loading={poolCards === null}
-              heightClassName="h-[32rem]"
-              emptyMessage="This draft's pool hasn't been resolved yet."
-            />
-          )}
-        </div>
-      )}
-
-      {getActionSection()}
     </div>
   );
 }
