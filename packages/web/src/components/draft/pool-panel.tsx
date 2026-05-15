@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useDraftStore } from "@/lib/stores/draft-store";
 import { downloadYdk } from "@/lib/ydk";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,19 @@ interface PoolPanelProps {
 export function PoolPanel({ className }: PoolPanelProps) {
   const myPool = useDraftStore((s) => s.myPool);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const groupedPool = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const c of myPool) counts.set(c.id, (counts.get(c.id) ?? 0) + 1);
+    const seen = new Set<number>();
+    const result: Array<typeof myPool[number] & { qty: number }> = [];
+    for (const c of myPool) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      result.push({ ...c, qty: counts.get(c.id) ?? 1 });
+    }
+    return result;
+  }, [myPool]);
 
   const panelContent = (
     <div className="flex flex-col gap-4">
@@ -34,7 +47,7 @@ export function PoolPanel({ className }: PoolPanelProps) {
         Export YDK
       </Button>
       <div className="rounded-xl border border-border bg-bg-elevated/40 p-3">
-        <CardPoolGrid cards={myPool} heightClassName="h-[26rem] xl:h-[34rem]" emptyMessage="No cards drafted yet." />
+        <CardPoolGrid cards={groupedPool} heightClassName="h-[26rem] xl:h-[34rem]" emptyMessage="No cards drafted yet." />
       </div>
     </div>
   );

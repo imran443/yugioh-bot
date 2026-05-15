@@ -52,6 +52,11 @@ export function CardHoverPopup({ card, position, imageError, onImageError, dismi
             ) : (
               <Image src={card.imageUrl} alt={card.name} fill className="object-contain" sizes="288px" onError={onImageError} />
             )}
+            {(card.qty ?? 1) > 1 && (
+              <div className="absolute right-2 top-2 z-10 rounded-md bg-black/80 px-2 py-0.5 text-sm font-bold tabular-nums text-white">
+                ×{card.qty}
+              </div>
+            )}
           </div>
           <div className="space-y-3 p-4">
             <h3 className="mb-1 font-display text-lg text-text-primary">{card.name}</h3>
