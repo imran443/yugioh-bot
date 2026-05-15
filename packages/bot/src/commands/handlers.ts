@@ -7,6 +7,7 @@ import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { Draft, DraftService } from "../services/drafts.js";
 import type { MatchService } from "@yugidraft/shared/services";
 import type { TournamentFormat, TournamentService } from "@yugidraft/shared/services";
+import { notifyWsTournament } from "../lib/notify-ws-tournament.js";
 
 export type DiscordUserLike = {
   id: string;
@@ -482,6 +483,10 @@ async function handleEvent(
 
         throw error;
       }
+      void notifyWsTournament(
+        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
+        { kind: "participant-joined", slug: tournament.webSlug ?? "", playerId: player.id, displayName: displayName(interaction.user) },
+      );
       await interaction.reply(`Joined event: ${tournament.name}.`);
       return;
     }

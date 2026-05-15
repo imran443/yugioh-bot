@@ -17,6 +17,7 @@ import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftService } from "../services/drafts.js";
 import type { MatchService } from "@yugidraft/shared/services";
 import type { TournamentService } from "@yugidraft/shared/services";
+import { notifyWsTournament } from "../lib/notify-ws-tournament.js";
 
 export type ButtonInteractionLike = {
   customId: string;
@@ -285,6 +286,10 @@ async function handleJoinTournament(
 
     throw error;
   }
+  void notifyWsTournament(
+    { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
+    { kind: "participant-joined", slug: tournament.webSlug ?? "", playerId: player.id, displayName: displayName(interaction.user) },
+  );
   await interaction.reply(`${displayName(interaction.user)} joined event: ${tournament.name}.`);
 }
 
@@ -307,6 +312,10 @@ async function handleReportResult(
   const winnerId = result === "win" ? player.id : opponentId;
   const match = deps.tournaments.reportTournamentMatch(tournamentMatch.id, player.id, winnerId);
 
+  void notifyWsTournament(
+    { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
+    { kind: "match-updated", slug: tournament.webSlug ?? "" },
+  );
   await interaction.reply({
     content: `Match reported as ${result}. Your opponent must approve or deny it. Match #${match.id}`,
     ephemeral: true,
@@ -679,6 +688,15 @@ export async function handleButton(
     const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
     const match = deps.matches.approve(Number(approveMatch[1]), player.id);
 
+    const tournamentRow = match.tournamentId
+      ? deps.db.prepare("select web_slug from tournaments where id = ?").get(match.tournamentId) as { web_slug: string | null } | undefined
+      : undefined;
+    if (tournamentRow?.web_slug) {
+      void notifyWsTournament(
+        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
+        { kind: "match-updated", slug: tournamentRow.web_slug },
+      );
+    }
     await interaction.reply({ content: `Approved match #${match.id}.`, ephemeral: true });
     return;
   }
@@ -690,6 +708,15 @@ export async function handleButton(
     const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
     const match = deps.matches.deny(Number(denyMatch[1]), player.id);
 
+    const tournamentRow = match.tournamentId
+      ? deps.db.prepare("select web_slug from tournaments where id = ?").get(match.tournamentId) as { web_slug: string | null } | undefined
+      : undefined;
+    if (tournamentRow?.web_slug) {
+      void notifyWsTournament(
+        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
+        { kind: "match-updated", slug: tournamentRow.web_slug },
+      );
+    }
     await interaction.reply({ content: `Denied match #${match.id}.`, ephemeral: true });
     return;
   }
