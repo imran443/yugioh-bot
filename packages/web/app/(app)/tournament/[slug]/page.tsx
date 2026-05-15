@@ -90,6 +90,7 @@ export default function TournamentDetailPage() {
     onParticipantLeft: () => fetchTournament(),
     onStarted: () => fetchTournament(),
     onCancelled: () => fetchTournament(),
+    onMatchUpdated: () => fetchTournament(),
   });
 
   const handleCancel = async () => {

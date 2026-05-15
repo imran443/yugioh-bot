@@ -12,6 +12,7 @@ interface UseTournamentWebsocketOptions {
   onParticipantLeft?: (data: { playerId: number }) => void;
   onStarted?: () => void;
   onCancelled?: () => void;
+  onMatchUpdated?: () => void;
 }
 
 export function useTournamentWebsocket(slug: string, options: UseTournamentWebsocketOptions = {}) {
@@ -43,6 +44,10 @@ export function useTournamentWebsocket(slug: string, options: UseTournamentWebso
 
     socket.on("tournament:cancelled", () => {
       optionsRef.current.onCancelled?.();
+    });
+
+    socket.on("tournament:match-updated", () => {
+      optionsRef.current.onMatchUpdated?.();
     });
 
     socket.on("connect_error", (err) => {
