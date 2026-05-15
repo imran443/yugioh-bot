@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { createMatchService, createPlayerService } from "@yugidraft/shared/services";
+import { env } from "@/lib/env";
+import { notifyWsTournament } from "@/lib/notify-ws-tournament";
 
 export const runtime = "nodejs";
 
@@ -23,9 +25,14 @@ export async function POST(
 
     const db = getDb();
     const matches = createMatchService(db);
-    const match = db.prepare("select * from matches where id = ?").get(matchId) as
-      | { guild_id: string }
-      | undefined;
+    const match = db
+      .prepare(`
+        select m.guild_id, m.tournament_id, t.web_slug as tournament_slug
+        from matches m
+        left join tournaments t on t.id = m.tournament_id
+        where m.id = ?
+      `)
+      .get(matchId) as { guild_id: string; tournament_id: number | null; tournament_slug: string | null } | undefined;
 
     if (!match) {
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
@@ -38,6 +45,12 @@ export async function POST(
     }
 
     const denied = matches.deny(matchId, player.id);
+    if (match.tournament_slug) {
+      void notifyWsTournament(
+        { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+        { kind: "match-updated", slug: match.tournament_slug },
+      );
+    }
     return NextResponse.json(denied);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to deny match";
