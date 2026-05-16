@@ -8,6 +8,19 @@ const auth = vi.fn();
 const tempDirs: string[] = [];
 vi.mock("@/lib/auth", () => ({ auth }));
 
+const syncDraftPool = vi.fn();
+
+vi.mock("@yugidraft/shared/services", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@yugidraft/shared/services")>();
+  return {
+    ...original,
+    createCardCatalogService: (db: any) => ({
+      ...original.createCardCatalogService(db),
+      syncDraftPool,
+    }),
+  };
+});
+
 async function setupDb() {
   const tempDir = mkdtempSync(join(tmpdir(), "yugioh-cards-resolve-"));
   const dbPath = join(tempDir, "test.sqlite");
@@ -35,6 +48,8 @@ describe("POST /api/cards/resolve", () => {
     vi.resetModules();
     auth.mockReset();
     auth.mockResolvedValue({ user: { id: "u", name: "Yugi" } });
+    syncDraftPool.mockReset();
+    syncDraftPool.mockResolvedValue([]);
   });
   afterEach(() => {
     delete process.env.DATABASE_PATH;
@@ -65,5 +80,11 @@ describe("POST /api/cards/resolve", () => {
     expect(json.unknownIds).toEqual([99999999]);
     const dm = json.cards.find((c: { id: number }) => c.id === 46986414);
     expect(dm).toMatchObject({ name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", imageUrl: "u1", imageUrlSmall: "s1" });
+    expect(syncDraftPool).toHaveBeenCalledWith({
+      setNames: ["Metal Raiders"],
+      customCardIds: [83764718, 46986414, 99999999],
+      includeNames: [],
+      excludeNames: [],
+    });
   });
 });

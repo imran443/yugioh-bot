@@ -1,4 +1,4 @@
-import { LayoutDashboard, Trophy, Layers, Settings, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Trophy, Layers, Boxes, Settings, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -11,5 +11,6 @@ export const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, match: "exact" },
   { href: "/tournaments", label: "Tournaments", icon: Trophy, match: "prefix" },
   { href: "/drafts", label: "Drafts", icon: Layers, match: "prefix" },
+  { href: "/cubes", label: "My Cubes", icon: Boxes, match: "prefix" },
   { href: "/settings", label: "Settings", icon: Settings, match: "exact" },
 ];

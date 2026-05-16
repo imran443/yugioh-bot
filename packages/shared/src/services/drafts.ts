@@ -290,12 +290,12 @@ export function createDraftService(db: Database.Database) {
 
   const catalogCardIdsForDraft = (config: DraftConfig): number[] => {
     const setNames = new Set((config.setNames ?? []).map((name) => name.trim()));
-    const customCardIds = new Set(config.customCardIds ?? []);
+    const customCardIds = config.customCardIds ?? [];
+    const customCardIdSet = new Set(customCardIds);
     const includeNames = new Set((config.includeNames ?? []).map(normalizeName));
     const excludeNames = new Set((config.excludeNames ?? []).map(normalizeName));
-    const hasExplicitPool = setNames.size > 0 || customCardIds.size > 0 || includeNames.size > 0;
-
-    return db
+    const hasExplicitPool = setNames.size > 0 || customCardIds.length > 0 || includeNames.size > 0;
+    const rows = db
       .prepare("select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog")
       .all()
       .map((row: any) => row as CatalogRow)
@@ -318,14 +318,30 @@ export function createDraftService(db: Database.Database) {
           return true;
         }
 
-        if (customCardIds.has(row.ygoprodeck_id)) {
+        if (customCardIdSet.has(row.ygoprodeck_id)) {
           return true;
         }
 
         const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
         return cardSets.some((cardSet) => setNames.has(cardSet.set_name));
-      })
-      .map((row) => row.ygoprodeck_id);
+      });
+
+    if (!hasExplicitPool) {
+      return rows.map((row) => row.ygoprodeck_id);
+    }
+
+    const baseIds = new Set<number>();
+    const customEligibleIds = new Set<number>();
+    for (const row of rows) {
+      customEligibleIds.add(row.ygoprodeck_id);
+      const normalizedName = normalizeName(row.name);
+      const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
+      if (includeNames.has(normalizedName) || cardSets.some((cardSet) => setNames.has(cardSet.set_name))) {
+        baseIds.add(row.ygoprodeck_id);
+      }
+    }
+
+    return [...baseIds, ...customCardIds.filter((id) => customEligibleIds.has(id))];
   };
 
   const activePlayerRows = (draftId: number): DraftPlayerProgressRow[] =>
