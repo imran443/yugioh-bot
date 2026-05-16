@@ -18,12 +18,24 @@ const POPUP_WIDTH = 288;
 const POPUP_HEIGHT = 560;
 const POPUP_MARGIN = 16;
 
-function getPopupPosition(rect: DOMRect): { left: number; top: number } {
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function getPopupPosition(rect: DOMRect): { left: number; top: number } {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const leftOfItem = rect.left - POPUP_WIDTH - POPUP_MARGIN;
-  const left = Math.min(vw - POPUP_WIDTH - POPUP_MARGIN, Math.max(POPUP_MARGIN, leftOfItem));
-  const top = Math.min(vh - POPUP_HEIGHT - POPUP_MARGIN, Math.max(POPUP_MARGIN, rect.top + rect.height / 2 - POPUP_HEIGHT / 2));
+  // Prefer the left of the card, but flip to its right when there isn't room
+  // — otherwise the popup is clamped to the viewport edge and lands under the
+  // app sidebar (e.g. the pool preview sitting in the left column).
+  const fitsLeft = rect.left >= POPUP_WIDTH + POPUP_MARGIN * 2;
+  const desiredLeft = fitsLeft
+    ? rect.left - POPUP_WIDTH - POPUP_MARGIN
+    : rect.right + POPUP_MARGIN;
+  const verticalCenter = rect.top + rect.height / 2 - POPUP_HEIGHT / 2;
+
+  const left = clamp(desiredLeft, POPUP_MARGIN, vw - POPUP_WIDTH - POPUP_MARGIN);
+  const top = clamp(verticalCenter, POPUP_MARGIN, vh - POPUP_HEIGHT - POPUP_MARGIN);
   return { left, top };
 }
 

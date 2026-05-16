@@ -151,8 +151,8 @@ export function CreateDraftForm() {
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[1fr_360px]">
-        {/* Left column — form inputs */}
+      <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[360px_1fr] 2xl:grid-cols-[1fr_2fr]">
+        {/* Form inputs — right column on xl+ */}
         <div className="space-y-6">
           {error && (
             <div className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
@@ -263,14 +263,14 @@ export function CreateDraftForm() {
           </Button>
         </div>
 
-        {/* Right column — sticky live pool preview */}
-        <div className="sticky top-6 hidden xl:block">
+        {/* Pool preview — left column on xl+ (sticky) */}
+        <div className="sticky top-6 hidden xl:order-first xl:block">
           <CardPoolPanel
             title="Pool preview"
             cards={poolCards}
             unknownIds={poolUnknownIds}
             loading={poolLoading}
-            emptyMessage="Add sets or card IDs on the left to preview the pool."
+            emptyMessage="Add sets or card IDs on the right to preview the pool."
             countMode="copies"
             heightClassName="h-[calc(100vh-22rem)]"
           />

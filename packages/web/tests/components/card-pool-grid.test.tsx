@@ -2,7 +2,7 @@
 import React from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { CardPoolGrid } from "../../src/components/cards/card-pool-grid";
+import { CardPoolGrid, getPopupPosition } from "../../src/components/cards/card-pool-grid";
 
 vi.mock("next/image", () => ({
   default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
@@ -84,5 +84,82 @@ describe("CardPoolGrid", () => {
     const grid = screen.getByTestId("card-pool-grid");
     expect(grid.className).toContain("grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]");
     expect(grid.className).not.toContain("grid-cols-2");
+  });
+});
+
+const POPUP_W = 288;
+const POPUP_H = 560;
+const MARGIN = 16;
+
+function setViewport(width: number, height: number): void {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+}
+
+function rect(r: { left: number; right: number; top: number; height: number }): DOMRect {
+  return {
+    ...r,
+    x: r.left,
+    y: r.top,
+    width: r.right - r.left,
+    bottom: r.top + r.height,
+    toJSON: () => r,
+  } as DOMRect;
+}
+
+describe("getPopupPosition", () => {
+  it("places the popup to the left of the card when there is room", () => {
+    setViewport(1600, 900);
+    const card = rect({ left: 900, right: 1044, top: 300, height: 200 });
+
+    const { left } = getPopupPosition(card);
+
+    // Popup sits entirely to the left of the card, on-screen.
+    expect(left + POPUP_W).toBeLessThanOrEqual(card.left);
+    expect(left).toBeGreaterThanOrEqual(MARGIN);
+  });
+
+  it("flips the popup to the right of the card when the left has no room (sidebar case)", () => {
+    setViewport(1600, 900);
+    // Leftmost preview card next to the app sidebar — left placement would
+    // clamp to the viewport edge and land under the sidebar.
+    const card = rect({ left: 120, right: 264, top: 300, height: 200 });
+
+    const { left } = getPopupPosition(card);
+
+    // Popup is placed to the right of the card, clear of the left edge.
+    expect(left).toBeGreaterThanOrEqual(card.right);
+  });
+
+  it("keeps the popup on-screen even when neither side fully fits", () => {
+    setViewport(360, 640);
+    const card = rect({ left: 80, right: 224, top: 200, height: 200 });
+
+    const { left } = getPopupPosition(card);
+
+    expect(left).toBeGreaterThanOrEqual(MARGIN);
+    expect(left).toBeLessThanOrEqual(360 - POPUP_W - MARGIN);
+  });
+
+  it("vertically centers on the card and clamps to the viewport", () => {
+    setViewport(1600, 900);
+    const card = rect({ left: 900, right: 1044, top: 400, height: 200 });
+
+    const { top } = getPopupPosition(card);
+
+    // Popup's vertical center aligns with the card's center when unclamped.
+    expect(top + POPUP_H / 2).toBe(card.top + card.height / 2);
+    expect(top).toBeGreaterThanOrEqual(MARGIN);
+    expect(top).toBeLessThanOrEqual(900 - POPUP_H - MARGIN);
+  });
+
+  it("clamps the popup within the viewport when the card sits near the bottom", () => {
+    setViewport(1600, 700);
+    const card = rect({ left: 900, right: 1044, top: 660, height: 200 });
+
+    const { top } = getPopupPosition(card);
+
+    expect(top).toBeLessThanOrEqual(700 - POPUP_H - MARGIN);
+    expect(top).toBeGreaterThanOrEqual(MARGIN);
   });
 });
