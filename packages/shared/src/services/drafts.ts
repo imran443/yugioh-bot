@@ -290,42 +290,54 @@ export function createDraftService(db: Database.Database) {
 
   const catalogCardIdsForDraft = (config: DraftConfig): number[] => {
     const setNames = new Set((config.setNames ?? []).map((name) => name.trim()));
-    const customCardIds = new Set(config.customCardIds ?? []);
+    const customCounts = new Map<number, number>();
+    for (const id of config.customCardIds ?? []) {
+      customCounts.set(id, (customCounts.get(id) ?? 0) + 1);
+    }
     const includeNames = new Set((config.includeNames ?? []).map(normalizeName));
     const excludeNames = new Set((config.excludeNames ?? []).map(normalizeName));
-    const hasExplicitPool = setNames.size > 0 || customCardIds.size > 0 || includeNames.size > 0;
+    const hasExplicitPool = setNames.size > 0 || customCounts.size > 0 || includeNames.size > 0;
 
-    return db
+    const rows = db
       .prepare("select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog")
       .all()
-      .map((row: any) => row as CatalogRow)
-      .filter((row) => {
-        const normalizedName = normalizeName(row.name);
+      .map((row: any) => row as CatalogRow);
 
-        if (isExtraDeckCatalogRow(row)) {
-          return false;
-        }
+    const result: number[] = [];
 
-        if (excludeNames.has(normalizedName)) {
-          return false;
-        }
+    for (const row of rows) {
+      const normalizedName = normalizeName(row.name);
 
-        if (!hasExplicitPool) {
-          return true;
-        }
+      if (isExtraDeckCatalogRow(row)) {
+        continue;
+      }
+      if (excludeNames.has(normalizedName)) {
+        continue;
+      }
 
-        if (includeNames.has(normalizedName)) {
-          return true;
-        }
-
-        if (customCardIds.has(row.ygoprodeck_id)) {
-          return true;
-        }
-
+      // Baseline: 1 copy if the card is sourced from the no-explicit-pool
+      // catch-all, an includeNames match, or a selected set. Custom-only
+      // membership does NOT add a baseline — its copies come from the count.
+      let baseline = 0;
+      if (!hasExplicitPool) {
+        baseline = 1;
+      } else if (includeNames.has(normalizedName)) {
+        baseline = 1;
+      } else {
         const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
-        return cardSets.some((cardSet) => setNames.has(cardSet.set_name));
-      })
-      .map((row) => row.ygoprodeck_id);
+        if (cardSets.some((cardSet) => setNames.has(cardSet.set_name))) {
+          baseline = 1;
+        }
+      }
+
+      const custom = customCounts.get(row.ygoprodeck_id) ?? 0;
+      const total = baseline + custom;
+      for (let i = 0; i < total; i += 1) {
+        result.push(row.ygoprodeck_id);
+      }
+    }
+
+    return result;
   };
 
   const activePlayerRows = (draftId: number): DraftPlayerProgressRow[] =>

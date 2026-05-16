@@ -65,6 +65,28 @@ describe("pool snapshot", () => {
     expect(cardIds).not.toContain(999);
   });
 
+  it("resolvePoolCardIds is a multiset: set baseline 1 + additive custom repeats", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    seedDb(db); // cards 1..20 in "Set A"
+    const drafts = createDraftService(db);
+
+    // Card 1 is in Set A (baseline 1) and pasted 3× => 4 copies.
+    // Card 999 is not in any catalog row => contributes nothing.
+    // Card 5 is in Set A only => 1 copy.
+    const ids = drafts.resolvePoolCardIds({
+      setNames: ["Set A"],
+      customCardIds: [1, 1, 1, 999],
+    });
+
+    const counts = new Map<number, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+
+    expect(counts.get(1)).toBe(4);
+    expect(counts.get(5)).toBe(1);
+    expect(counts.has(999)).toBe(false);
+  });
+
   it("openWave falls back to catalog when poolCardIds is absent (old draft)", () => {
     const db = new Database(":memory:");
     migrate(db);
