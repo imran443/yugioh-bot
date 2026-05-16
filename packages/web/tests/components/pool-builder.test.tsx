@@ -66,6 +66,25 @@ describe("PoolBuilder", () => {
     expect(screen.getAllByText(/99999999/).length).toBeGreaterThan(0); // unknown placeholder
   });
 
+  it("shows one tile with a ×N badge for repeated custom ids", async () => {
+    stubFetch();
+    const onChange = vi.fn();
+    render(
+      <PoolBuilder
+        value={{ setNames: [], customCardText: "46986414\n46986414\n46986414" }}
+        onChange={onChange}
+      />,
+    );
+
+    await act(async () => { vi.advanceTimersByTime(400); });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /preview dark magician/i })).toBeTruthy());
+    // Repeats are no longer deduped: the same card type renders as a single
+    // tile, but with a ×3 multiplicity badge derived client-side.
+    expect(screen.getAllByRole("button", { name: /preview dark magician/i }).length).toBe(1);
+    expect(screen.getByText("×3")).toBeTruthy();
+  });
+
   it("shows an error when the API returns non-ok", async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
 
