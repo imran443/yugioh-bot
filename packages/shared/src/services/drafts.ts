@@ -354,14 +354,6 @@ export function createDraftService(db: Database.Database) {
       .map((row: any) => row as DraftPlayerProgressRow);
 
   const openWave = (draftId: number, waveNumber: number, playerCount: number, config: DraftConfig) => {
-    const catalogCardIds = config.poolCardIds && config.poolCardIds.length > 0
-      ? config.poolCardIds
-      : catalogCardIdsForDraft(config);
-
-    if (catalogCardIds.length === 0) {
-      throw new Error("Draft pool is empty");
-    }
-
     const packSize = config.packSize ?? defaultDraftConfig.packSize;
     const passDirection = waveNumber % 2 === 0 && config.alternatePassDirection ? -1 : 1;
     const insertPack = db.prepare(
@@ -382,8 +374,44 @@ export function createDraftService(db: Database.Database) {
       `,
     );
 
+    const hasCube = db.prepare("select 1 from draft_cube where draft_id = ? limit 1").get(draftId);
+
+    if (hasCube) {
+      const selectSlice = db.prepare(
+        "select catalog_card_id from draft_cube where draft_id = ? and position >= ? and position < ? order by position",
+      );
+      for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
+        const globalPack = (waveNumber - 1) * playerCount + playerIndex;
+        const sliceRows = selectSlice.all(
+          draftId,
+          globalPack * packSize,
+          (globalPack + 1) * packSize,
+        ) as Array<{ catalog_card_id: number }>;
+        const packId = Number(
+          insertPack.run(draftId, waveNumber, playerIndex, playerIndex, passDirection).lastInsertRowid,
+        );
+        sliceRows.forEach((row, cardIndex) => {
+          insertDraftCard.run(draftId, waveNumber, packId, row.catalog_card_id, cardIndex);
+        });
+      }
+      return;
+    }
+
+    // Legacy path: drafts already active before the cube model deployed have
+    // no draft_cube rows and finish all remaining waves on the old generator.
+    const catalogCardIds =
+      config.poolCardIds && config.poolCardIds.length > 0
+        ? config.poolCardIds
+        : catalogCardIdsForDraft(config);
+
+    if (catalogCardIds.length === 0) {
+      throw new Error("Draft pool is empty");
+    }
+
     for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
-      const packId = Number(insertPack.run(draftId, waveNumber, playerIndex, playerIndex, passDirection).lastInsertRowid);
+      const packId = Number(
+        insertPack.run(draftId, waveNumber, playerIndex, playerIndex, passDirection).lastInsertRowid,
+      );
 
       for (let cardIndex = 0; cardIndex < packSize; cardIndex += 1) {
         const catalogCardId = catalogCardIds[Math.floor(Math.random() * catalogCardIds.length)];

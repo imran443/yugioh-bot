@@ -357,4 +357,24 @@ describe("shared draft service", () => {
     const draftRow = app.db.prepare("select status from drafts where id = ?").get(draft.id) as { status: string };
     expect(draftRow.status).toBe("completed");
   });
+
+  it("openWave falls back to the legacy generator when no draft_cube rows exist", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "legacy night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 80);
+    app.drafts.start(draft.id);
+
+    // No draft_cube rows are written by Task 5's startDraft, so the legacy
+    // path runs: each player still gets a packSize pack in wave 1.
+    const cubeCount = (
+      app.db.prepare("select count(*) as n from draft_cube where draft_id = ?").get(draft.id) as { n: number }
+    ).n;
+    expect(cubeCount).toBe(0);
+    expect(app.drafts.currentPackOptions(draft.id, yugi.id)).toHaveLength(8);
+    expect(app.drafts.currentPackOptions(draft.id, kaiba.id)).toHaveLength(8);
+  });
 });
