@@ -159,7 +159,7 @@ export function CardPoolGrid({
           </span>
         )}
         {showSkeleton ? (
-          <div data-testid="card-pool-grid-skeleton" className="grid grid-cols-2 gap-3 p-3 2xl:grid-cols-3">
+          <div data-testid="card-pool-grid-skeleton" className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3 p-3">
             {Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="aspect-[421/614] w-full animate-pulse rounded-md bg-bg-elevated" />
             ))}
@@ -169,7 +169,7 @@ export function CardPoolGrid({
         ) : visible.length === 0 && unknownIds.length === 0 ? (
           <p className="px-3 py-4 text-sm text-text-secondary">No cards match.</p>
         ) : (
-          <div data-testid="card-pool-grid" className="grid grid-cols-2 gap-3 p-3 2xl:grid-cols-3">
+          <div data-testid="card-pool-grid" className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3 p-3">
             {visible.map((card) => (
               <button
                 key={card.id}

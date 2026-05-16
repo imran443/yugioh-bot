@@ -78,4 +78,11 @@ describe("CardPoolGrid", () => {
     // after dismiss, only the button label text remains
     expect(screen.getAllByText("Mirror Force").length).toBe(1);
   });
+
+  it("uses an auto-fill responsive grid (no fixed column count)", () => {
+    render(<CardPoolGrid cards={cards} />);
+    const grid = screen.getByTestId("card-pool-grid");
+    expect(grid.className).toContain("grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]");
+    expect(grid.className).not.toContain("grid-cols-2");
+  });
 });
