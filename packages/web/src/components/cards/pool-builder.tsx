@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { parseCustomCardIds } from "@/lib/custom-card-pool";
+import { parseCustomCardIds, toCardCounts } from "@/lib/custom-card-pool";
 import { getCached, putCards } from "@/lib/cards-cache";
 import type { CardSummary } from "@/lib/card-types";
 import { SetPicker } from "@/components/draft/set-picker";
@@ -68,8 +68,7 @@ export function PoolBuilder({
         putCards(data.cards);
         const byId = new Map<number, CardSummary>();
         for (const c of [...hits, ...data.cards]) byId.set(c.id, c);
-        const qtyMap = new Map<number, number>();
-        for (const id of customCardIds) qtyMap.set(id, (qtyMap.get(id) ?? 0) + 1);
+        const qtyMap = toCardCounts(customCardIds);
         setCards([...byId.values()].map((c) => ({ ...c, qty: qtyMap.get(c.id) ?? 1 })));
         setUnknownIds(data.unknownIds);
       } catch {
