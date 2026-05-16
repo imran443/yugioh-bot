@@ -3,15 +3,14 @@ import { describe, expect, it } from "vitest";
 import { migrate } from "../src/db/index.js";
 import { createDraftService } from "../src/services/drafts.js";
 
-function seedDb(db: Database.Database) {
+function seedDb(db: Database.Database, count = 20) {
   db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('g1', 'u1', 'Alice')").run();
   db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('g1', 'u2', 'Bob')").run();
-  // Insert catalog cards with set membership
   const insertCard = db.prepare(
     `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
      values (?, ?, 'Effect Monster', 'effect', '', '', ?, current_timestamp)`,
   );
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= count; i++) {
     insertCard.run(i, `Card ${i}`, JSON.stringify([{ set_name: "Set A" }]));
   }
 }
@@ -30,7 +29,7 @@ describe("pool snapshot", () => {
   it("openWave uses poolCardIds when present, ignoring catalog changes", () => {
     const db = new Database(":memory:");
     migrate(db);
-    seedDb(db);
+    seedDb(db, 80);
 
     const drafts = createDraftService(db);
     const poolCardIds = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
@@ -90,7 +89,7 @@ describe("pool snapshot", () => {
   it("openWave falls back to catalog when poolCardIds is absent (old draft)", () => {
     const db = new Database(":memory:");
     migrate(db);
-    seedDb(db);
+    seedDb(db, 80);
 
     const drafts = createDraftService(db);
     const alice = db.prepare("select id from players where discord_user_id = 'u1'").get() as { id: number };

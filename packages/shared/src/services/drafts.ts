@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
 import { generateWebSlug } from "../util/web-slug.js";
+import { validateCube, buildDraftPacks } from "./cube.js";
 
 export type DraftStatus = "pending" | "active" | "cancelled" | "completed";
 export type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
@@ -452,6 +453,32 @@ export function createDraftService(db: Database.Database) {
 
     for (const [seatIndex, playerId] of playerIds.entries()) {
       assignSeat.run(seatIndex, draftId, playerId);
+    }
+
+    const packSize = draft.config.packSize ?? defaultDraftConfig.packSize;
+    const packsPerPlayer = draft.config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer;
+    const totalPacks = playerIds.length * packsPerPlayer;
+
+    const poolCardIds =
+      draft.config.poolCardIds && draft.config.poolCardIds.length > 0
+        ? draft.config.poolCardIds
+        : catalogCardIdsForDraft(draft.config);
+
+    const validation = validateCube(poolCardIds, packSize, totalPacks);
+    if (!validation.ok) {
+      throw new Error(validation.error);
+    }
+
+    const packs = buildDraftPacks(poolCardIds, packSize, totalPacks, draftId);
+    const insertCube = db.prepare(
+      "insert into draft_cube (draft_id, position, catalog_card_id) values (?, ?, ?)",
+    );
+    let position = 0;
+    for (const pack of packs) {
+      for (const cardId of pack) {
+        insertCube.run(draftId, position, cardId);
+        position += 1;
+      }
     }
 
     openWave(draftId, 1, playerIds.length, draft.config);
