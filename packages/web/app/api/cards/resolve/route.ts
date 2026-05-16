@@ -26,8 +26,9 @@ export async function POST(request: Request) {
     setNames,
     customCardIds,
   });
+  const distinctIds = [...new Set(resolvedIds)];
 
-  const cards: CardSummary[] = catalog.findByIds(resolvedIds).map((c) => ({
+  const cards: CardSummary[] = catalog.findByIds(distinctIds).map((c) => ({
     id: c.ygoprodeckId,
     name: c.name,
     type: c.type,
