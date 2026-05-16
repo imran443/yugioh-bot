@@ -312,6 +312,17 @@ describe("shared draft service", () => {
     }
   });
 
+  it("creates the draft_cube table on migrate", () => {
+    const app = setup();
+    const row = app.db
+      .prepare("select name from sqlite_master where type = 'table' and name = 'draft_cube'")
+      .get() as { name: string } | undefined;
+    expect(row?.name).toBe("draft_cube");
+
+    const columns = (app.db.pragma("table_info(draft_cube)") as Array<{ name: string }>).map((c) => c.name);
+    expect(columns).toEqual(expect.arrayContaining(["draft_id", "position", "catalog_card_id"]));
+  });
+
   it("respects a custom cardsPerPlayer cap above the default 40", () => {
     const app = setup();
     const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
