@@ -78,4 +78,37 @@ describe("CardPoolGrid", () => {
     // after dismiss, only the button label text remains
     expect(screen.getAllByText("Mirror Force").length).toBe(1);
   });
+
+  it("uses the custom card click action when provided", () => {
+    const onCardClick = vi.fn();
+    render(<CardPoolGrid cards={cards} onCardClick={onCardClick} cardActionLabel={(card) => `Remove ${card.name} from cube`} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /remove mirror force from cube/i }));
+
+    expect(onCardClick).toHaveBeenCalledTimes(1);
+    expect(onCardClick).toHaveBeenCalledWith(cards[1]);
+    expect(screen.getAllByText("Mirror Force")).toHaveLength(1);
+  });
+
+  it("does not open preview on hover in cube edit mode", () => {
+    render(<CardPoolGrid cards={cards} cubeEditMode />);
+
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /preview mirror force/i }));
+
+    expect(screen.getAllByText("Mirror Force")).toHaveLength(1);
+  });
+
+  it("does not open preview on click in cube edit mode", () => {
+    render(<CardPoolGrid cards={cards} cubeEditMode />);
+
+    fireEvent.click(screen.getByRole("button", { name: /preview mirror force/i }));
+
+    expect(screen.getAllByText("Mirror Force")).toHaveLength(1);
+  });
+
+  it("prefers the large image in cube edit mode", () => {
+    render(<CardPoolGrid cards={cards} cubeEditMode />);
+
+    expect(screen.getByRole("img", { name: "Bujingi Crane" })).toHaveAttribute("src", "u1");
+  });
 });

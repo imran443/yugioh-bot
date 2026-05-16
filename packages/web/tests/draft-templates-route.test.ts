@@ -78,4 +78,59 @@ describe("/api/draft-templates", () => {
     expect(stored).not.toHaveProperty("packSize");
     expect(stored).toHaveProperty("customCardIds");
   });
+
+  it("rejects duplicate template names instead of overwriting existing pools", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-templates-route-"));
+    const dbPath = join(tempDir, "draft-templates-route.sqlite");
+    tempDirs.push(tempDir);
+
+    process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "guild-1";
+
+    const Database = (await import("better-sqlite3")).default;
+    const { migrate } = await import("@yugidraft/shared/db");
+    const db = new Database(dbPath);
+    migrate(db);
+    db.close();
+
+    const { POST } = await import("../app/api/draft-templates/route");
+    const first = await POST(new Request("http://localhost/api/draft-templates", {
+      method: "POST",
+      body: JSON.stringify({ name: "Goat Cube", config: { setNames: [], customCardIds: [46986414] } }),
+    }) as NextRequest);
+    const second = await POST(new Request("http://localhost/api/draft-templates", {
+      method: "POST",
+      body: JSON.stringify({ name: "Goat Cube", config: { setNames: [], customCardIds: [83764718] } }),
+    }) as NextRequest);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(409);
+    await expect(second.json()).resolves.toMatchObject({ error: 'A pool named "Goat Cube" already exists' });
+  });
+
+  it("creates an empty pool when the title is unique", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-templates-route-"));
+    const dbPath = join(tempDir, "draft-templates-route.sqlite");
+    tempDirs.push(tempDir);
+
+    process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "guild-1";
+
+    const Database = (await import("better-sqlite3")).default;
+    const { migrate } = await import("@yugidraft/shared/db");
+    const db = new Database(dbPath);
+    migrate(db);
+    db.close();
+
+    const { POST } = await import("../app/api/draft-templates/route");
+    const response = await POST(new Request("http://localhost/api/draft-templates", {
+      method: "POST",
+      body: JSON.stringify({ name: "Empty Cube", config: { setNames: [], customCardIds: [] } }),
+    }) as NextRequest);
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      template: { name: "Empty Cube", setNames: [], customCardIds: [] },
+    });
+  });
 });

@@ -22,12 +22,19 @@ export async function POST(request: Request) {
   const drafts = createDraftService(db);
   const catalog = createCardCatalogService(db);
 
+  await catalog.syncDraftPool({
+    setNames,
+    customCardIds,
+    includeNames: [],
+    excludeNames: [],
+  });
+
   const resolvedIds = drafts.resolvePoolCardIds({
     setNames,
     customCardIds,
   });
 
-  const cards: CardSummary[] = catalog.findByIds(resolvedIds).map((c) => ({
+  const cards: CardSummary[] = catalog.findByIds([...new Set(resolvedIds)]).map((c) => ({
     id: c.ygoprodeckId,
     name: c.name,
     type: c.type,

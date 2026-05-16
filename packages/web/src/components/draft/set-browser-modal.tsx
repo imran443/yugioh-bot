@@ -69,7 +69,7 @@ export function SetBrowserModal({ open, onClose, selectedSets, onToggleSet }: Se
     }
     let cancelled = false;
     setPreviewLoading(true);
-    fetch(`/api/sets/${encodeURIComponent(previewSet)}/preview`)
+    fetch(`/api/sets/${encodeURIComponent(previewSet)}`)
       .then((res) => res.json())
       .then((data) => {
         if (!cancelled) {

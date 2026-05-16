@@ -7,7 +7,6 @@ const cardIdSeparatorPattern = /[\s,]+/;
 const cardIdPattern = /^\d+$/;
 
 export function parseCustomCardIds(text: string): CustomCardPoolParseResult {
-  const seen = new Set<number>();
   const cardIds: number[] = [];
   const errors: string[] = [];
 
@@ -23,10 +22,7 @@ export function parseCustomCardIds(text: string): CustomCardPoolParseResult {
     }
 
     const cardId = Number(value);
-    if (!seen.has(cardId)) {
-      seen.add(cardId);
-      cardIds.push(cardId);
-    }
+    cardIds.push(cardId);
   }
 
   return { cardIds, errors };

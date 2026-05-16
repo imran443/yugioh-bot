@@ -71,19 +71,23 @@ export async function POST(request: NextRequest) {
   const setNames = Array.isArray(incoming.setNames) ? incoming.setNames.filter((s): s is string => typeof s === "string") : [];
   const customCardIds = Array.isArray(incoming.customCardIds) ? incoming.customCardIds.filter((n): n is number => Number.isInteger(n)) : [];
 
-  if (!name || (setNames.length === 0 && customCardIds.length === 0)) {
-    return NextResponse.json({ error: "name and a draft pool are required" }, { status: 400 });
+  if (!name) {
+    return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
   const db = getDb();
+  const existing = db
+    .prepare("select id from draft_templates where guild_id = ? and name = ?")
+    .get(env.discordGuildId, name) as { id: number } | undefined;
+  if (existing) {
+    return NextResponse.json({ error: `A pool named "${name}" already exists` }, { status: 409 });
+  }
+
   db
     .prepare(
       `
         insert into draft_templates (guild_id, name, config_json, created_by_user_id)
         values (?, ?, ?, ?)
-        on conflict(guild_id, name) do update set
-          config_json = excluded.config_json,
-          created_by_user_id = excluded.created_by_user_id
       `,
     )
     .run(env.discordGuildId, name, JSON.stringify({ setNames, customCardIds }), session.user.id);

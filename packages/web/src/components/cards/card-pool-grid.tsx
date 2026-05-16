@@ -34,7 +34,11 @@ interface CardPoolGridProps {
   emptyMessage?: string;
   className?: string;
   heightClassName?: string;
+  gridClassName?: string;
   showSummary?: boolean;
+  onCardClick?: (card: CardSummary) => void;
+  cardActionLabel?: (card: CardSummary) => string;
+  cubeEditMode?: boolean;
 }
 
 const FILTER_BUTTONS: Array<{ label: string; value: PoolFilter }> = [
@@ -58,7 +62,11 @@ export function CardPoolGrid({
   emptyMessage = "No cards.",
   className,
   heightClassName = "h-[26rem]",
+  gridClassName = "grid grid-cols-2 gap-3 p-3 2xl:grid-cols-3",
   showSummary = true,
+  onCardClick,
+  cardActionLabel,
+  cubeEditMode = false,
 }: CardPoolGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<PoolFilter>("all");
@@ -104,6 +112,8 @@ export function CardPoolGrid({
   }, [cards, deferredSearch, activeFilter, activeSort]);
 
   const showSkeleton = loading && cards.length === 0;
+  const previewEnabled = !cubeEditMode && !onCardClick;
+  const hoverEnabled = !cubeEditMode;
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
@@ -169,25 +179,44 @@ export function CardPoolGrid({
         ) : visible.length === 0 && unknownIds.length === 0 ? (
           <p className="px-3 py-4 text-sm text-text-secondary">No cards match.</p>
         ) : (
-          <div data-testid="card-pool-grid" className="grid grid-cols-2 gap-3 p-3 2xl:grid-cols-3">
+          <div data-testid="card-pool-grid" className={gridClassName}>
             {visible.map((card) => (
               <button
                 key={card.id}
                 type="button"
-                aria-label={`Preview ${card.name}`}
-                className="group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
-                onClick={(e) => { setTapped(card); setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect())); }}
-                onMouseEnter={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
-                onMouseLeave={handleLeave}
-                onFocus={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
-                onBlur={handleLeave}
+                aria-label={onCardClick ? cardActionLabel?.(card) ?? `Select ${card.name}` : `Preview ${card.name}`}
+                className={cn(
+                  "group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary",
+                  cubeEditMode ? "cursor-pointer" : "transition-colors duration-150 hover:bg-bg-elevated",
+                )}
+                onClick={(e) => {
+                  if (onCardClick) {
+                    onCardClick(card);
+                    return;
+                  }
+                  if (!previewEnabled) {
+                    return;
+                  }
+                  setTapped(card);
+                  setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect()));
+                }}
+                onMouseEnter={hoverEnabled ? (e) => handleEnter(card, e.currentTarget.getBoundingClientRect()) : undefined}
+                onMouseLeave={hoverEnabled ? handleLeave : undefined}
+                onFocus={hoverEnabled ? (e) => handleEnter(card, e.currentTarget.getBoundingClientRect()) : undefined}
+                onBlur={hoverEnabled ? handleLeave : undefined}
               >
                 <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
                   {imageErrors.has(card.id) ? (
                     <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">?</div>
                   ) : (
-                    <Image src={card.imageUrlSmall || card.imageUrl} alt="" fill className="object-cover"
-                      sizes="(min-width: 1536px) 120px, 160px" onError={() => handleImageError(card.id)} />
+                    <Image
+                      src={cubeEditMode ? card.imageUrl || card.imageUrlSmall : card.imageUrlSmall || card.imageUrl}
+                      alt={card.name}
+                      fill
+                      className="object-cover"
+                      sizes={cubeEditMode ? "(min-width: 1280px) 220px, (min-width: 1024px) 180px, 45vw" : "(min-width: 1536px) 120px, 160px"}
+                      onError={() => handleImageError(card.id)}
+                    />
                   )}
                   {(card.qty ?? 1) > 1 && (
                     <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 text-[0.65rem] font-bold tabular-nums text-white">
@@ -216,7 +245,7 @@ export function CardPoolGrid({
         )}
       </div>
 
-      {hoveredCard && popupPosition && !tapped && (
+      {previewEnabled && hoveredCard && popupPosition && !tapped && (
         <CardHoverPopup
           card={hoveredCard}
           position={popupPosition}
@@ -224,7 +253,7 @@ export function CardPoolGrid({
           onImageError={() => handleImageError(hoveredCard.id)}
         />
       )}
-      {tapped && popupPosition && (
+      {previewEnabled && tapped && popupPosition && (
         <CardHoverPopup
           card={tapped}
           position={popupPosition}
