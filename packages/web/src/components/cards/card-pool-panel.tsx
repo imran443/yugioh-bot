@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { CardPoolGrid } from "@/components/cards/card-pool-grid";
 import type { CardSummary } from "@/lib/card-types";
@@ -19,7 +19,7 @@ interface CardPoolPanelProps {
   className?: string;
 }
 
-export function CardPoolPanel({
+function CardPoolPanelBase({
   cards,
   title,
   loading = false,
@@ -66,3 +66,7 @@ export function CardPoolPanel({
     </div>
   );
 }
+
+// Memoized alongside CardPoolGrid so a stable pool doesn't re-render through
+// this wrapper when an unrelated parent (the create-draft form) updates.
+export const CardPoolPanel = memo(CardPoolPanelBase);

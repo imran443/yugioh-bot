@@ -4,10 +4,12 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CardPoolGrid, getPopupPosition } from "../../src/components/cards/card-pool-grid";
 
+const imageRenders = vi.hoisted(() => ({ count: 0 }));
 vi.mock("next/image", () => ({
-  default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
-    <img alt={alt} {...props} />
-  ),
+  default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => {
+    imageRenders.count += 1;
+    return <img alt={alt} {...props} />;
+  },
 }));
 import type { CardSummary } from "../../src/lib/card-types";
 
@@ -161,5 +163,29 @@ describe("getPopupPosition", () => {
 
     expect(top).toBeLessThanOrEqual(700 - POPUP_H - MARGIN);
     expect(top).toBeGreaterThanOrEqual(MARGIN);
+  });
+});
+
+describe("CardPoolGrid memoization", () => {
+  it("does not re-render its tiles when its parent re-renders with the same props", () => {
+    function Harness() {
+      const [tick, setTick] = React.useState(0);
+      return (
+        <>
+          <button onClick={() => setTick((t) => t + 1)}>bump {tick}</button>
+          <CardPoolGrid cards={cards} />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const tilesAfterMount = imageRenders.count;
+
+    // Parent re-renders with an identical `cards` reference (mirrors typing in
+    // an unrelated field on the create-draft form). The memoized grid must not
+    // re-render its tiles — this is the typing-lag regression.
+    fireEvent.click(screen.getByText(/bump/));
+
+    expect(imageRenders.count).toBe(tilesAfterMount);
   });
 });

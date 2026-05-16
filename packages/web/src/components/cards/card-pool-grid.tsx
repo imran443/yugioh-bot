@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
 import Image from "next/image";
 import { ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -63,7 +63,7 @@ const SORT_BUTTONS: Array<{ label: string; value: PoolSort }> = [
   { label: "Type", value: "type" },
 ];
 
-export function CardPoolGrid({
+function CardPoolGridBase({
   cards,
   loading = false,
   unknownIds = [],
@@ -249,3 +249,8 @@ export function CardPoolGrid({
     </div>
   );
 }
+
+// Memoized: this grid renders one next/image per card (hundreds for a cube
+// preview). Without memo, unrelated parent state — e.g. typing in the
+// create-draft form's name field — re-renders every tile and the page lags.
+export const CardPoolGrid = memo(CardPoolGridBase);
