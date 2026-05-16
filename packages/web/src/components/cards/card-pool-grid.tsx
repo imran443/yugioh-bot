@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -117,6 +118,66 @@ function CardPoolGridBase({
 
   const showSkeleton = loading && cards.length === 0;
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<{ columns: number; innerWidth: number }>({
+    columns: 1,
+    innerWidth: 0,
+  });
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const GAP = 12; // gap-3
+    const TILE_MIN = 144; // 9rem
+    const PAD_X = 24; // px-3 on each row, both sides
+    const measure = (): void => {
+      const inner = Math.max(0, el.clientWidth - PAD_X);
+      const columns = Math.max(1, Math.floor((inner + GAP) / (TILE_MIN + GAP)));
+      setLayout({ columns, innerWidth: inner });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  type GridEntry =
+    | { kind: "card"; card: CardSummary }
+    | { kind: "unknown"; id: number };
+
+  const entries = useMemo<GridEntry[]>(
+    () => [
+      ...visible.map((card): GridEntry => ({ kind: "card", card })),
+      ...unknownIds.map((id): GridEntry => ({ kind: "unknown", id })),
+    ],
+    [visible, unknownIds],
+  );
+
+  const { columns, innerWidth } = layout;
+  const estimatedRowHeight = useMemo(() => {
+    const GAP = 12;
+    const tileW = innerWidth > 0 ? (innerWidth - (columns - 1) * GAP) / columns : 144;
+    const imageH = (tileW * 614) / 421;
+    // image + img/label gap (8) + label block (~64) + button padding (16) + row gap (12)
+    return Math.round(imageH + 8 + 64 + 16 + GAP);
+  }, [columns, innerWidth]);
+
+  const rowCount = Math.ceil(entries.length / columns);
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => estimatedRowHeight,
+    overscan: 4,
+  });
+
+  // When the container has no measurable height (e.g. jsdom without ResizeObserver/
+  // offsetHeight mocks), the virtualizer produces 0 virtual items. Fall back to
+  // rendering all rows so non-windowing tests that happen to render this component
+  // still find cards in the DOM.
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const isVirtualizing = virtualItems.length > 0 || rowCount === 0;
+
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {showSummary && (
@@ -164,7 +225,7 @@ function CardPoolGridBase({
         ))}
       </div>
 
-      <div className={cn("relative overflow-y-auto rounded-lg border border-border bg-surface/70", heightClassName)}>
+      <div ref={scrollRef} className={cn("relative overflow-y-auto rounded-lg border border-border bg-surface/70", heightClassName)}>
         {loading && cards.length > 0 && (
           <span className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-bg-elevated px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-text-secondary">
             Updating…
@@ -181,55 +242,102 @@ function CardPoolGridBase({
         ) : visible.length === 0 && unknownIds.length === 0 ? (
           <p className="px-3 py-4 text-sm text-text-secondary">No cards match.</p>
         ) : (
-          <div data-testid="card-pool-grid" className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3 p-3">
-            {visible.map((card) => (
-              <button
-                key={card.id}
-                type="button"
-                aria-label={`Preview ${card.name}`}
-                className="group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
-                onClick={(e) => { setTapped(card); setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect())); }}
-                onMouseEnter={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
-                onMouseLeave={handleLeave}
-                onFocus={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
-                onBlur={handleLeave}
-              >
-                <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
-                  {imageErrors.has(card.id) ? (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">?</div>
-                  ) : (
-                    <CardArt
-                      smallSrc={card.imageUrlSmall || card.imageUrl}
-                      fullSrc={card.imageUrl}
-                      alt=""
-                      sizes="(min-width: 1536px) 120px, 160px"
-                      className="object-cover"
-                      onError={() => handleImageError(card.id)}
-                    />
-                  )}
-                  {(card.qty ?? 1) > 1 && (
-                    <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 text-[0.65rem] font-bold tabular-nums text-white">
-                      ×{card.qty}
-                    </span>
+          <div
+            data-testid="card-pool-grid"
+            className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]"
+            style={{ height: rowVirtualizer.getTotalSize() + 24, position: "relative" }}
+          >
+            {(isVirtualizing ? virtualItems : Array.from({ length: rowCount }, (_, i) => ({
+              key: i,
+              index: i,
+              start: i * estimatedRowHeight,
+              measureElement: undefined as unknown as (el: Element | null) => void,
+            }))).map((vRow) => {
+              const start = vRow.index * columns;
+              const rowEntries = entries.slice(start, start + columns);
+              return (
+                <div
+                  key={vRow.key}
+                  data-index={vRow.index}
+                  ref={isVirtualizing ? rowVirtualizer.measureElement : undefined}
+                  className="grid gap-3 px-3"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${vRow.start + 12}px)`,
+                    paddingBottom: 12,
+                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {rowEntries.map((entry) =>
+                    entry.kind === "card" ? (
+                      <button
+                        key={entry.card.id}
+                        type="button"
+                        aria-label={`Preview ${entry.card.name}`}
+                        className="group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
+                        onClick={(e) => {
+                          setTapped(entry.card);
+                          setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect()));
+                        }}
+                        onMouseEnter={(e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect())}
+                        onMouseLeave={handleLeave}
+                        onFocus={(e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect())}
+                        onBlur={handleLeave}
+                      >
+                        <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
+                          {imageErrors.has(entry.card.id) ? (
+                            <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">?</div>
+                          ) : (
+                            <CardArt
+                              smallSrc={entry.card.imageUrlSmall || entry.card.imageUrl}
+                              fullSrc={entry.card.imageUrl}
+                              alt=""
+                              sizes="(min-width: 1536px) 120px, 160px"
+                              className="object-cover"
+                              onError={() => handleImageError(entry.card.id)}
+                            />
+                          )}
+                          {(entry.card.qty ?? 1) > 1 && (
+                            <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 text-[0.65rem] font-bold tabular-nums text-white">
+                              ×{entry.card.qty}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 text-sm font-medium leading-snug text-text-primary">
+                            {entry.card.name}
+                          </p>
+                          <span
+                            className={cn(
+                              "mt-1 inline-flex rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase",
+                              getTypeBadgeClass(entry.card.type),
+                            )}
+                          >
+                            {getTypeLabel(entry.card.type)}
+                          </span>
+                        </div>
+                      </button>
+                    ) : (
+                      <div
+                        key={`unknown-${entry.id}`}
+                        data-testid="card-pool-grid-unknown"
+                        title={`Passcode ${entry.id} is not in the catalog yet`}
+                        aria-label={`Passcode ${entry.id} not in catalog yet`}
+                        className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border/70 bg-bg-elevated/20 p-2 text-center"
+                      >
+                        <div className="flex aspect-[421/614] w-full items-center justify-center rounded-md bg-bg-elevated/40 font-mono text-xs text-text-muted">
+                          {entry.id}
+                        </div>
+                        <p className="text-[0.65rem] text-text-muted">not in catalog yet</p>
+                      </div>
+                    ),
                   )}
                 </div>
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm font-medium leading-snug text-text-primary">{card.name}</p>
-                  <span className={cn("mt-1 inline-flex rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase", getTypeBadgeClass(card.type))}>
-                    {getTypeLabel(card.type)}
-                  </span>
-                </div>
-              </button>
-            ))}
-            {unknownIds.map((id) => (
-              <div key={`unknown-${id}`} data-testid="card-pool-grid-unknown"
-                title={`Passcode ${id} is not in the catalog yet`}
-                aria-label={`Passcode ${id} not in catalog yet`}
-                className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border/70 bg-bg-elevated/20 p-2 text-center">
-                <div className="flex aspect-[421/614] w-full items-center justify-center rounded-md bg-bg-elevated/40 font-mono text-xs text-text-muted">{id}</div>
-                <p className="text-[0.65rem] text-text-muted">not in catalog yet</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

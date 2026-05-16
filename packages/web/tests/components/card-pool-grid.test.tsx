@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import React from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CardPoolGrid, getPopupPosition } from "../../src/components/cards/card-pool-grid";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
 const imageRenders = vi.hoisted(() => ({ count: 0 }));
 vi.mock("next/image", () => ({
@@ -20,6 +21,7 @@ const cards: CardSummary[] = [
 ];
 
 describe("CardPoolGrid", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
   it("renders a tile per card with an accessible preview label", () => {
     render(<CardPoolGrid cards={cards} />);
     expect(screen.getByRole("button", { name: /preview bujingi crane/i })).toBeTruthy();
@@ -81,11 +83,20 @@ describe("CardPoolGrid", () => {
     expect(screen.getAllByText("Mirror Force").length).toBe(1);
   });
 
-  it("uses an auto-fill responsive grid (no fixed column count)", () => {
-    render(<CardPoolGrid cards={cards} />);
-    const grid = screen.getByTestId("card-pool-grid");
-    expect(grid.className).toContain("grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]");
-    expect(grid.className).not.toContain("grid-cols-2");
+  it("windows the grid: renders only a subset of a large pool", () => {
+    const many: CardSummary[] = Array.from({ length: 400 }, (_, i) => ({
+      id: i + 1,
+      name: `Card ${i + 1}`,
+      type: "Spell Card",
+      frameType: "spell",
+      effectText: "...",
+      imageUrl: `u${i}`,
+      imageUrlSmall: `s${i}`,
+    }));
+    render(<CardPoolGrid cards={many} />);
+    const rendered = screen.getAllByRole("button", { name: /^preview card/i });
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered.length).toBeLessThan(120); // far fewer than 400 → windowed
   });
 });
 
@@ -167,6 +178,7 @@ describe("getPopupPosition", () => {
 });
 
 describe("CardPoolGrid memoization", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
   it("does not re-render its tiles when its parent re-renders with the same props", () => {
     function Harness() {
       const [tick, setTick] = React.useState(0);
