@@ -30,8 +30,8 @@ describe("draft cleanup service", () => {
     const drafts = createDraftService(db);
     const dir = await mkdtemp(path.join(tmpdir(), "draft-cleanup-"));
     try {
-      // Seed catalog
-      for (let id = 1; id <= 5; id += 1) {
+      // Seed catalog (cube needs packSize × totalPacks = 8 × 10 = 80 cards)
+      for (let id = 1; id <= 80; id += 1) {
         db.prepare(
           `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
            values (?, 'Card', 'Effect Monster', 'effect', 'url', 'small', '[]', '2026-01-01')`,
@@ -48,7 +48,7 @@ describe("draft cleanup service", () => {
       const waveCards = drafts.currentWaveCards(draft.id);
       const referencedIds = new Set(waveCards.map((c) => c.catalogCardId));
 
-      for (let id = 1; id <= 5; id += 1) {
+      for (let id = 1; id <= 80; id += 1) {
         await writeFile(path.join(dir, `${id}.png`), Buffer.alloc(10));
       }
 

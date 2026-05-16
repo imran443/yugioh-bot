@@ -244,6 +244,7 @@ describe("command handlers", () => {
       excludeNames: ["Blue-Eyes White Dragon"],
       packSize: 8,
       packsPerPlayer: 5,
+      cardsPerPlayer: 40,
       pickSeconds: 45,
       alternatePassDirection: true,
       randomizeSeats: false,
@@ -298,6 +299,7 @@ describe("command handlers", () => {
       excludeNames: [],
       packSize: 8,
       packsPerPlayer: 5,
+      cardsPerPlayer: 40,
       pickSeconds: 45,
       alternatePassDirection: true,
       randomizeSeats: false,
@@ -330,7 +332,7 @@ describe("command handlers", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     const { interaction, replies } = fakeInteraction({
       commandName: "draft",
       subcommand: "start",
@@ -353,8 +355,8 @@ describe("command handlers", () => {
   it("/draft start syncs set-backed pools before opening the first wave", async () => {
     const app = setup({
       cardsBySet: {
-        "Metal Raiders": mockCardsForSet("Metal Raiders", 1000, 8),
-        "Legend of Blue Eyes White Dragon": mockCardsForSet("Legend of Blue Eyes White Dragon", 2000, 8),
+        "Metal Raiders": mockCardsForSet("Metal Raiders", 1000, 40),
+        "Legend of Blue Eyes White Dragon": mockCardsForSet("Legend of Blue Eyes White Dragon", 2000, 40),
       },
     });
     const yugi = { id: "user-7", username: "Yugi" };
@@ -424,7 +426,7 @@ describe("command handlers", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
     for (let step = 1; step <= 40; step += 1) {
@@ -455,7 +457,7 @@ describe("command handlers", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
     await expect(

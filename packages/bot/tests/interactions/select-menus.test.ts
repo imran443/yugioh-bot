@@ -132,7 +132,7 @@ describe("select menu interactions", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
     const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
     const { interaction, replies } = fakeSelectMenu({
@@ -156,7 +156,7 @@ describe("select menu interactions", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
     const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
     const kaibaOptions = app.drafts.pickOptions(draft.id, kaiba.id);
@@ -191,7 +191,7 @@ describe("select menu interactions", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
     const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
     const { interaction, replies } = fakeSelectMenu({
@@ -215,7 +215,7 @@ describe("select menu interactions", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
     const yugiOptions = app.drafts.pickOptions(draft.id, yugi.id);
 

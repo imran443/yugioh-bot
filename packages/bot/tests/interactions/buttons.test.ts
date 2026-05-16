@@ -261,7 +261,7 @@ describe("button interactions", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     const { interaction, replies } = fakeButton({
       customId: `draft_start:${draft.id}`,
       user: { id: "user-7", username: "Yugi" },
@@ -564,7 +564,7 @@ describe("button interactions", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
     for (let step = 1; step <= 40; step += 1) {

@@ -492,4 +492,45 @@ describe("shared draft service", () => {
       .get(draft.id) as { n: number };
     expect(wave2.n).toBeGreaterThan(0);
   });
+
+  it("materializes a repeated custom card id as multiple cube copies", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    // totalPacks = packsPerPlayer 1 × 2 players = 2; slots = packSize 2 × 2 = 4.
+    // Card 101 pasted twice => 2 copies (== totalPacks, the allowed max).
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "multiplicity",
+      { customCardIds: [101, 101, 102, 103], packSize: 2, packsPerPlayer: 1 },
+      "user-1",
+      yugi.id,
+    );
+    app.drafts.join(draft.id, kaiba.id);
+    const ins = app.db.prepare(
+      `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+       values (?, ?, 'Spellcaster / Normal Monster', 'normal', '', '', '[]', '2026-01-01T00:00:00Z')`,
+    );
+    ins.run(101, "Custom 101");
+    ins.run(102, "Custom 102");
+    ins.run(103, "Custom 103");
+
+    app.drafts.start(draft.id);
+
+    const counts = app.db
+      .prepare(
+        "select catalog_card_id, count(*) as n from draft_cube where draft_id = ? group by catalog_card_id order by catalog_card_id",
+      )
+      .all(draft.id) as Array<{ catalog_card_id: number; n: number }>;
+    expect(counts).toEqual([
+      { catalog_card_id: 101, n: 2 }, // pasted twice => two draftable copies
+      { catalog_card_id: 102, n: 1 },
+      { catalog_card_id: 103, n: 1 },
+    ]);
+    const total = app.db
+      .prepare("select count(*) as n from draft_cube where draft_id = ?")
+      .get(draft.id) as { n: number };
+    expect(total.n).toBe(4);
+  });
 });
