@@ -1,11 +1,11 @@
 "use client";
 
 import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
-import Image from "next/image";
 import { ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { CardHoverPopup } from "@/components/draft/card-hover-popup";
+import { CardArt } from "@/components/cards/card-art";
 import {
   isMonster, isSpell, isTrap, isEffectMonster, isNormalMonster, getTypeBadgeClass, getTypeLabel,
   type CardSummary,
@@ -198,8 +198,14 @@ function CardPoolGridBase({
                   {imageErrors.has(card.id) ? (
                     <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">?</div>
                   ) : (
-                    <Image src={card.imageUrlSmall || card.imageUrl} alt="" fill className="object-cover"
-                      sizes="(min-width: 1536px) 120px, 160px" onError={() => handleImageError(card.id)} />
+                    <CardArt
+                      smallSrc={card.imageUrlSmall || card.imageUrl}
+                      fullSrc={card.imageUrl}
+                      alt=""
+                      sizes="(min-width: 1536px) 120px, 160px"
+                      className="object-cover"
+                      onError={() => handleImageError(card.id)}
+                    />
                   )}
                   {(card.qty ?? 1) > 1 && (
                     <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 text-[0.65rem] font-bold tabular-nums text-white">
