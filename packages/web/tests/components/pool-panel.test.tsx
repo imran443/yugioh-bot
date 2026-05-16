@@ -250,8 +250,7 @@ describe("PoolPanel", () => {
     const blueEyesTile = within(poolPanel).getByRole("button", { name: /preview blue-eyes white dragon/i });
 
     expect(cardGallery).toHaveClass("grid");
-    expect(cardGallery).toHaveClass("grid-cols-2");
-    expect(cardGallery).toHaveClass("2xl:grid-cols-3");
+    expect(cardGallery.className).toContain("grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]");
     expect(within(blueEyesTile).getByText("Blue-Eyes White Dragon")).toBeTruthy();
     expect(within(blueEyesTile).getByText("Monster")).toBeTruthy();
     expect(within(blueEyesTile).queryByText("Dragon")).toBeNull();

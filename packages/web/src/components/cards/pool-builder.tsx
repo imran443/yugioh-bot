@@ -5,7 +5,7 @@ import { parseCustomCardIds, toCardCounts } from "@/lib/custom-card-pool";
 import { getCached, putCards } from "@/lib/cards-cache";
 import type { CardSummary } from "@/lib/card-types";
 import { SetPicker } from "@/components/draft/set-picker";
-import { CardPoolGrid } from "@/components/cards/card-pool-grid";
+import { CardPoolPanel } from "@/components/cards/card-pool-panel";
 
 export interface PoolBuilderValue {
   setNames: string[];
@@ -85,8 +85,6 @@ export function PoolBuilder({
     onPool?.(cards, unknownIds, loading);
   }, [cards, unknownIds, loading, onPool]);
 
-  const count = cards.length;
-
   return (
     <div className="space-y-4">
       <div>
@@ -113,21 +111,15 @@ export function PoolBuilder({
       {apiError && <p className="text-sm text-destructive">{apiError}</p>}
 
       {showPreview && (
-        <div>
-          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-text-primary">
-            <span>Pool preview</span>
-            <span aria-live="polite" className="text-text-secondary tabular-nums">— {count} card{count === 1 ? "" : "s"}</span>
-            {loading && <span className="text-xs text-text-muted">resolving…</span>}
-          </div>
-          <CardPoolGrid
-            cards={cards}
-            unknownIds={unknownIds}
-            loading={loading}
-            heightClassName={previewHeightClassName}
-            emptyMessage="Add sets or card IDs above to preview the pool."
-            showSummary={false}
-          />
-        </div>
+        <CardPoolPanel
+          title="Pool preview"
+          cards={cards}
+          unknownIds={unknownIds}
+          loading={loading}
+          heightClassName={previewHeightClassName}
+          emptyMessage="Add sets or card IDs above to preview the pool."
+          countMode="copies"
+        />
       )}
     </div>
   );

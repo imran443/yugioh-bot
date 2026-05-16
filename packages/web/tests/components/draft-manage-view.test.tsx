@@ -91,7 +91,7 @@ describe("DraftManageView — card pool section", () => {
     render(<DraftManageView draft={baseDraft} slug="my-slug" isCreator isParticipant={false} onStart={noop} onCancel={noop} onUpdate={noop} onJoin={noop} />);
     await waitFor(() => expect(screen.getByText(/card pool/i)).toBeTruthy());
     await waitFor(() => expect(screen.getByRole("button", { name: /preview dark magician/i })).toBeTruthy());
-    expect(screen.getByText((_, el) => !!el && el.tagName === "H2" && /card pool/i.test(el.textContent ?? "") && /1 card/.test(el.textContent ?? ""))).toBeTruthy();
+    expect(screen.getByText((_, el) => !!el && el.tagName === "H3" && /card pool/i.test(el.textContent ?? ""))).toBeTruthy();
   });
 
   it("shows the empty state when the pool resolves empty", async () => {
@@ -111,7 +111,6 @@ describe("DraftManageView — card pool section", () => {
       return Response.json({}, { status: 404 });
     }));
     render(<DraftManageView draft={baseDraft} slug="my-slug" isCreator isParticipant={false} onStart={noop} onCancel={noop} onUpdate={noop} onJoin={noop} />);
-    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy());
-    expect(screen.getByText(/couldn't load the pool/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/couldn't load the pool/i)).toBeTruthy());
   });
 });

@@ -47,7 +47,7 @@ describe("CreateDraftForm", () => {
       name: "Custom Pool Draft",
       config: {
         setNames: [],
-        customCardIds: [46986414, 83764718],
+        customCardIds: [46986414, 83764718, 46986414],
       },
     });
   });

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { DraftConfig } from "@yugidraft/shared/types";
 import { Button } from "@/components/ui/button";
 import { parseCustomCardIds } from "@/lib/custom-card-pool";
-import { CardPoolGrid } from "@/components/cards/card-pool-grid";
+import { CardPoolPanel } from "@/components/cards/card-pool-panel";
 import type { CardSummary } from "@/lib/card-types";
 import {
   CARDS_PER_PLAYER_DEFAULT,
@@ -148,7 +148,6 @@ export function CreateDraftForm() {
   };
 
   const { cardIds } = parseCustomCardIds(fields.customCardText);
-  const poolTotal = poolCards.length + poolUnknownIds.length;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -266,27 +265,15 @@ export function CreateDraftForm() {
 
         {/* Right column — sticky live pool preview */}
         <div className="sticky top-6 hidden xl:block">
-          <div className="overflow-hidden rounded-xl border border-border bg-surface/60 shadow-lg shadow-black/20">
-            <div className="flex items-center justify-between border-b border-border bg-bg-elevated/40 px-4 py-3">
-              <span className="text-xs font-semibold uppercase tracking-widest text-accent-primary">Card Pool</span>
-              <span aria-live="polite" className="flex items-center gap-2 text-sm text-text-secondary">
-                {poolLoading
-                  ? <span className="text-xs text-text-muted">resolving…</span>
-                  : <><span className="tabular-nums font-semibold text-text-primary">{poolTotal}</span> card{poolTotal !== 1 ? "s" : ""}</>
-                }
-              </span>
-            </div>
-            <div className="p-3">
-              <CardPoolGrid
-                cards={poolCards}
-                unknownIds={poolUnknownIds}
-                loading={poolLoading}
-                showSummary
-                heightClassName="h-[calc(100vh-22rem)]"
-                emptyMessage="Add sets or card IDs on the left to preview the pool."
-              />
-            </div>
-          </div>
+          <CardPoolPanel
+            title="Pool preview"
+            cards={poolCards}
+            unknownIds={poolUnknownIds}
+            loading={poolLoading}
+            emptyMessage="Add sets or card IDs on the left to preview the pool."
+            countMode="copies"
+            heightClassName="h-[calc(100vh-22rem)]"
+          />
         </div>
       </div>
     </form>
