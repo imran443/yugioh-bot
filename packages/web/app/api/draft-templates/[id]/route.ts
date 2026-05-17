@@ -29,8 +29,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const name = body.name?.trim();
   const setNames = Array.isArray(body.setNames) ? body.setNames.filter((s): s is string => typeof s === "string") : [];
   const customCardIds = Array.isArray(body.customCardIds) ? body.customCardIds.filter((n): n is number => Number.isInteger(n)) : [];
-  if (!name || (setNames.length === 0 && customCardIds.length === 0)) {
-    return NextResponse.json({ error: "name and a non-empty pool are required" }, { status: 400 });
+  if (!name) {
+    return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
   const db = getDb();

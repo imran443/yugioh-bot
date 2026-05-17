@@ -184,6 +184,39 @@ describe("shared draft service", () => {
     expect(openedCardIds).toEqual([{ catalog_card_id: 101 }, { catalog_card_id: 102 }]);
   });
 
+  it("preserves duplicate custom card ids when resolving a draft pool", () => {
+    const app = setup();
+    const insertCard = app.db.prepare(
+      `
+        insert into card_catalog (
+          ygoprodeck_id,
+          name,
+          type,
+          frame_type,
+          image_url,
+          image_url_small,
+          card_sets_json,
+          cached_at
+        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    );
+
+    for (const id of [101, 102]) {
+      insertCard.run(
+        id,
+        `Custom Card ${id}`,
+        "Spellcaster / Normal Monster",
+        "normal",
+        `https://img/full/${id}`,
+        `https://img/small/${id}`,
+        JSON.stringify([{ set_name: "Different Set" }]),
+        "2026-01-01T00:00:00Z",
+      );
+    }
+
+    expect(app.drafts.resolvePoolCardIds({ customCardIds: [101, 101, 102] })).toEqual([101, 101, 102]);
+  });
+
   it("records synchronized pick steps after all players pick", () => {
     const app = setup();
     const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");

@@ -55,6 +55,19 @@ describe("/api/draft-templates/[id]", () => {
     expect(json.template).toMatchObject({ name: "Alpha Prime", setNames: ["Pharaonic Guardian"], customCardIds: [9, 10] });
   });
 
+  it("PUT allows saving an empty pool with a unique title", async () => {
+    await setup();
+    const id = await idOf("Alpha");
+    const { PUT } = await import("../app/api/draft-templates/[id]/route");
+    const res = await PUT(
+      new Request(`http://localhost/api/draft-templates/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Alpha Empty", setNames: [], customCardIds: [] }) }),
+      { params: Promise.resolve({ id: String(id) }) },
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.template).toMatchObject({ name: "Alpha Empty", setNames: [], customCardIds: [] });
+  });
+
   it("PUT 409 on name collision with a different template", async () => {
     await setup();
     const id = await idOf("Alpha");

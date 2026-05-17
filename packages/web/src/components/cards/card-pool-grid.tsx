@@ -52,6 +52,14 @@ interface CardPoolGridProps {
   className?: string;
   heightClassName?: string;
   showSummary?: boolean;
+  // my-cubes feature: callers can turn the grid into a card picker.
+  onCardClick?: (card: CardSummary) => void;
+  cardActionLabel?: (card: CardSummary) => string;
+  cubeEditMode?: boolean;
+  // Accepted for API compatibility with my-cubes callers. The grid is
+  // virtualized (columns derived from measured width), so a fixed grid class
+  // is no longer applied — cubeEditMode widens the tiles instead.
+  gridClassName?: string;
 }
 
 const FILTER_BUTTONS: Array<{ label: string; value: PoolFilter }> = [
@@ -76,6 +84,9 @@ function CardPoolGridBase({
   className,
   heightClassName = "h-[26rem]",
   showSummary = true,
+  onCardClick,
+  cardActionLabel,
+  cubeEditMode = false,
 }: CardPoolGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<PoolFilter>("all");
@@ -121,6 +132,8 @@ function CardPoolGridBase({
   }, [cards, deferredSearch, activeFilter, activeSort]);
 
   const showSkeleton = loading && cards.length === 0;
+  const previewEnabled = !cubeEditMode && !onCardClick;
+  const hoverEnabled = !cubeEditMode;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<{ columns: number; innerWidth: number }>({
@@ -132,7 +145,8 @@ function CardPoolGridBase({
     const el = scrollRef.current;
     if (!el) return;
     const GAP = 12; // gap-3
-    const TILE_MIN = 144; // 9rem
+    // cube edit mode shows larger tiles (fewer, wider columns).
+    const TILE_MIN = cubeEditMode ? 200 : 144;
     const PAD_X = 24; // px-3 on each row, both sides
     const measure = (): void => {
       const inner = Math.max(0, el.clientWidth - PAD_X);
@@ -144,7 +158,7 @@ function CardPoolGridBase({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [cubeEditMode]);
 
   const entries = useMemo<GridEntry[]>(
     () => [
@@ -265,26 +279,48 @@ function CardPoolGridBase({
                       <button
                         key={entry.card.id}
                         type="button"
-                        aria-label={`Preview ${entry.card.name}`}
-                        className="group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary"
+                        aria-label={
+                          onCardClick
+                            ? cardActionLabel?.(entry.card) ?? `Select ${entry.card.name}`
+                            : `Preview ${entry.card.name}`
+                        }
+                        className={cn(
+                          "group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary",
+                          cubeEditMode ? "cursor-pointer" : "transition-colors duration-150 hover:bg-bg-elevated",
+                        )}
                         onClick={(e) => {
+                          if (onCardClick) {
+                            onCardClick(entry.card);
+                            return;
+                          }
+                          if (!previewEnabled) {
+                            return;
+                          }
                           setTapped(entry.card);
                           setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect()));
                         }}
-                        onMouseEnter={(e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect())}
-                        onMouseLeave={handleLeave}
-                        onFocus={(e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect())}
-                        onBlur={handleLeave}
+                        onMouseEnter={hoverEnabled ? (e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect()) : undefined}
+                        onMouseLeave={hoverEnabled ? handleLeave : undefined}
+                        onFocus={hoverEnabled ? (e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect()) : undefined}
+                        onBlur={hoverEnabled ? handleLeave : undefined}
                       >
                         <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
                           {imageErrors.has(entry.card.id) ? (
                             <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">?</div>
                           ) : (
                             <CardArt
-                              smallSrc={entry.card.imageUrlSmall || entry.card.imageUrl}
+                              smallSrc={
+                                cubeEditMode
+                                  ? entry.card.imageUrl || entry.card.imageUrlSmall
+                                  : entry.card.imageUrlSmall || entry.card.imageUrl
+                              }
                               fullSrc={entry.card.imageUrl}
-                              alt=""
-                              sizes="(min-width: 1536px) 120px, 160px"
+                              alt={entry.card.name}
+                              sizes={
+                                cubeEditMode
+                                  ? "(min-width: 1280px) 220px, (min-width: 1024px) 180px, 45vw"
+                                  : "(min-width: 1536px) 120px, 160px"
+                              }
                               className="object-cover"
                               onError={() => handleImageError(entry.card.id)}
                             />
@@ -331,7 +367,7 @@ function CardPoolGridBase({
         )}
       </div>
 
-      {hoveredCard && popupPosition && !tapped && (
+      {previewEnabled && hoveredCard && popupPosition && !tapped && (
         <CardHoverPopup
           card={hoveredCard}
           position={popupPosition}
@@ -339,7 +375,7 @@ function CardPoolGridBase({
           onImageError={() => handleImageError(hoveredCard.id)}
         />
       )}
-      {tapped && popupPosition && (
+      {previewEnabled && tapped && popupPosition && (
         <CardHoverPopup
           card={tapped}
           position={popupPosition}
@@ -353,7 +389,7 @@ function CardPoolGridBase({
   );
 }
 
-// Memoized: this grid renders one next/image per card (hundreds for a cube
+// Memoized: this grid renders one image per card (hundreds for a cube
 // preview). Without memo, unrelated parent state — e.g. typing in the
 // create-draft form's name field — re-renders every tile and the page lags.
 export const CardPoolGrid = memo(CardPoolGridBase);

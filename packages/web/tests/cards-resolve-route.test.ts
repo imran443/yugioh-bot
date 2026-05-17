@@ -8,6 +8,19 @@ const auth = vi.fn();
 const tempDirs: string[] = [];
 vi.mock("@/lib/auth", () => ({ auth }));
 
+const syncDraftPool = vi.fn();
+
+vi.mock("@yugidraft/shared/services", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@yugidraft/shared/services")>();
+  return {
+    ...original,
+    createCardCatalogService: (db: any) => ({
+      ...original.createCardCatalogService(db),
+      syncDraftPool,
+    }),
+  };
+});
+
 async function setupDb() {
   const tempDir = mkdtempSync(join(tmpdir(), "yugioh-cards-resolve-"));
   const dbPath = join(tempDir, "test.sqlite");
@@ -42,6 +55,8 @@ describe("POST /api/cards/resolve", () => {
     vi.resetModules();
     auth.mockReset();
     auth.mockResolvedValue({ user: { id: "u", name: "Yugi" } });
+    syncDraftPool.mockReset();
+    syncDraftPool.mockResolvedValue([]);
   });
   afterEach(() => {
     delete process.env.DATABASE_PATH;
@@ -78,6 +93,15 @@ describe("POST /api/cards/resolve", () => {
     // Monster Reborn is not in the selected set → baseline 0, custom 1 → qty 1.
     const mr = json.cards.find((c: { id: number }) => c.id === 83764718);
     expect(mr.qty).toBe(1);
+    // The route only fetches custom passcodes missing from the local catalog
+    // (46986414 + 83764718 are seeded → cached); sets are already synced
+    // elsewhere, so setNames is empty here.
+    expect(syncDraftPool).toHaveBeenCalledWith({
+      setNames: [],
+      customCardIds: [99999999],
+      includeNames: [],
+      excludeNames: [],
+    });
   });
 
   it("returns one card entry per distinct id even when ids repeat", async () => {

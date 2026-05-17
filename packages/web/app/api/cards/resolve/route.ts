@@ -23,6 +23,18 @@ export async function POST(request: Request) {
   const drafts = createDraftService(db);
   const catalog = createCardCatalogService(db);
 
+  const existingCustomCardIds = new Set(catalog.findByIds(customCardIds).map((card) => card.ygoprodeckId));
+  const missingCustomCardIds = customCardIds.filter((id) => !existingCustomCardIds.has(id));
+
+  if (missingCustomCardIds.length > 0) {
+    await catalog.syncDraftPool({
+      setNames: [],
+      customCardIds: missingCustomCardIds,
+      includeNames: [],
+      excludeNames: [],
+    });
+  }
+
   const resolvedIds = drafts.resolvePoolCardIds({
     setNames,
     customCardIds,

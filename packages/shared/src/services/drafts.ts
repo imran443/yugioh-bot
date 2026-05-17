@@ -291,54 +291,60 @@ export function createDraftService(db: Database.Database) {
 
   const catalogCardIdsForDraft = (config: DraftConfig): number[] => {
     const setNames = new Set((config.setNames ?? []).map((name) => name.trim()));
-    const customCounts = new Map<number, number>();
-    for (const id of config.customCardIds ?? []) {
-      customCounts.set(id, (customCounts.get(id) ?? 0) + 1);
-    }
+    const customCardIds = config.customCardIds ?? [];
+    const customCardIdSet = new Set(customCardIds);
     const includeNames = new Set((config.includeNames ?? []).map(normalizeName));
     const excludeNames = new Set((config.excludeNames ?? []).map(normalizeName));
-    const hasExplicitPool = setNames.size > 0 || customCounts.size > 0 || includeNames.size > 0;
-
+    const hasExplicitPool = setNames.size > 0 || customCardIds.length > 0 || includeNames.size > 0;
     const rows = db
       .prepare("select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog")
       .all()
-      .map((row: any) => row as CatalogRow);
+      .map((row: any) => row as CatalogRow)
+      .filter((row) => {
+        const normalizedName = normalizeName(row.name);
 
-    const result: number[] = [];
-
-    for (const row of rows) {
-      const normalizedName = normalizeName(row.name);
-
-      if (isExtraDeckCatalogRow(row)) {
-        continue;
-      }
-      if (excludeNames.has(normalizedName)) {
-        continue;
-      }
-
-      // Baseline: 1 copy if the card is sourced from the no-explicit-pool
-      // catch-all, an includeNames match, or a selected set. Custom-only
-      // membership does NOT add a baseline — its copies come from the count.
-      let baseline = 0;
-      if (!hasExplicitPool) {
-        baseline = 1;
-      } else if (includeNames.has(normalizedName)) {
-        baseline = 1;
-      } else {
-        const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
-        if (cardSets.some((cardSet) => setNames.has(cardSet.set_name))) {
-          baseline = 1;
+        if (isExtraDeckCatalogRow(row)) {
+          return false;
         }
-      }
 
-      const custom = customCounts.get(row.ygoprodeck_id) ?? 0;
-      const total = baseline + custom;
-      for (let i = 0; i < total; i += 1) {
-        result.push(row.ygoprodeck_id);
+        if (excludeNames.has(normalizedName)) {
+          return false;
+        }
+
+        if (!hasExplicitPool) {
+          return true;
+        }
+
+        if (includeNames.has(normalizedName)) {
+          return true;
+        }
+
+        if (customCardIdSet.has(row.ygoprodeck_id)) {
+          return true;
+        }
+
+        const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
+        return cardSets.some((cardSet) => setNames.has(cardSet.set_name));
+      });
+
+    if (!hasExplicitPool) {
+      return rows.map((row) => row.ygoprodeck_id);
+    }
+
+    // baseline (set/include) appears once; custom occurrences are additive and
+    // preserve repeats, so total per card = baseline + count in customCardIds.
+    const baseIds = new Set<number>();
+    const customEligibleIds = new Set<number>();
+    for (const row of rows) {
+      customEligibleIds.add(row.ygoprodeck_id);
+      const normalizedName = normalizeName(row.name);
+      const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
+      if (includeNames.has(normalizedName) || cardSets.some((cardSet) => setNames.has(cardSet.set_name))) {
+        baseIds.add(row.ygoprodeck_id);
       }
     }
 
-    return result;
+    return [...baseIds, ...customCardIds.filter((id) => customEligibleIds.has(id))];
   };
 
   const activePlayerRows = (draftId: number): DraftPlayerProgressRow[] =>
