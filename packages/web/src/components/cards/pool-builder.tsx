@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { parseCustomCardIds, toCardCounts } from "@/lib/custom-card-pool";
-import { getCached, putCards } from "@/lib/cards-cache";
+import { parseCustomCardIds } from "@/lib/custom-card-pool";
+import { putCards } from "@/lib/cards-cache";
 import type { CardSummary } from "@/lib/card-types";
 import { SetPicker } from "@/components/draft/set-picker";
 import { CardPoolPanel } from "@/components/cards/card-pool-panel";
@@ -54,22 +54,22 @@ export function PoolBuilder({
       const myReq = ++reqId.current;
       setLoading(true);
       setApiError(null);
-      const { hits, missing } = getCached(customCardIds);
       try {
+        // Send the full customCardIds multiset (repeats preserved) so the
+        // route computes the authoritative materialized-cube qty
+        // (baseline + additive custom). qty cannot be derived from the
+        // textarea alone — it ignores set/include baselines.
         const res = await fetch("/api/cards/resolve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ setNames, cardIds: missing }),
+          body: JSON.stringify({ setNames, customCardIds }),
         });
         if (myReq !== reqId.current) return;
         if (!res.ok) { setApiError("Failed to resolve cards. Please try again."); return; }
         const data = (await res.json()) as { cards: CardSummary[]; unknownIds: number[] };
         if (myReq !== reqId.current) return;
         putCards(data.cards);
-        const byId = new Map<number, CardSummary>();
-        for (const c of [...hits, ...data.cards]) byId.set(c.id, c);
-        const qtyMap = toCardCounts(customCardIds);
-        setCards([...byId.values()].map((c) => ({ ...c, qty: qtyMap.get(c.id) ?? 1 })));
+        setCards(data.cards);
         setUnknownIds(data.unknownIds);
       } catch {
         if (myReq === reqId.current) { setApiError("Failed to resolve cards. Please try again."); }
