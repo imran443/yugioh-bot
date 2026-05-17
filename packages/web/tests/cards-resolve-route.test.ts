@@ -72,6 +72,12 @@ describe("POST /api/cards/resolve", () => {
     expect(json.unknownIds).toEqual([99999999]);
     const dm = json.cards.find((c: { id: number }) => c.id === 46986414);
     expect(dm).toMatchObject({ name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", imageUrl: "u1", imageUrlSmall: "s1" });
+    // qty is the true materialized-cube count: baseline(1, in selected set
+    // "Metal Raiders") + custom(1, listed once) = 2.
+    expect(dm.qty).toBe(2);
+    // Monster Reborn is not in the selected set → baseline 0, custom 1 → qty 1.
+    const mr = json.cards.find((c: { id: number }) => c.id === 83764718);
+    expect(mr.qty).toBe(1);
   });
 
   it("returns one card entry per distinct id even when ids repeat", async () => {
@@ -99,8 +105,11 @@ describe("POST /api/cards/resolve", () => {
       }),
     );
 
-    const body = (await res.json()) as { cards: Array<{ id: number }> };
+    const body = (await res.json()) as { cards: Array<{ id: number; qty: number }> };
     const ids = body.cards.map((c) => c.id).sort((a, b) => a - b);
     expect(ids).toEqual([101, 102]); // distinct, no triple 101
+    // …but the multiplicity is preserved as qty: 101 listed 3×, 102 once.
+    expect(body.cards.find((c) => c.id === 101)?.qty).toBe(3);
+    expect(body.cards.find((c) => c.id === 102)?.qty).toBe(1);
   });
 });
