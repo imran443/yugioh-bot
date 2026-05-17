@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CardPoolPanel } from "../../src/components/cards/card-pool-panel";
 import type { CardSummary } from "../../src/lib/card-types";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
 vi.mock("next/image", () => ({
   default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
@@ -17,6 +18,8 @@ const cards: CardSummary[] = [
 ];
 
 describe("CardPoolPanel", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
+
   it("renders the title and a distinct-count summary", () => {
     render(<CardPoolPanel cards={cards} title="Cube Pool" />);
     expect(screen.getByText("Cube Pool")).toBeTruthy();

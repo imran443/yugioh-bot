@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PoolPanel } from "../../src/components/draft/pool-panel";
 import { useDraftStore, type DraftCardDetail, type DraftState } from "../../src/lib/stores/draft-store";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
 vi.mock("next/image", () => ({
   default: ({ alt, fill: _fill, priority: _priority, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; priority?: boolean }) => (
@@ -148,6 +149,7 @@ function getPoolPanelContainer() {
 
 describe("PoolPanel", () => {
   beforeEach(() => {
+    installVirtualizerJsdomEnv();
     vi.clearAllMocks();
     act(() => {
       useDraftStore.setState(baseState);
@@ -249,8 +251,8 @@ describe("PoolPanel", () => {
     const cardGallery = within(poolPanel).getByTestId("card-pool-grid");
     const blueEyesTile = within(poolPanel).getByRole("button", { name: /preview blue-eyes white dragon/i });
 
-    expect(cardGallery).toHaveClass("grid");
-    expect(cardGallery.className).toContain("grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]");
+    expect(cardGallery.getAttribute("style") ?? "").toContain("position: relative");
+    expect(within(poolPanel).getByRole("button", { name: /preview blue-eyes white dragon/i })).toBeTruthy();
     expect(within(blueEyesTile).getByText("Blue-Eyes White Dragon")).toBeTruthy();
     expect(within(blueEyesTile).getByText("Monster")).toBeTruthy();
     expect(within(blueEyesTile).queryByText("Dragon")).toBeNull();

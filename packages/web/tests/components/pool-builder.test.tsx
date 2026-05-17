@@ -3,6 +3,7 @@ import React from "react";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PoolBuilder } from "../../src/components/cards/pool-builder";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
 vi.mock("@/lib/cards-cache", () => ({
   getCached: vi.fn().mockImplementation((ids: number[]) => ({ hits: [], missing: ids })),
@@ -39,6 +40,7 @@ function stubFetch() {
 
 describe("PoolBuilder", () => {
   beforeEach(() => {
+    installVirtualizerJsdomEnv();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(getCached).mockImplementation((ids: number[]) => ({ hits: [], missing: ids }));
     vi.mocked(putCards).mockReset();

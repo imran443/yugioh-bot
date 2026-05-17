@@ -15,6 +15,10 @@ import {
 type PoolFilter = "all" | "effect" | "normal" | "spell" | "trap";
 type PoolSort = "newest" | "oldest" | "name" | "type";
 
+type GridEntry =
+  | { kind: "card"; card: CardSummary }
+  | { kind: "unknown"; id: number };
+
 const POPUP_WIDTH = 288;
 const POPUP_HEIGHT = 560;
 const POPUP_MARGIN = 16;
@@ -142,10 +146,6 @@ function CardPoolGridBase({
     return () => ro.disconnect();
   }, []);
 
-  type GridEntry =
-    | { kind: "card"; card: CardSummary }
-    | { kind: "unknown"; id: number };
-
   const entries = useMemo<GridEntry[]>(
     () => [
       ...visible.map((card): GridEntry => ({ kind: "card", card })),
@@ -159,7 +159,7 @@ function CardPoolGridBase({
     const GAP = 12;
     const tileW = innerWidth > 0 ? (innerWidth - (columns - 1) * GAP) / columns : 144;
     const imageH = (tileW * 614) / 421;
-    // image + img/label gap (8) + label block (~64) + button padding (16) + row gap (12)
+    // image + img/label gap (8) + label block (~64) + button padding (16) + paddingBottom on row div (12)
     return Math.round(imageH + 8 + 64 + 16 + GAP);
   }, [columns, innerWidth]);
 
@@ -171,12 +171,7 @@ function CardPoolGridBase({
     overscan: 4,
   });
 
-  // When the container has no measurable height (e.g. jsdom without ResizeObserver/
-  // offsetHeight mocks), the virtualizer produces 0 virtual items. Fall back to
-  // rendering all rows so non-windowing tests that happen to render this component
-  // still find cards in the DOM.
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const isVirtualizing = virtualItems.length > 0 || rowCount === 0;
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
@@ -244,22 +239,16 @@ function CardPoolGridBase({
         ) : (
           <div
             data-testid="card-pool-grid"
-            className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]"
             style={{ height: rowVirtualizer.getTotalSize() + 24, position: "relative" }}
           >
-            {(isVirtualizing ? virtualItems : Array.from({ length: rowCount }, (_, i) => ({
-              key: i,
-              index: i,
-              start: i * estimatedRowHeight,
-              measureElement: undefined as unknown as (el: Element | null) => void,
-            }))).map((vRow) => {
+            {virtualItems.map((vRow) => {
               const start = vRow.index * columns;
               const rowEntries = entries.slice(start, start + columns);
               return (
                 <div
                   key={vRow.key}
                   data-index={vRow.index}
-                  ref={isVirtualizing ? rowVirtualizer.measureElement : undefined}
+                  ref={rowVirtualizer.measureElement}
                   className="grid gap-3 px-3"
                   style={{
                     position: "absolute",

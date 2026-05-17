@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DraftManageView } from "../../src/components/draft/draft-manage-view";
 import type { CardSummary } from "../../src/lib/card-types";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
 vi.mock("next/image", () => ({
   default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
@@ -81,6 +82,8 @@ const noop = async () => {};
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("DraftManageView — card pool section", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
+
   it("fetches and renders the resolved pool", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === "/api/drafts/my-slug/pool") {
