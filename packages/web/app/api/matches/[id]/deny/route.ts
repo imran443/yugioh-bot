@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { createMatchService, createPlayerService } from "@yugidraft/shared/services";
 import { env } from "@/lib/env";
 import { notifyWsTournament } from "@/lib/notify-ws-tournament";
+import { announceToBot } from "@/lib/announce-bot";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,10 @@ export async function POST(
     }
 
     const denied = matches.deny(matchId, player.id);
+    void announceToBot(
+      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+      { kind: "match-resolved", matchId },
+    );
     if (match.tournament_slug) {
       void notifyWsTournament(
         { url: env.wsInternalUrl, secret: env.wsInternalSecret },
