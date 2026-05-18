@@ -53,6 +53,7 @@ export default function TournamentDetailPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [announced, setAnnounced] = useState(false);
+  const [matchFilter, setMatchFilter] = useState<"all" | "mine">("all");
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -114,7 +115,7 @@ export default function TournamentDetailPage() {
   if (loading) {
     return (
       <div>
-        <div className="mx-auto max-w-4xl p-6">
+        <div className="mx-auto max-w-7xl p-6">
           <div className="flex items-center justify-center py-20">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
           </div>
@@ -126,7 +127,7 @@ export default function TournamentDetailPage() {
   if (error || !tournament) {
     return (
       <div>
-        <div className="mx-auto max-w-4xl p-6">
+        <div className="mx-auto max-w-7xl p-6">
           <div className="rounded-lg border border-accent-cta/20 bg-accent-cta/10 p-6 text-accent-cta">
             {error ?? "Tournament not found"}
           </div>
@@ -158,6 +159,11 @@ export default function TournamentDetailPage() {
   const rounds = Array.from(
     new Set(tournament.matches.map((m) => m.roundNumber))
   ).sort((a, b) => a - b);
+  const visibleMatches = tournament.matches.filter((match) => {
+    if (matchFilter === "all" || tournament.currentUserPlayerId === null) return true;
+    return match.playerOneId === tournament.currentUserPlayerId || match.playerTwoId === tournament.currentUserPlayerId;
+  });
+  const visibleRounds = Array.from(new Set(visibleMatches.map((m) => m.roundNumber))).sort((a, b) => a - b);
 
   async function handleJoin() {
     setActionLoading("join");
@@ -193,9 +199,26 @@ export default function TournamentDetailPage() {
     }
   }
 
+  async function handleAddBot() {
+    setActionLoading("add-bot");
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/tournaments/${id}/join-bot`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to add bot");
+      }
+      fetchTournament();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to add bot");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   return (
     <div>
-      <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+      <div data-testid="tournament-page-shell" className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         {actionError && (
           <div className="mb-4 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
             {actionError}
@@ -433,18 +456,31 @@ export default function TournamentDetailPage() {
         {/* Primary action — Start (organizer pending) or Join (non-participant pending) */}
         {tournament.status === "pending" && isCreator && (
           <div className="mb-6 flex flex-col items-center gap-2">
-            <Button
-              variant="primary"
-              size="lg"
-              loading={actionLoading === "start"}
-              disabled={!canStart}
-              title={!canStart ? "Need at least 2 participants to start" : undefined}
-              onClick={handleStart}
-              className="min-w-[240px]"
-            >
-              <Play className="h-5 w-5" />
-              Start Tournament
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="primary"
+                size="lg"
+                loading={actionLoading === "start"}
+                disabled={!canStart}
+                title={!canStart ? "Need at least 2 participants to start" : undefined}
+                onClick={handleStart}
+                className="min-w-[240px]"
+              >
+                <Play className="h-5 w-5" />
+                Start Tournament
+              </Button>
+              {process.env.NODE_ENV !== "production" && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  loading={actionLoading === "add-bot"}
+                  onClick={handleAddBot}
+                >
+                  <UserPlus className="h-5 w-5" />
+                  Add Bot
+                </Button>
+              )}
+            </div>
             {!canStart && (
               <p className="font-mono text-xs uppercase tracking-wider text-text-secondary">
                 Need {2 - participantCount} more {2 - participantCount === 1 ? "player" : "players"} to start
@@ -509,38 +545,81 @@ export default function TournamentDetailPage() {
 
         {tournament.matches.length > 0 && (
           <section>
-            <h2 className="mb-4 flex items-center gap-2 font-body text-lg font-semibold text-text-primary">
-              <Swords className="h-5 w-5 text-accent-primary" />
-              Matches
-            </h2>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="flex items-center gap-2 font-body text-lg font-semibold text-text-primary">
+                <Swords className="h-5 w-5 text-accent-primary" />
+                Matches
+              </h2>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={matchFilter === "all" ? "secondary" : "ghost"}
+                  onClick={() => setMatchFilter("all")}
+                >
+                  All Matches
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={matchFilter === "mine" ? "secondary" : "ghost"}
+                  onClick={() => setMatchFilter("mine")}
+                >
+                  My Matches
+                </Button>
+              </div>
+            </div>
 
-            {rounds.map((round) => (
-              <div key={round} className="mb-6">
-                <h3 className="mb-3 text-sm font-semibold text-text-muted">
-                  Round {round}
-                </h3>
-                <div className="space-y-3">
-                  {tournament.matches
-                    .filter((m) => m.roundNumber === round)
-                    .map((match) => (
-                      <MatchCard
-                        key={match.id}
-                        match={match}
-                        tournamentId={id}
-                        currentUserPlayerId={tournament.currentUserPlayerId}
-                        isReporting={reportingMatch === match.id}
-                        onReport={() => setReportingMatch(match.id)}
-                        onCancelReport={() => setReportingMatch(null)}
-                        onReported={() => {
-                          setReportingMatch(null);
-                          fetchTournament();
-                        }}
-                        onResolved={() => fetchTournament()}
-                      />
-                    ))}
+            {visibleMatches.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-surface px-5 py-6 text-sm text-text-secondary">
+                You do not have any matches in this view yet.
+              </div>
+            ) : (
+              <div data-testid="tournament-round-board" className="overflow-x-auto pb-3 xl:overflow-visible">
+                <div
+                  data-testid="tournament-round-board-grid"
+                  className="flex min-w-max gap-4 xl:min-w-0 xl:grid xl:gap-5"
+                  style={{ gridTemplateColumns: `repeat(${visibleRounds.length}, minmax(0, 1fr))` }}
+                >
+                  {visibleRounds.map((round) => (
+                    <div
+                      key={round}
+                      data-testid={`tournament-round-column-${round}`}
+                      className="w-[22rem] shrink-0 rounded-2xl border border-border bg-surface/70 p-4 xl:w-auto xl:min-w-0 xl:max-w-none"
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3">
+                        <h3 className="text-sm font-semibold uppercase tracking-wider text-text-secondary">
+                          Round {round}
+                        </h3>
+                        <span className="text-xs text-text-muted">
+                          {visibleMatches.filter((m) => m.roundNumber === round).length} match{visibleMatches.filter((m) => m.roundNumber === round).length === 1 ? "" : "es"}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {visibleMatches
+                          .filter((m) => m.roundNumber === round)
+                          .map((match) => (
+                            <MatchCard
+                              key={match.id}
+                              match={match}
+                              tournamentId={id}
+                              currentUserPlayerId={tournament.currentUserPlayerId}
+                              isReporting={reportingMatch === match.id}
+                              onReport={() => setReportingMatch(match.id)}
+                              onCancelReport={() => setReportingMatch(null)}
+                              onReported={() => {
+                                setReportingMatch(null);
+                                fetchTournament();
+                              }}
+                              onResolved={() => fetchTournament()}
+                            />
+                          ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            )}
           </section>
         )}
       </div>
