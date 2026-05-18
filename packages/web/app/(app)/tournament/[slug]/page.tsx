@@ -218,7 +218,7 @@ export default function TournamentDetailPage() {
 
   return (
     <div>
-      <div data-testid="tournament-page-shell" className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+      <div data-testid="tournament-page-shell" className="mx-auto max-w-[120rem] p-4 sm:p-6 lg:p-8 2xl:px-10">
         {actionError && (
           <div className="mb-4 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
             {actionError}
@@ -578,14 +578,14 @@ export default function TournamentDetailPage() {
               <div data-testid="tournament-round-board" className="overflow-x-auto pb-3 xl:overflow-visible">
                 <div
                   data-testid="tournament-round-board-grid"
-                  className="flex min-w-max gap-4 xl:min-w-0 xl:grid xl:gap-5"
-                  style={{ gridTemplateColumns: `repeat(${visibleRounds.length}, minmax(0, 1fr))` }}
+                  className="flex min-w-max gap-4 xl:min-w-0 xl:grid xl:gap-5 2xl:flex 2xl:flex-wrap 2xl:items-start"
+                  style={{ gridTemplateColumns: `repeat(${visibleRounds.length}, minmax(26rem, 1fr))` }}
                 >
                   {visibleRounds.map((round) => (
                     <div
                       key={round}
                       data-testid={`tournament-round-column-${round}`}
-                      className="w-[22rem] shrink-0 rounded-2xl border border-border bg-surface/70 p-4 xl:w-auto xl:min-w-0 xl:max-w-none"
+                      className="w-[24rem] shrink-0 rounded-2xl border border-border bg-surface/70 p-4 xl:w-auto xl:min-w-0 xl:max-w-none 2xl:min-w-[28rem] 2xl:flex-1"
                     >
                       <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3">
                         <h3 className="text-sm font-semibold uppercase tracking-wider text-text-secondary">
@@ -707,8 +707,11 @@ function MatchCard({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div data-testid={`tournament-match-card-${match.id}`} className="rounded-xl border border-border bg-surface p-4 2xl:p-5">
+      <div
+        data-testid={`tournament-match-card-header-${match.id}`}
+        className="flex flex-col gap-3 lg:flex-col lg:items-start lg:justify-between xl:flex-row xl:items-center"
+      >
         <div className="flex items-center gap-3">
           <div className="flex flex-col gap-1">
             <span
@@ -743,7 +746,10 @@ function MatchCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div
+          data-testid={`tournament-match-card-actions-${match.id}`}
+          className="flex w-full flex-wrap items-center gap-2 lg:w-full xl:w-auto xl:justify-end"
+        >
           {getStatusBadge()}
           {isOpen && !isReporting && (
             <Button variant="primary" size="sm" onClick={onReport}>

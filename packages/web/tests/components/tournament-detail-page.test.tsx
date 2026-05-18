@@ -110,9 +110,14 @@ describe("TournamentDetailPage", () => {
     expect(await screen.findByTestId("tournament-round-board")).toBeInTheDocument();
     expect(screen.getByTestId("tournament-round-column-1")).toBeInTheDocument();
     expect(screen.getByTestId("tournament-round-column-2")).toBeInTheDocument();
-    expect(screen.getByTestId("tournament-page-shell")).toHaveClass("max-w-7xl");
+    expect(screen.getByTestId("tournament-page-shell")).toHaveClass("max-w-[120rem]");
     expect(screen.getByTestId("tournament-round-board")).toHaveClass("xl:overflow-visible");
     expect(screen.getByTestId("tournament-round-board-grid")).toHaveClass("xl:grid");
+    expect(screen.getByTestId("tournament-round-board-grid")).toHaveClass("2xl:flex-wrap");
+    expect(screen.getByTestId("tournament-round-column-1")).toHaveClass("2xl:min-w-[28rem]");
+    expect(screen.getByTestId("tournament-match-card-101")).toHaveClass("2xl:p-5");
+    expect(screen.getByTestId("tournament-match-card-header-101")).toHaveClass("lg:flex-col");
+    expect(screen.getByTestId("tournament-match-card-actions-101")).toHaveClass("w-full");
   });
 
   it("filters to the current user's matches", async () => {
