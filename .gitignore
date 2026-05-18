@@ -11,3 +11,4 @@ packages/*/dist/
 packages/*/.next/
 packages/*/*.tsbuildinfo
 packages/*/coverage/
+.superpowers/
