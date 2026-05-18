@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { notifyWsTournament } from "@/lib/notify-ws-tournament";
+import { announceToBot } from "@/lib/announce-bot";
 
 export const runtime = "nodejs";
 
@@ -134,6 +135,54 @@ export async function POST(
       { url: env.wsInternalUrl, secret: env.wsInternalSecret },
       { kind: "match-updated", slug },
     );
+
+    const meta = db
+      .prepare(
+        `
+        select
+          t.name as tournament_name,
+          tm.round_number as round_number,
+          rp.discord_user_id as reporter_discord_id,
+          rp.display_name as reporter_name,
+          op.discord_user_id as opponent_discord_id,
+          op.display_name as opponent_name
+        from tournament_matches tm
+        join tournaments t on t.id = tm.tournament_id
+        join players rp on rp.id = ?
+        join players op on op.id = ?
+        where tm.id = ?
+      `,
+      )
+      .get(reporterId, opponentId, tournamentMatch.id) as
+      | {
+          tournament_name: string;
+          round_number: number;
+          reporter_discord_id: string;
+          reporter_name: string;
+          opponent_discord_id: string;
+          opponent_name: string;
+        }
+      | undefined;
+
+    if (meta) {
+      void announceToBot(
+        { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+        {
+          kind: "match-report-pending",
+          guildId: tournament.guild_id,
+          slug,
+          matchId,
+          tournamentMatchId: tournamentMatch.id,
+          tournamentName: meta.tournament_name,
+          roundNumber: meta.round_number,
+          reporterDiscordId: meta.reporter_discord_id,
+          opponentDiscordId: meta.opponent_discord_id,
+          reporterName: meta.reporter_name,
+          opponentName: meta.opponent_name,
+          opponentLost: winnerId === reporterId,
+        },
+      );
+    }
 
     return NextResponse.json({ success: true, matchId });
   } catch (error) {
