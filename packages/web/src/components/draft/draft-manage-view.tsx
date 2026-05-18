@@ -11,7 +11,7 @@ import {
   validateFields,
   fieldsFromConfig,
 } from "./draft-config-fields";
-import { CardPoolGrid } from "@/components/cards/card-pool-grid";
+import { CardPoolPanel } from "@/components/cards/card-pool-panel";
 import type { CardSummary } from "@/lib/card-types";
 
 interface DraftManageViewProps {
@@ -311,25 +311,15 @@ export function DraftManageView({
         {/* Left — sticky card pool */}
         <aside className="lg:sticky lg:top-6 lg:self-start">
           {slug && (
-            <div className="rounded-xl border border-border bg-surface p-6">
-              <h2 className="mb-4 font-display text-lg text-text-primary">
-                <Layers className="mr-2 inline h-5 w-5 text-accent-primary" aria-hidden="true" />
-                Card Pool{poolCards ? <span className="tabular-nums"> ({poolCards.length} card{poolCards.length === 1 ? "" : "s"})</span> : null}
-              </h2>
-              {poolError ? (
-                <div className="flex items-center justify-between rounded-lg border border-accent-cta/40 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">
-                  <span>Couldn&apos;t load the pool.</span>
-                  <Button variant="ghost" size="sm" onClick={loadPool}>Retry</Button>
-                </div>
-              ) : (
-                <CardPoolGrid
-                  cards={poolCards ?? []}
-                  loading={poolCards === null}
-                  heightClassName="h-[calc(100vh-16rem)]"
-                  emptyMessage="This draft's pool hasn't been resolved yet."
-                />
-              )}
-            </div>
+            <CardPoolPanel
+              title="Card pool"
+              cards={poolCards ?? []}
+              loading={poolCards === null && !poolError}
+              error={poolError ? "Couldn't load the pool." : null}
+              emptyMessage="This draft's pool hasn't been resolved yet."
+              countMode="copies"
+              heightClassName="h-[calc(100vh-16rem)]"
+            />
           )}
         </aside>
 

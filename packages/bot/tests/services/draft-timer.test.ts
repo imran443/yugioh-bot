@@ -85,7 +85,7 @@ describe("draft timer service", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
     const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, wsCfg: { url: "", secret: "" } });
@@ -104,7 +104,7 @@ describe("draft timer service", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
     const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, wsCfg: { url: "", secret: "" } });
@@ -123,7 +123,7 @@ describe("draft timer service", () => {
     const kaiba = app.players.upsert("guild-1", "user-9", "Kaiba");
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-7", yugi.id);
     app.drafts.join(draft.id, kaiba.id);
-    seedDraftCatalog(app, 16);
+    seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
     // Simulate bot being offline by not ticking

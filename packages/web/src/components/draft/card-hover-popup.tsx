@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import Image from "next/image";
+import { CardArt } from "@/components/cards/card-art";
 import { Shield, Swords, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CardSummary } from "@/lib/card-types";
@@ -50,7 +50,15 @@ export function CardHoverPopup({ card, position, imageError, onImageError, dismi
             {imageError ? (
               <div className="flex h-full items-center justify-center text-sm text-text-secondary">No image</div>
             ) : (
-              <Image src={card.imageUrl} alt={card.name} fill className="object-contain" sizes="288px" onError={onImageError} />
+              <CardArt
+                smallSrc={card.imageUrlSmall || card.imageUrl}
+                fullSrc={card.imageUrl}
+                alt={card.name}
+                sizes="288px"
+                loadFull
+                className="object-contain"
+                onError={onImageError}
+              />
             )}
             {(card.qty ?? 1) > 1 && (
               <div className="absolute right-2 top-2 z-10 rounded-md bg-black/80 px-2 py-0.5 text-sm font-bold tabular-nums text-white">

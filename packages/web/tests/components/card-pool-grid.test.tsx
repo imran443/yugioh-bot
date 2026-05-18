@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import React from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { CardPoolGrid } from "../../src/components/cards/card-pool-grid";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CardPoolGrid, getPopupPosition } from "../../src/components/cards/card-pool-grid";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
+const imageRenders = vi.hoisted(() => ({ count: 0 }));
 vi.mock("next/image", () => ({
-  default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
-    <img alt={alt} {...props} />
-  ),
+  default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => {
+    imageRenders.count += 1;
+    return <img alt={alt} {...props} />;
+  },
 }));
 import type { CardSummary } from "../../src/lib/card-types";
 
@@ -18,6 +21,7 @@ const cards: CardSummary[] = [
 ];
 
 describe("CardPoolGrid", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
   it("renders a tile per card with an accessible preview label", () => {
     render(<CardPoolGrid cards={cards} />);
     expect(screen.getByRole("button", { name: /preview bujingi crane/i })).toBeTruthy();
@@ -110,5 +114,174 @@ describe("CardPoolGrid", () => {
     render(<CardPoolGrid cards={cards} cubeEditMode />);
 
     expect(screen.getByRole("img", { name: "Bujingi Crane" })).toHaveAttribute("src", "u1");
+  });
+
+  it("windows the grid: renders only a subset of a large pool", () => {
+    const many: CardSummary[] = Array.from({ length: 400 }, (_, i) => ({
+      id: i + 1,
+      name: `Card ${i + 1}`,
+      type: "Spell Card",
+      frameType: "spell",
+      effectText: "...",
+      imageUrl: `u${i}`,
+      imageUrlSmall: `s${i}`,
+    }));
+    render(<CardPoolGrid cards={many} />);
+    const rendered = screen.getAllByRole("button", { name: /^preview card/i });
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered.length).toBeLessThan(120); // far fewer than 400 → windowed
+    // windowed rows are full rows: at 900px the grid is 5 columns, so the
+    // rendered tile count is an exact multiple of 5 (no partial top/bottom row).
+    expect(rendered.length % 5).toBe(0);
+  });
+});
+
+function bigPool(n: number): CardSummary[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: i + 1,
+    name: `Card ${i + 1}`,
+    type: "Spell Card",
+    frameType: "spell",
+    effectText: "...",
+    imageUrl: `u${i}`,
+    imageUrlSmall: `s${i}`,
+  }));
+}
+
+function firstRowColumns(): number {
+  const row = document.querySelector<HTMLElement>("[data-index]");
+  if (!row) throw new Error("no virtualized row rendered");
+  const match = /repeat\((\d+),/.exec(row.style.gridTemplateColumns);
+  return match ? Number(match[1]) : 0;
+}
+
+// columns = max(1, floor((clientWidth - PAD_X + GAP) / (TILE_MIN + GAP)))
+// PAD_X=24, GAP=12, TILE_MIN=144 (default) / 200 (cube edit).
+describe.each([
+  { width: 480, columns: 3 }, // floor((480-24+12)/156) = floor(3.0)
+  { width: 900, columns: 5 }, // floor((900-24+12)/156) = floor(5.69)
+  { width: 1600, columns: 10 }, // floor((1600-24+12)/156) = floor(10.18)
+])("CardPoolGrid column math at $width px", ({ width, columns }) => {
+  beforeEach(() => installVirtualizerJsdomEnv({ width, height: 600 }));
+
+  it("derives the column count from the measured width and lays the row out to match", () => {
+    render(<CardPoolGrid cards={bigPool(60)} />);
+    expect(firstRowColumns()).toBe(columns);
+    const firstRow = document.querySelector<HTMLElement>("[data-index='0']")!;
+    expect(within(firstRow).getAllByRole("button", { name: /^preview card/i })).toHaveLength(columns);
+  });
+});
+
+describe("CardPoolGrid column math in cube edit mode", () => {
+  // TILE_MIN widens to 200 → floor((900-24+12)/(200+12)) = floor(4.18) = 4.
+  beforeEach(() => installVirtualizerJsdomEnv({ width: 900, height: 600 }));
+
+  it("uses fewer, wider columns than the default grid at the same width", () => {
+    render(<CardPoolGrid cards={bigPool(60)} cubeEditMode />);
+    expect(firstRowColumns()).toBe(4);
+    const firstRow = document.querySelector<HTMLElement>("[data-index='0']")!;
+    expect(within(firstRow).getAllByRole("button", { name: /^preview card/i })).toHaveLength(4);
+  });
+});
+
+const POPUP_W = 288;
+const POPUP_H = 560;
+const MARGIN = 16;
+
+function setViewport(width: number, height: number): void {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+}
+
+function rect(r: { left: number; right: number; top: number; height: number }): DOMRect {
+  return {
+    ...r,
+    x: r.left,
+    y: r.top,
+    width: r.right - r.left,
+    bottom: r.top + r.height,
+    toJSON: () => r,
+  } as DOMRect;
+}
+
+describe("getPopupPosition", () => {
+  it("places the popup to the left of the card when there is room", () => {
+    setViewport(1600, 900);
+    const card = rect({ left: 900, right: 1044, top: 300, height: 200 });
+
+    const { left } = getPopupPosition(card);
+
+    // Popup sits entirely to the left of the card, on-screen.
+    expect(left + POPUP_W).toBeLessThanOrEqual(card.left);
+    expect(left).toBeGreaterThanOrEqual(MARGIN);
+  });
+
+  it("flips the popup to the right of the card when the left has no room (sidebar case)", () => {
+    setViewport(1600, 900);
+    // Leftmost preview card next to the app sidebar — left placement would
+    // clamp to the viewport edge and land under the sidebar.
+    const card = rect({ left: 120, right: 264, top: 300, height: 200 });
+
+    const { left } = getPopupPosition(card);
+
+    // Popup is placed to the right of the card, clear of the left edge.
+    expect(left).toBeGreaterThanOrEqual(card.right);
+  });
+
+  it("keeps the popup on-screen even when neither side fully fits", () => {
+    setViewport(360, 640);
+    const card = rect({ left: 80, right: 224, top: 200, height: 200 });
+
+    const { left } = getPopupPosition(card);
+
+    expect(left).toBeGreaterThanOrEqual(MARGIN);
+    expect(left).toBeLessThanOrEqual(360 - POPUP_W - MARGIN);
+  });
+
+  it("vertically centers on the card and clamps to the viewport", () => {
+    setViewport(1600, 900);
+    const card = rect({ left: 900, right: 1044, top: 400, height: 200 });
+
+    const { top } = getPopupPosition(card);
+
+    // Popup's vertical center aligns with the card's center when unclamped.
+    expect(top + POPUP_H / 2).toBe(card.top + card.height / 2);
+    expect(top).toBeGreaterThanOrEqual(MARGIN);
+    expect(top).toBeLessThanOrEqual(900 - POPUP_H - MARGIN);
+  });
+
+  it("clamps the popup within the viewport when the card sits near the bottom", () => {
+    setViewport(1600, 700);
+    const card = rect({ left: 900, right: 1044, top: 660, height: 200 });
+
+    const { top } = getPopupPosition(card);
+
+    expect(top).toBeLessThanOrEqual(700 - POPUP_H - MARGIN);
+    expect(top).toBeGreaterThanOrEqual(MARGIN);
+  });
+});
+
+describe("CardPoolGrid memoization", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
+  it("does not re-render its tiles when its parent re-renders with the same props", () => {
+    function Harness() {
+      const [tick, setTick] = React.useState(0);
+      return (
+        <>
+          <button onClick={() => setTick((t) => t + 1)}>bump {tick}</button>
+          <CardPoolGrid cards={cards} />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const tilesAfterMount = imageRenders.count;
+
+    // Parent re-renders with an identical `cards` reference (mirrors typing in
+    // an unrelated field on the create-draft form). The memoized grid must not
+    // re-render its tiles — this is the typing-lag regression.
+    fireEvent.click(screen.getByText(/bump/));
+
+    expect(imageRenders.count).toBe(tilesAfterMount);
   });
 });

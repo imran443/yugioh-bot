@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardPoolEditor } from "../../src/components/cubes/card-pool-editor";
 import { clearCardsCache, putCards } from "../../src/lib/cards-cache";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
 const push = vi.fn();
 
@@ -18,6 +19,9 @@ vi.mock("next/image", () => ({
 }));
 
 describe("CardPoolEditor create mode", () => {
+  // CardPoolGrid is virtualized; jsdom reports 0-size elements so the
+  // virtualizer renders no rows without this shim.
+  beforeEach(() => installVirtualizerJsdomEnv());
   afterEach(() => {
     clearCardsCache();
     vi.unstubAllGlobals();

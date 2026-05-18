@@ -3,6 +3,7 @@ import React from "react";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PoolBuilder } from "../../src/components/cards/pool-builder";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
 
 vi.mock("@/lib/cards-cache", () => ({
   getCached: vi.fn().mockImplementation((ids: number[]) => ({ hits: [], missing: ids })),
@@ -10,7 +11,7 @@ vi.mock("@/lib/cards-cache", () => ({
   clearCardsCache: vi.fn(),
 }));
 
-import { getCached, putCards } from "../../src/lib/cards-cache";
+import { putCards } from "../../src/lib/cards-cache";
 
 vi.mock("next/image", () => ({
   default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
@@ -24,11 +25,15 @@ function stubFetch() {
     const url = String(input);
     if (url.startsWith("/api/sets")) return Response.json({ sets: [] });
     if (url === "/api/cards/resolve" && init?.method === "POST") {
-      const body = JSON.parse(String(init.body)) as { cardIds?: number[] };
-      const known = (body.cardIds ?? []).filter((id) => id === 46986414);
+      // Mirror the real route: it receives the full customCardIds multiset
+      // and returns one card per distinct id with qty = copy count.
+      const body = JSON.parse(String(init.body)) as { customCardIds?: number[] };
+      const counts = new Map<number, number>();
+      for (const id of body.customCardIds ?? []) counts.set(id, (counts.get(id) ?? 0) + 1);
+      const known = [...counts.keys()].filter((id) => id === 46986414);
       return Response.json({
-        cards: known.map((id) => ({ id, name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", effectText: "", imageUrl: "u", imageUrlSmall: "s" })),
-        unknownIds: (body.cardIds ?? []).filter((id) => id !== 46986414),
+        cards: known.map((id) => ({ id, name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", effectText: "", imageUrl: "u", imageUrlSmall: "s", qty: counts.get(id) })),
+        unknownIds: [...counts.keys()].filter((id) => id !== 46986414),
       });
     }
     return Response.json({}, { status: 404 });
@@ -39,8 +44,8 @@ function stubFetch() {
 
 describe("PoolBuilder", () => {
   beforeEach(() => {
+    installVirtualizerJsdomEnv();
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.mocked(getCached).mockImplementation((ids: number[]) => ({ hits: [], missing: ids }));
     vi.mocked(putCards).mockReset();
   });
   afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
@@ -60,10 +65,29 @@ describe("PoolBuilder", () => {
     await waitFor(() => {
       const resolveCall = fetchMock.mock.calls.find(([u, i]) => String(u) === "/api/cards/resolve" && (i as RequestInit)?.method === "POST");
       expect(resolveCall).toBeTruthy();
-      expect(JSON.parse(String((resolveCall![1] as RequestInit).body))).toMatchObject({ cardIds: [46986414, 99999999] });
+      expect(JSON.parse(String((resolveCall![1] as RequestInit).body))).toMatchObject({ customCardIds: [46986414, 99999999] });
     });
     await waitFor(() => expect(screen.getByRole("button", { name: /preview dark magician/i })).toBeTruthy());
     expect(screen.getAllByText(/99999999/).length).toBeGreaterThan(0); // unknown placeholder
+  });
+
+  it("shows one tile with a ×N badge for repeated custom ids", async () => {
+    stubFetch();
+    const onChange = vi.fn();
+    render(
+      <PoolBuilder
+        value={{ setNames: [], customCardText: "46986414\n46986414\n46986414" }}
+        onChange={onChange}
+      />,
+    );
+
+    await act(async () => { vi.advanceTimersByTime(400); });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /preview dark magician/i })).toBeTruthy());
+    // The same card type renders as a single tile, with a ×3 multiplicity
+    // badge sourced from the route's authoritative qty (full multiset sent).
+    expect(screen.getAllByRole("button", { name: /preview dark magician/i }).length).toBe(1);
+    expect(screen.getByText("×3")).toBeTruthy();
   });
 
   it("shows an error when the API returns non-ok", async () => {

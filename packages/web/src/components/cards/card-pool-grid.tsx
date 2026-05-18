@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
-import Image from "next/image";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { CardHoverPopup } from "@/components/draft/card-hover-popup";
+import { CardArt } from "@/components/cards/card-art";
 import {
   isMonster, isSpell, isTrap, isEffectMonster, isNormalMonster, getTypeBadgeClass, getTypeLabel,
   type CardSummary,
@@ -14,16 +15,32 @@ import {
 type PoolFilter = "all" | "effect" | "normal" | "spell" | "trap";
 type PoolSort = "newest" | "oldest" | "name" | "type";
 
+type GridEntry =
+  | { kind: "card"; card: CardSummary }
+  | { kind: "unknown"; id: number };
+
 const POPUP_WIDTH = 288;
 const POPUP_HEIGHT = 560;
 const POPUP_MARGIN = 16;
 
-function getPopupPosition(rect: DOMRect): { left: number; top: number } {
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function getPopupPosition(rect: DOMRect): { left: number; top: number } {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const leftOfItem = rect.left - POPUP_WIDTH - POPUP_MARGIN;
-  const left = Math.min(vw - POPUP_WIDTH - POPUP_MARGIN, Math.max(POPUP_MARGIN, leftOfItem));
-  const top = Math.min(vh - POPUP_HEIGHT - POPUP_MARGIN, Math.max(POPUP_MARGIN, rect.top + rect.height / 2 - POPUP_HEIGHT / 2));
+  // Prefer the left of the card, but flip to its right when there isn't room
+  // — otherwise the popup is clamped to the viewport edge and lands under the
+  // app sidebar (e.g. the pool preview sitting in the left column).
+  const fitsLeft = rect.left >= POPUP_WIDTH + POPUP_MARGIN * 2;
+  const desiredLeft = fitsLeft
+    ? rect.left - POPUP_WIDTH - POPUP_MARGIN
+    : rect.right + POPUP_MARGIN;
+  const verticalCenter = rect.top + rect.height / 2 - POPUP_HEIGHT / 2;
+
+  const left = clamp(desiredLeft, POPUP_MARGIN, vw - POPUP_WIDTH - POPUP_MARGIN);
+  const top = clamp(verticalCenter, POPUP_MARGIN, vh - POPUP_HEIGHT - POPUP_MARGIN);
   return { left, top };
 }
 
@@ -34,11 +51,15 @@ interface CardPoolGridProps {
   emptyMessage?: string;
   className?: string;
   heightClassName?: string;
-  gridClassName?: string;
   showSummary?: boolean;
+  // my-cubes feature: callers can turn the grid into a card picker.
   onCardClick?: (card: CardSummary) => void;
   cardActionLabel?: (card: CardSummary) => string;
   cubeEditMode?: boolean;
+  // Accepted for API compatibility with my-cubes callers. The grid is
+  // virtualized (columns derived from measured width), so a fixed grid class
+  // is no longer applied — cubeEditMode widens the tiles instead.
+  gridClassName?: string;
 }
 
 const FILTER_BUTTONS: Array<{ label: string; value: PoolFilter }> = [
@@ -55,14 +76,13 @@ const SORT_BUTTONS: Array<{ label: string; value: PoolSort }> = [
   { label: "Type", value: "type" },
 ];
 
-export function CardPoolGrid({
+function CardPoolGridBase({
   cards,
   loading = false,
   unknownIds = [],
   emptyMessage = "No cards.",
   className,
   heightClassName = "h-[26rem]",
-  gridClassName = "grid grid-cols-2 gap-3 p-3 2xl:grid-cols-3",
   showSummary = true,
   onCardClick,
   cardActionLabel,
@@ -115,6 +135,58 @@ export function CardPoolGrid({
   const previewEnabled = !cubeEditMode && !onCardClick;
   const hoverEnabled = !cubeEditMode;
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<{ columns: number; innerWidth: number }>({
+    columns: 1,
+    innerWidth: 0,
+  });
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const GAP = 12; // gap-3
+    // cube edit mode shows larger tiles (fewer, wider columns).
+    const TILE_MIN = cubeEditMode ? 200 : 144;
+    const PAD_X = 24; // px-3 on each row, both sides
+    const measure = (): void => {
+      const inner = Math.max(0, el.clientWidth - PAD_X);
+      const columns = Math.max(1, Math.floor((inner + GAP) / (TILE_MIN + GAP)));
+      setLayout({ columns, innerWidth: inner });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [cubeEditMode]);
+
+  const entries = useMemo<GridEntry[]>(
+    () => [
+      ...visible.map((card): GridEntry => ({ kind: "card", card })),
+      ...unknownIds.map((id): GridEntry => ({ kind: "unknown", id })),
+    ],
+    [visible, unknownIds],
+  );
+
+  const { columns, innerWidth } = layout;
+  const estimatedRowHeight = useMemo(() => {
+    const GAP = 12;
+    const tileW = innerWidth > 0 ? (innerWidth - (columns - 1) * GAP) / columns : 144;
+    const imageH = (tileW * 614) / 421;
+    // image + img/label gap (8) + label block (~64) + button padding (16) + paddingBottom on row div (12)
+    return Math.round(imageH + 8 + 64 + 16 + GAP);
+  }, [columns, innerWidth]);
+
+  const rowCount = Math.ceil(entries.length / columns);
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => estimatedRowHeight,
+    overscan: 4,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {showSummary && (
@@ -162,14 +234,14 @@ export function CardPoolGrid({
         ))}
       </div>
 
-      <div className={cn("relative overflow-y-auto rounded-lg border border-border bg-surface/70", heightClassName)}>
+      <div ref={scrollRef} className={cn("relative overflow-y-auto rounded-lg border border-border bg-surface/70", heightClassName)}>
         {loading && cards.length > 0 && (
           <span className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-bg-elevated px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-text-secondary">
             Updating…
           </span>
         )}
         {showSkeleton ? (
-          <div data-testid="card-pool-grid-skeleton" className="grid grid-cols-2 gap-3 p-3 2xl:grid-cols-3">
+          <div data-testid="card-pool-grid-skeleton" className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3 p-3">
             {Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="aspect-[421/614] w-full animate-pulse rounded-md bg-bg-elevated" />
             ))}
@@ -179,68 +251,118 @@ export function CardPoolGrid({
         ) : visible.length === 0 && unknownIds.length === 0 ? (
           <p className="px-3 py-4 text-sm text-text-secondary">No cards match.</p>
         ) : (
-          <div data-testid="card-pool-grid" className={gridClassName}>
-            {visible.map((card) => (
-              <button
-                key={card.id}
-                type="button"
-                aria-label={onCardClick ? cardActionLabel?.(card) ?? `Select ${card.name}` : `Preview ${card.name}`}
-                className={cn(
-                  "group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary",
-                  cubeEditMode ? "cursor-pointer" : "transition-colors duration-150 hover:bg-bg-elevated",
-                )}
-                onClick={(e) => {
-                  if (onCardClick) {
-                    onCardClick(card);
-                    return;
-                  }
-                  if (!previewEnabled) {
-                    return;
-                  }
-                  setTapped(card);
-                  setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect()));
-                }}
-                onMouseEnter={hoverEnabled ? (e) => handleEnter(card, e.currentTarget.getBoundingClientRect()) : undefined}
-                onMouseLeave={hoverEnabled ? handleLeave : undefined}
-                onFocus={hoverEnabled ? (e) => handleEnter(card, e.currentTarget.getBoundingClientRect()) : undefined}
-                onBlur={hoverEnabled ? handleLeave : undefined}
-              >
-                <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
-                  {imageErrors.has(card.id) ? (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">?</div>
-                  ) : (
-                    <Image
-                      src={cubeEditMode ? card.imageUrl || card.imageUrlSmall : card.imageUrlSmall || card.imageUrl}
-                      alt={card.name}
-                      fill
-                      className="object-cover"
-                      sizes={cubeEditMode ? "(min-width: 1280px) 220px, (min-width: 1024px) 180px, 45vw" : "(min-width: 1536px) 120px, 160px"}
-                      onError={() => handleImageError(card.id)}
-                    />
-                  )}
-                  {(card.qty ?? 1) > 1 && (
-                    <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 text-[0.65rem] font-bold tabular-nums text-white">
-                      ×{card.qty}
-                    </span>
+          <div
+            data-testid="card-pool-grid"
+            style={{ height: rowVirtualizer.getTotalSize() + 24, position: "relative" }}
+          >
+            {virtualItems.map((vRow) => {
+              const start = vRow.index * columns;
+              const rowEntries = entries.slice(start, start + columns);
+              return (
+                <div
+                  key={vRow.key}
+                  data-index={vRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="grid gap-3 px-3"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${vRow.start + 12}px)`,
+                    paddingBottom: 12,
+                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {rowEntries.map((entry) =>
+                    entry.kind === "card" ? (
+                      <button
+                        key={entry.card.id}
+                        type="button"
+                        aria-label={
+                          onCardClick
+                            ? cardActionLabel?.(entry.card) ?? `Select ${entry.card.name}`
+                            : `Preview ${entry.card.name}`
+                        }
+                        className={cn(
+                          "group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary",
+                          cubeEditMode ? "cursor-pointer" : "transition-colors duration-150 hover:bg-bg-elevated",
+                        )}
+                        onClick={(e) => {
+                          if (onCardClick) {
+                            onCardClick(entry.card);
+                            return;
+                          }
+                          if (!previewEnabled) {
+                            return;
+                          }
+                          setTapped(entry.card);
+                          setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect()));
+                        }}
+                        onMouseEnter={hoverEnabled ? (e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect()) : undefined}
+                        onMouseLeave={hoverEnabled ? handleLeave : undefined}
+                        onFocus={hoverEnabled ? (e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect()) : undefined}
+                        onBlur={hoverEnabled ? handleLeave : undefined}
+                      >
+                        <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
+                          {imageErrors.has(entry.card.id) ? (
+                            <div className="flex h-full w-full items-center justify-center text-xs text-text-muted">?</div>
+                          ) : (
+                            <CardArt
+                              smallSrc={
+                                cubeEditMode
+                                  ? entry.card.imageUrl || entry.card.imageUrlSmall
+                                  : entry.card.imageUrlSmall || entry.card.imageUrl
+                              }
+                              fullSrc={entry.card.imageUrl}
+                              alt={entry.card.name}
+                              sizes={
+                                cubeEditMode
+                                  ? "(min-width: 1280px) 220px, (min-width: 1024px) 180px, 45vw"
+                                  : "(min-width: 1536px) 120px, 160px"
+                              }
+                              className="object-cover"
+                              onError={() => handleImageError(entry.card.id)}
+                            />
+                          )}
+                          {(entry.card.qty ?? 1) > 1 && (
+                            <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 text-[0.65rem] font-bold tabular-nums text-white">
+                              ×{entry.card.qty}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 text-sm font-medium leading-snug text-text-primary">
+                            {entry.card.name}
+                          </p>
+                          <span
+                            className={cn(
+                              "mt-1 inline-flex rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase",
+                              getTypeBadgeClass(entry.card.type),
+                            )}
+                          >
+                            {getTypeLabel(entry.card.type)}
+                          </span>
+                        </div>
+                      </button>
+                    ) : (
+                      <div
+                        key={`unknown-${entry.id}`}
+                        data-testid="card-pool-grid-unknown"
+                        title={`Passcode ${entry.id} is not in the catalog yet`}
+                        aria-label={`Passcode ${entry.id} not in catalog yet`}
+                        className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border/70 bg-bg-elevated/20 p-2 text-center"
+                      >
+                        <div className="flex aspect-[421/614] w-full items-center justify-center rounded-md bg-bg-elevated/40 font-mono text-xs text-text-muted">
+                          {entry.id}
+                        </div>
+                        <p className="text-[0.65rem] text-text-muted">not in catalog yet</p>
+                      </div>
+                    ),
                   )}
                 </div>
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm font-medium leading-snug text-text-primary">{card.name}</p>
-                  <span className={cn("mt-1 inline-flex rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase", getTypeBadgeClass(card.type))}>
-                    {getTypeLabel(card.type)}
-                  </span>
-                </div>
-              </button>
-            ))}
-            {unknownIds.map((id) => (
-              <div key={`unknown-${id}`} data-testid="card-pool-grid-unknown"
-                title={`Passcode ${id} is not in the catalog yet`}
-                aria-label={`Passcode ${id} not in catalog yet`}
-                className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border/70 bg-bg-elevated/20 p-2 text-center">
-                <div className="flex aspect-[421/614] w-full items-center justify-center rounded-md bg-bg-elevated/40 font-mono text-xs text-text-muted">{id}</div>
-                <p className="text-[0.65rem] text-text-muted">not in catalog yet</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -266,3 +388,8 @@ export function CardPoolGrid({
     </div>
   );
 }
+
+// Memoized: this grid renders one image per card (hundreds for a cube
+// preview). Without memo, unrelated parent state — e.g. typing in the
+// create-draft form's name field — re-renders every tile and the page lags.
+export const CardPoolGrid = memo(CardPoolGridBase);
