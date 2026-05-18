@@ -4,17 +4,18 @@ import { useEffect } from "react";
 import { useDraftStore } from "@/lib/stores/draft-store";
 
 export function useDraftExpiryResync(slug: string) {
-  const packRound = useDraftStore((s) => s.packRound);
-  const pickStep = useDraftStore((s) => s.pickStep);
-  const timerSeconds = useDraftStore((s) => s.timerSeconds);
   const completed = useDraftStore((s) => s.completed);
   const setFromServer = useDraftStore((s) => s.setFromServer);
 
   useEffect(() => {
-    // Poll whenever the timer hits 0 on an active draft — including for players who have
-    // already picked this step, because the bot auto-picks remaining players and the pack
-    // then advances. Without this, already-picked players get stuck until a WS event arrives.
-    if (!slug || completed || timerSeconds > 0) {
+    // Reconcile against server truth for the whole active draft, not just after the
+    // timer hits 0. The pack only refreshes via a single fire-and-forget `resync`
+    // broadcast emitted by the lone step-completing request; if that broadcast is
+    // lost (dropped internal HTTP relay, Socket.IO reconnect, backgrounded tab, or
+    // the step-completing pick threw SQLITE_BUSY before emitting it) the client would
+    // otherwise stay frozen on the stale pack until the next timer expiry. A steady
+    // low-cost poll guarantees convergence regardless of broadcast delivery.
+    if (!slug || completed) {
       return;
     }
 
@@ -55,5 +56,5 @@ export function useDraftExpiryResync(slug: string) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [completed, packRound, pickStep, setFromServer, slug, timerSeconds]);
+  }, [completed, setFromServer, slug]);
 }
