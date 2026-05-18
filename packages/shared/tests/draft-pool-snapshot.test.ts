@@ -26,6 +26,23 @@ describe("pool snapshot", () => {
     expect(ids).toContain(1);
   });
 
+  it("resolvePoolCardIds is deterministic regardless of catalog row insertion order", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('g1', 'u1', 'Alice')").run();
+    const insertCard = db.prepare(
+      `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+       values (?, ?, 'Effect Monster', 'effect', '', '', ?, current_timestamp)`,
+    );
+    // Insert deliberately out of ygoprodeck_id order (rowid order != id order).
+    for (const id of [30, 10, 50, 20, 40]) {
+      insertCard.run(id, `Card ${id}`, JSON.stringify([{ set_name: "Set A" }]));
+    }
+    const drafts = createDraftService(db);
+    const ids = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
+    expect(ids).toEqual([10, 20, 30, 40, 50]);
+  });
+
   it("openWave uses poolCardIds when present, ignoring catalog changes", () => {
     const db = new Database(":memory:");
     migrate(db);

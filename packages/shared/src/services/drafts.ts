@@ -297,10 +297,15 @@ export function createDraftService(db: Database.Database) {
     const excludeNames = new Set((config.excludeNames ?? []).map(normalizeName));
     const hasExplicitPool = setNames.size > 0 || customCardIds.length > 0 || includeNames.size > 0;
     const rows = db
-      .prepare("select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog")
+      .prepare(
+        "select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog order by ygoprodeck_id",
+      )
       .all()
-      .map((row: any) => row as CatalogRow)
-      .filter((row) => {
+      .map((raw: any) => {
+        const row = raw as CatalogRow;
+        return { row, cardSets: JSON.parse(row.card_sets_json) as Array<{ set_name: string }> };
+      })
+      .filter(({ row, cardSets }) => {
         const normalizedName = normalizeName(row.name);
 
         if (isExtraDeckCatalogRow(row)) {
@@ -323,22 +328,20 @@ export function createDraftService(db: Database.Database) {
           return true;
         }
 
-        const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
         return cardSets.some((cardSet) => setNames.has(cardSet.set_name));
       });
 
     if (!hasExplicitPool) {
-      return rows.map((row) => row.ygoprodeck_id);
+      return rows.map(({ row }) => row.ygoprodeck_id);
     }
 
     // baseline (set/include) appears once; custom occurrences are additive and
     // preserve repeats, so total per card = baseline + count in customCardIds.
     const baseIds = new Set<number>();
     const customEligibleIds = new Set<number>();
-    for (const row of rows) {
+    for (const { row, cardSets } of rows) {
       customEligibleIds.add(row.ygoprodeck_id);
       const normalizedName = normalizeName(row.name);
-      const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
       if (includeNames.has(normalizedName) || cardSets.some((cardSet) => setNames.has(cardSet.set_name))) {
         baseIds.add(row.ygoprodeck_id);
       }

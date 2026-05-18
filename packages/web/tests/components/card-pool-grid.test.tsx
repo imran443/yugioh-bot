@@ -130,6 +130,57 @@ describe("CardPoolGrid", () => {
     const rendered = screen.getAllByRole("button", { name: /^preview card/i });
     expect(rendered.length).toBeGreaterThan(0);
     expect(rendered.length).toBeLessThan(120); // far fewer than 400 → windowed
+    // windowed rows are full rows: at 900px the grid is 5 columns, so the
+    // rendered tile count is an exact multiple of 5 (no partial top/bottom row).
+    expect(rendered.length % 5).toBe(0);
+  });
+});
+
+function bigPool(n: number): CardSummary[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: i + 1,
+    name: `Card ${i + 1}`,
+    type: "Spell Card",
+    frameType: "spell",
+    effectText: "...",
+    imageUrl: `u${i}`,
+    imageUrlSmall: `s${i}`,
+  }));
+}
+
+function firstRowColumns(): number {
+  const row = document.querySelector<HTMLElement>("[data-index]");
+  if (!row) throw new Error("no virtualized row rendered");
+  const match = /repeat\((\d+),/.exec(row.style.gridTemplateColumns);
+  return match ? Number(match[1]) : 0;
+}
+
+// columns = max(1, floor((clientWidth - PAD_X + GAP) / (TILE_MIN + GAP)))
+// PAD_X=24, GAP=12, TILE_MIN=144 (default) / 200 (cube edit).
+describe.each([
+  { width: 480, columns: 3 }, // floor((480-24+12)/156) = floor(3.0)
+  { width: 900, columns: 5 }, // floor((900-24+12)/156) = floor(5.69)
+  { width: 1600, columns: 10 }, // floor((1600-24+12)/156) = floor(10.18)
+])("CardPoolGrid column math at $width px", ({ width, columns }) => {
+  beforeEach(() => installVirtualizerJsdomEnv({ width, height: 600 }));
+
+  it("derives the column count from the measured width and lays the row out to match", () => {
+    render(<CardPoolGrid cards={bigPool(60)} />);
+    expect(firstRowColumns()).toBe(columns);
+    const firstRow = document.querySelector<HTMLElement>("[data-index='0']")!;
+    expect(within(firstRow).getAllByRole("button", { name: /^preview card/i })).toHaveLength(columns);
+  });
+});
+
+describe("CardPoolGrid column math in cube edit mode", () => {
+  // TILE_MIN widens to 200 → floor((900-24+12)/(200+12)) = floor(4.18) = 4.
+  beforeEach(() => installVirtualizerJsdomEnv({ width: 900, height: 600 }));
+
+  it("uses fewer, wider columns than the default grid at the same width", () => {
+    render(<CardPoolGrid cards={bigPool(60)} cubeEditMode />);
+    expect(firstRowColumns()).toBe(4);
+    const firstRow = document.querySelector<HTMLElement>("[data-index='0']")!;
+    expect(within(firstRow).getAllByRole("button", { name: /^preview card/i })).toHaveLength(4);
   });
 });
 
