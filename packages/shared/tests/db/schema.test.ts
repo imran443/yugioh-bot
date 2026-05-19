@@ -288,6 +288,16 @@ describe("shared database schema", () => {
     ]);
   });
 
+  it("creates tournaments table with completed_announced_at column", () => {
+    const db = new Database(":memory:");
+
+    migrate(db);
+
+    expect(getTableInfo(db, "tournaments").map((column) => column.name)).toContain(
+      "completed_announced_at",
+    );
+  });
+
   it("backfills web_slug for tournaments that pre-date the column", () => {
     const db = new Database(":memory:");
     // Simulate legacy schema without web_slug

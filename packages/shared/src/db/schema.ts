@@ -253,6 +253,7 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "drafts", "complete_message_id", "text");
   addColumnIfMissing(db, "matches", "notify_channel_id", "text");
   addColumnIfMissing(db, "matches", "notify_message_id", "text");
+  addColumnIfMissing(db, "tournaments", "completed_announced_at", "text");
 
   db.exec(`
     create unique index if not exists tournaments_current_name_unique
