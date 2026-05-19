@@ -47,3 +47,31 @@ export function draftCompletedAnnouncement(input: { name: string; webSlug: strin
     ],
   };
 }
+
+export function reportPendingAnnouncement(input: {
+  matchId: number;
+  tournamentName: string;
+  roundNumber: number;
+  reporterName: string;
+  opponentDiscordId: string;
+  opponentLost: boolean;
+}): { content: string; components: ActionRowBuilder<ButtonBuilder>[] } {
+  const verb = input.opponentLost ? "lost" : "won";
+  return {
+    content:
+      `<@${input.opponentDiscordId}> — **${input.reporterName}** reported that you **${verb}** ` +
+      `Round ${input.roundNumber} of **${input.tournamentName}**. Approve or deny:`,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`dashboard_approve:${input.matchId}`)
+          .setLabel("Approve")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`dashboard_deny:${input.matchId}`)
+          .setLabel("Deny")
+          .setStyle(ButtonStyle.Danger),
+      ),
+    ],
+  };
+}
