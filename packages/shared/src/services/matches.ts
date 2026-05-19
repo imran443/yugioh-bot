@@ -347,6 +347,16 @@ export function createMatchService(db: Database.Database) {
       return row ? mapMatch(row) : undefined;
     },
 
+    claimTournamentCompletionAnnouncement(tournamentId: number): boolean {
+      const result = db
+        .prepare(
+          "update tournaments set completed_announced_at = current_timestamp " +
+          "where id = ? and status = 'completed' and completed_announced_at is null",
+        )
+        .run(tournamentId);
+      return result.changes === 1;
+    },
+
     leaderboard(guildId: string): LeaderboardRow[] {
       return db
         .prepare(
