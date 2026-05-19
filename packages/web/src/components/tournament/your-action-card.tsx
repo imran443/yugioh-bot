@@ -20,7 +20,9 @@ export function YourActionCard({
 }) {
   const [reporting, setReporting] = useState(false);
   const roundLabel =
-    tournamentFormat === "single_elim" ? ` — Round ${actionMatch?.roundNumber}` : "";
+    tournamentFormat === "single_elim" && actionMatch != null
+      ? ` — Round ${actionMatch.roundNumber}`
+      : "";
 
   if (!actionMatch) {
     return (

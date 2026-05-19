@@ -185,7 +185,6 @@ describe("TournamentDetailPage (tabbed integration)", () => {
   it("round-robin overview shows match progress but NOT a round number", async () => {
     renderPage(roundRobinTournament);
     expect(await screen.findByText(/2\/3 matches done/i)).toBeTruthy();
-    expect(screen.queryByText(/round 1 of 3/i)).toBeNull();
     expect(screen.queryByText(/round \d+ of \d+/i)).toBeNull();
   });
 
