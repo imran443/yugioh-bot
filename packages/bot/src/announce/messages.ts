@@ -64,11 +64,11 @@ export function reportPendingAnnouncement(input: {
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
-          .setCustomId(`dashboard_approve:${input.matchId}`)
+          .setCustomId(`dashboard_approve:${input.matchId}:${input.opponentDiscordId}`)
           .setLabel("Approve")
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
-          .setCustomId(`dashboard_deny:${input.matchId}`)
+          .setCustomId(`dashboard_deny:${input.matchId}:${input.opponentDiscordId}`)
           .setLabel("Deny")
           .setStyle(ButtonStyle.Danger),
       ),
