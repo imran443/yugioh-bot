@@ -12,7 +12,7 @@ describe("announce server", () => {
     const handler = vi.fn();
     const app = createAnnounceServer({
       secret,
-      handlers: { onDraftCreated: handler, onDraftStarted: handler, onDraftCompleted: handler, onTournamentCreated: handler, onTournamentStarted: handler },
+      handlers: { onDraftCreated: handler, onDraftStarted: handler, onDraftCompleted: handler, onTournamentCreated: handler, onTournamentStarted: handler, onMatchReportPending: handler, onMatchResolved: handler },
     });
     const res = await app.handle(new Request("http://x/internal/announce/draft-created", {
       method: "POST",
@@ -33,6 +33,8 @@ describe("announce server", () => {
         onDraftCompleted: vi.fn(),
         onTournamentCreated: vi.fn(),
         onTournamentStarted: vi.fn(),
+        onMatchReportPending: vi.fn(),
+        onMatchResolved: vi.fn(),
       },
     });
     const body = JSON.stringify({ draftId: 1, channelId: "c1", name: "Test", webSlug: "abcd1234" });

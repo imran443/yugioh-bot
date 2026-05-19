@@ -631,6 +631,40 @@ export function createTournamentService(db: Database.Database) {
       return mapMatch(db.prepare("select * from matches where id = ?").get(matchId));
     },
 
+    reopenTournamentMatch(tournamentMatchId: number, requesterUserId: string): void {
+      const tm = db
+        .prepare("select * from tournament_matches where id = ?")
+        .get(tournamentMatchId) as
+        | { id: number; tournament_id: number; match_id: number | null; status: string }
+        | undefined;
+      if (!tm) {
+        throw new Error("Tournament match not found");
+      }
+
+      const tournament = findById(tm.tournament_id);
+      if (tournament.createdByUserId !== requesterUserId) {
+        throw new Error("Only the organizer can reopen a match");
+      }
+      if (tournament.format !== "round_robin") {
+        throw new Error("Reopening results is only available for round-robin events");
+      }
+      if (tm.status !== "completed" || tm.match_id === null) {
+        throw new Error("Match is not completed");
+      }
+
+      db.prepare(
+        "update matches set status = 'denied', resolved_at = current_timestamp where id = ?",
+      ).run(tm.match_id);
+
+      db.prepare(
+        "update tournament_matches set status = 'open', match_id = null where id = ?",
+      ).run(tm.id);
+
+      db.prepare(
+        "update tournaments set status = 'active', ended_at = null where id = ? and status = 'completed'",
+      ).run(tm.tournament_id);
+    },
+
     cancel(tournamentId: number): Tournament {
       const tournament = findById(tournamentId);
 

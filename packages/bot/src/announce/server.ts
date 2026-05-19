@@ -6,7 +6,22 @@ export type AnnouncePayload =
   | { kind: "draft-started"; draftId: number; channelId: string; name: string; webSlug: string }
   | { kind: "draft-completed"; draftId: number; channelId: string; name: string; webSlug: string }
   | { kind: "tournament-created"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string; organizerUserId: string; participantCount: number }
-  | { kind: "tournament-started"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string };
+  | { kind: "tournament-started"; tournamentId: number; channelId: string; name: string; format: string; webSlug: string }
+  | {
+      kind: "match-report-pending";
+      guildId: string;
+      slug: string;
+      matchId: number;
+      tournamentMatchId: number;
+      tournamentName: string;
+      roundNumber: number;
+      reporterDiscordId: string;
+      opponentDiscordId: string;
+      reporterName: string;
+      opponentName: string;
+      opponentLost: boolean;
+    }
+  | { kind: "match-resolved"; matchId: number };
 
 type OmitKind<T extends { kind: string }> = Omit<T, "kind">;
 
@@ -16,6 +31,8 @@ export interface AnnounceHandlers {
   onDraftCompleted(payload: OmitKind<Extract<AnnouncePayload, { kind: "draft-completed" }>>): Promise<void>;
   onTournamentCreated(payload: OmitKind<Extract<AnnouncePayload, { kind: "tournament-created" }>>): Promise<void>;
   onTournamentStarted(payload: OmitKind<Extract<AnnouncePayload, { kind: "tournament-started" }>>): Promise<void>;
+  onMatchReportPending(payload: OmitKind<Extract<AnnouncePayload, { kind: "match-report-pending" }>>): Promise<void>;
+  onMatchResolved(payload: OmitKind<Extract<AnnouncePayload, { kind: "match-resolved" }>>): Promise<void>;
 }
 
 export function createAnnounceServer(opts: {
@@ -28,6 +45,8 @@ export function createAnnounceServer(opts: {
     "/internal/announce/draft-completed": (d) => opts.handlers.onDraftCompleted(d),
     "/internal/announce/tournament-created": (d) => opts.handlers.onTournamentCreated(d),
     "/internal/announce/tournament-started": (d) => opts.handlers.onTournamentStarted(d),
+    "/internal/announce/match-report-pending": (d) => opts.handlers.onMatchReportPending(d),
+    "/internal/announce/match-resolved": (d) => opts.handlers.onMatchResolved(d),
   };
 
   async function handle(req: Request): Promise<Response> {

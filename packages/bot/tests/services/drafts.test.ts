@@ -155,6 +155,8 @@ describe("draft service", () => {
       pickDeadlineAt: null,
       statusMessageId: null,
       webSlug: expect.any(String),
+      tournamentId: undefined,
+      completeMessageId: undefined,
     });
     expect(app.drafts.findById(draft.id)).toEqual(draft);
     expect(app.drafts.findByName("guild-1", "cube night")).toEqual(draft);

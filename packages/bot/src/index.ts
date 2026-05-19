@@ -45,10 +45,12 @@ import {
   selectTournamentReminderTargets,
 } from "./reminders/tournament-reminders.js";
 import { createDraftTimerService } from "./services/draft-timer.js";
+import { createNotifyCleanupService } from "./services/notify-cleanup.js";
 import { createMatchService } from "@yugidraft/shared/services";
 import { createTournamentService } from "@yugidraft/shared/services";
 import { createAnnounceHandlers } from "./announce/handlers.js";
 import { createAnnounceServer } from "./announce/server.js";
+import { deleteNotifyMessage } from "./lib/notify-message.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -131,6 +133,7 @@ const deps = {
   tournaments: createTournamentService(db),
   drafts: createDraftService(db),
   cards: createCardCatalogService(db),
+  deleteNotifyMessage: (matchId: number) => deleteNotifyMessage(client, db, matchId),
   templates: createDraftTemplateService(db),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
   guildSettings: createGuildSettingsService(db),
@@ -192,6 +195,7 @@ const draftTimer = createDraftTimerService({
       db,
       drafts: deps.drafts,
       messenger: deps.messenger,
+      guildSettings: deps.guildSettings,
     });
     await announceHandlers.onDraftCompleted({
       draftId: draft.id,
@@ -380,12 +384,19 @@ client.once("ready", () => {
       draftTimer.start();
     });
 
+  const notifyCleanup = createNotifyCleanupService({
+    db,
+    ttlMinutes: Number(process.env.NOTIFY_MESSAGE_TTL_MINUTES ?? 720),
+    deleteNotifyMessage: (matchId: number) => deleteNotifyMessage(client, db, matchId),
+  });
+  notifyCleanup.start();
+
   const announceSecret = process.env.BOT_ANNOUNCE_SECRET ?? "";
   const announcePort = Number(process.env.BOT_ANNOUNCE_PORT ?? 4001);
   if (announceSecret) {
     const announceServer = createAnnounceServer({
       secret: announceSecret,
-      handlers: createAnnounceHandlers({ client, db, drafts: deps.drafts, messenger: deps.messenger }),
+      handlers: createAnnounceHandlers({ client, db, drafts: deps.drafts, messenger: deps.messenger, guildSettings: deps.guildSettings }),
     });
     announceServer.listen(announcePort);
   } else {

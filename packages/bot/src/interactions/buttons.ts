@@ -37,6 +37,7 @@ type ButtonDependencies = {
   drafts: DraftService;
   cards: CardCatalogService;
   db: Database.Database;
+  deleteNotifyMessage?: (matchId: number) => Promise<void>;
 };
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
@@ -697,6 +698,9 @@ export async function handleButton(
         { kind: "match-updated", slug: tournamentRow.web_slug },
       );
     }
+    if (deps.deleteNotifyMessage) {
+      await deps.deleteNotifyMessage(match.id);
+    }
     await interaction.reply({ content: `Approved match #${match.id}.`, ephemeral: true });
     return;
   }
@@ -716,6 +720,9 @@ export async function handleButton(
         { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
         { kind: "match-updated", slug: tournamentRow.web_slug },
       );
+    }
+    if (deps.deleteNotifyMessage) {
+      await deps.deleteNotifyMessage(match.id);
     }
     await interaction.reply({ content: `Denied match #${match.id}.`, ephemeral: true });
     return;
