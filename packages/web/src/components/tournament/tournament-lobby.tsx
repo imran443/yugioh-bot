@@ -63,6 +63,23 @@ export function TournamentLobby({
     }
   }
 
+  async function handleAddBot() {
+    setActionLoading("add-bot");
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentSlug}/join-bot`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to add bot");
+      }
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to add bot");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function handleCancel() {
     setActionLoading("cancel");
     setActionError(null);
@@ -289,18 +306,31 @@ export function TournamentLobby({
       {/* Primary action — Start (organizer pending) or Join (non-participant pending) */}
       {isCreator && (
         <div className="mb-6 flex flex-col items-center gap-2">
-          <Button
-            variant="primary"
-            size="lg"
-            loading={actionLoading === "start"}
-            disabled={!canStart}
-            title={!canStart ? "Need at least 2 participants to start" : undefined}
-            onClick={handleStart}
-            className="min-w-[240px]"
-          >
-            <Play className="h-5 w-5" />
-            Start Tournament
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              variant="primary"
+              size="lg"
+              loading={actionLoading === "start"}
+              disabled={!canStart}
+              title={!canStart ? "Need at least 2 participants to start" : undefined}
+              onClick={handleStart}
+              className="min-w-[240px]"
+            >
+              <Play className="h-5 w-5" />
+              Start Tournament
+            </Button>
+            {process.env.NODE_ENV !== "production" && (
+              <Button
+                variant="secondary"
+                size="lg"
+                loading={actionLoading === "add-bot"}
+                onClick={handleAddBot}
+              >
+                <UserPlus className="h-5 w-5" />
+                Add Bot
+              </Button>
+            )}
+          </div>
           {!canStart && (
             <p className="font-mono text-xs uppercase tracking-wider text-text-secondary">
               Need {2 - participantCount} more{" "}
