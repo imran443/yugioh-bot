@@ -11,7 +11,7 @@ const openMine: Match = {
 };
 
 describe("YourActionCard", () => {
-  it("prompts to report when the action match is an open match", () => {
+  it("round-robin: prompts to report without a round number", () => {
     render(
       <YourActionCard
         actionMatch={openMine}
@@ -22,6 +22,19 @@ describe("YourActionCard", () => {
       />,
     );
     expect(screen.getByText(/your match/i)).toBeTruthy();
+    expect(screen.queryByText(/round 2/i)).toBeNull();
+  });
+
+  it("single-elim: prompts to report with the round number", () => {
+    render(
+      <YourActionCard
+        actionMatch={openMine}
+        tournamentSlug="s1"
+        tournamentFormat="single_elim"
+        currentUserPlayerId={10}
+        onChanged={() => {}}
+      />,
+    );
     expect(screen.getByText(/round 2/i)).toBeTruthy();
   });
 
