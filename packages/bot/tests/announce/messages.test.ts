@@ -3,6 +3,7 @@ import {
   draftCreatedAnnouncement,
   tournamentCreatedAnnouncement,
   tournamentStartedAnnouncement,
+  tournamentCompletedAnnouncement,
   reportPendingAnnouncement,
 } from "../../src/announce/messages.js";
 
@@ -20,6 +21,12 @@ describe("announce messages", () => {
     });
     const ids = components[0].components.map((c) => (c.toJSON() as { custom_id: string }).custom_id);
     expect(ids).toEqual(["dashboard_approve:42:999", "dashboard_deny:42:999"]);
+  });
+
+  it("formats the tournament-completed announcement to the tournament results page", () => {
+    expect(
+      tournamentCompletedAnnouncement({ name: "locals", webSlug: "abc", webUrl: "https://app.test" }),
+    ).toBe("🏆 **locals** has completed! Final standings: https://app.test/tournament/abc");
   });
 
   it("formats tournament announcements with the configured web URL", () => {
