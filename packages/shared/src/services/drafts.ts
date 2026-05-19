@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
 import { generateWebSlug } from "../util/web-slug.js";
+import { validateCube, buildDraftPacks } from "./cube.js";
 
 export type DraftStatus = "pending" | "active" | "cancelled" | "completed";
 export type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
@@ -296,10 +297,15 @@ export function createDraftService(db: Database.Database) {
     const excludeNames = new Set((config.excludeNames ?? []).map(normalizeName));
     const hasExplicitPool = setNames.size > 0 || customCardIds.length > 0 || includeNames.size > 0;
     const rows = db
-      .prepare("select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog")
+      .prepare(
+        "select ygoprodeck_id, name, type, frame_type, card_sets_json from card_catalog order by ygoprodeck_id",
+      )
       .all()
-      .map((row: any) => row as CatalogRow)
-      .filter((row) => {
+      .map((raw: any) => {
+        const row = raw as CatalogRow;
+        return { row, cardSets: JSON.parse(row.card_sets_json) as Array<{ set_name: string }> };
+      })
+      .filter(({ row, cardSets }) => {
         const normalizedName = normalizeName(row.name);
 
         if (isExtraDeckCatalogRow(row)) {
@@ -322,20 +328,20 @@ export function createDraftService(db: Database.Database) {
           return true;
         }
 
-        const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
         return cardSets.some((cardSet) => setNames.has(cardSet.set_name));
       });
 
     if (!hasExplicitPool) {
-      return rows.map((row) => row.ygoprodeck_id);
+      return rows.map(({ row }) => row.ygoprodeck_id);
     }
 
+    // baseline (set/include) appears once; custom occurrences are additive and
+    // preserve repeats, so total per card = baseline + count in customCardIds.
     const baseIds = new Set<number>();
     const customEligibleIds = new Set<number>();
-    for (const row of rows) {
+    for (const { row, cardSets } of rows) {
       customEligibleIds.add(row.ygoprodeck_id);
       const normalizedName = normalizeName(row.name);
-      const cardSets = JSON.parse(row.card_sets_json) as Array<{ set_name: string }>;
       if (includeNames.has(normalizedName) || cardSets.some((cardSet) => setNames.has(cardSet.set_name))) {
         baseIds.add(row.ygoprodeck_id);
       }
@@ -358,14 +364,6 @@ export function createDraftService(db: Database.Database) {
       .map((row: any) => row as DraftPlayerProgressRow);
 
   const openWave = (draftId: number, waveNumber: number, playerCount: number, config: DraftConfig) => {
-    const catalogCardIds = config.poolCardIds && config.poolCardIds.length > 0
-      ? config.poolCardIds
-      : catalogCardIdsForDraft(config);
-
-    if (catalogCardIds.length === 0) {
-      throw new Error("Draft pool is empty");
-    }
-
     const packSize = config.packSize ?? defaultDraftConfig.packSize;
     const passDirection = waveNumber % 2 === 0 && config.alternatePassDirection ? -1 : 1;
     const insertPack = db.prepare(
@@ -386,8 +384,44 @@ export function createDraftService(db: Database.Database) {
       `,
     );
 
+    const hasCube = db.prepare("select 1 from draft_cube where draft_id = ? limit 1").get(draftId);
+
+    if (hasCube) {
+      const selectSlice = db.prepare(
+        "select catalog_card_id from draft_cube where draft_id = ? and position >= ? and position < ? order by position",
+      );
+      for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
+        const globalPack = (waveNumber - 1) * playerCount + playerIndex;
+        const sliceRows = selectSlice.all(
+          draftId,
+          globalPack * packSize,
+          (globalPack + 1) * packSize,
+        ) as Array<{ catalog_card_id: number }>;
+        const packId = Number(
+          insertPack.run(draftId, waveNumber, playerIndex, playerIndex, passDirection).lastInsertRowid,
+        );
+        sliceRows.forEach((row, cardIndex) => {
+          insertDraftCard.run(draftId, waveNumber, packId, row.catalog_card_id, cardIndex);
+        });
+      }
+      return;
+    }
+
+    // Legacy path: drafts already active before the cube model deployed have
+    // no draft_cube rows and finish all remaining waves on the old generator.
+    const catalogCardIds =
+      config.poolCardIds && config.poolCardIds.length > 0
+        ? config.poolCardIds
+        : catalogCardIdsForDraft(config);
+
+    if (catalogCardIds.length === 0) {
+      throw new Error("Draft pool is empty");
+    }
+
     for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
-      const packId = Number(insertPack.run(draftId, waveNumber, playerIndex, playerIndex, passDirection).lastInsertRowid);
+      const packId = Number(
+        insertPack.run(draftId, waveNumber, playerIndex, playerIndex, passDirection).lastInsertRowid,
+      );
 
       for (let cardIndex = 0; cardIndex < packSize; cardIndex += 1) {
         const catalogCardId = catalogCardIds[Math.floor(Math.random() * catalogCardIds.length)];
@@ -428,6 +462,32 @@ export function createDraftService(db: Database.Database) {
 
     for (const [seatIndex, playerId] of playerIds.entries()) {
       assignSeat.run(seatIndex, draftId, playerId);
+    }
+
+    const packSize = draft.config.packSize ?? defaultDraftConfig.packSize;
+    const packsPerPlayer = draft.config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer;
+    const totalPacks = playerIds.length * packsPerPlayer;
+
+    const poolCardIds =
+      draft.config.poolCardIds && draft.config.poolCardIds.length > 0
+        ? draft.config.poolCardIds
+        : catalogCardIdsForDraft(draft.config);
+
+    const validation = validateCube(poolCardIds, packSize, totalPacks);
+    if (!validation.ok) {
+      throw new Error(validation.error);
+    }
+
+    const packs = buildDraftPacks(poolCardIds, packSize, totalPacks, draftId);
+    const insertCube = db.prepare(
+      "insert into draft_cube (draft_id, position, catalog_card_id) values (?, ?, ?)",
+    );
+    let position = 0;
+    for (const pack of packs) {
+      for (const cardId of pack) {
+        insertCube.run(draftId, position, cardId);
+        position += 1;
+      }
     }
 
     openWave(draftId, 1, playerIds.length, draft.config);

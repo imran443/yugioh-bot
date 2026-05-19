@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { createDraftService, createCardCatalogService } from "@yugidraft/shared/services";
+import { toCardCounts } from "@/lib/custom-card-pool";
 import type { CardSummary } from "@/lib/card-types";
 
 export const runtime = "nodejs";
@@ -38,8 +39,12 @@ export async function POST(request: Request) {
     setNames,
     customCardIds,
   });
+  // resolvedIds is the materialized-cube multiset (baseline + additive custom).
+  // Collapse to one entry per distinct card but keep the copy count as qty so
+  // the preview shows the true number of copies the draft will use.
+  const counts = toCardCounts(resolvedIds);
 
-  const cards: CardSummary[] = catalog.findByIds([...new Set(resolvedIds)]).map((c) => ({
+  const cards: CardSummary[] = catalog.findByIds([...counts.keys()]).map((c) => ({
     id: c.ygoprodeckId,
     name: c.name,
     type: c.type,
@@ -51,6 +56,7 @@ export async function POST(request: Request) {
     def: c.def,
     imageUrl: c.imageUrl,
     imageUrlSmall: c.imageUrlSmall,
+    qty: counts.get(c.ygoprodeckId) ?? 1,
   }));
 
   const present = new Set(cards.map((c) => c.id));

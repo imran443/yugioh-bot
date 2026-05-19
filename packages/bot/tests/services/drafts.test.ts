@@ -240,6 +240,8 @@ describe("draft service", () => {
         setNames: ["Metal Raiders"],
         includeNames: ["Blue-Eyes White Dragon"],
         excludeNames: ["Kuriboh"],
+        packSize: 1,
+        packsPerPlayer: 1,
       },
       "user-1",
       yugi.id,
@@ -294,14 +296,14 @@ describe("draft service", () => {
       { playerId: yugi.id, displayName: "Yugi", seatIndex: 0 },
       { playerId: kaiba.id, displayName: "Kaiba", seatIndex: 1 },
     ]);
-    expect(waveCards).toHaveLength(16);
+    expect(waveCards).toHaveLength(2);
     expect(waveCards.every((card) => card.waveNumber === 1)).toBe(true);
     expect(waveCards.every((card) => card.pickedByPlayerId === null)).toBe(true);
     expect(new Set(waveCards.map((card) => card.catalogCardId))).toEqual(new Set([1, 3]));
-    expect(app.drafts.currentPackOptions(draft.id, yugi.id)).toHaveLength(8);
-    expect(app.drafts.currentPackOptions(draft.id, kaiba.id)).toHaveLength(8);
+    expect(app.drafts.currentPackOptions(draft.id, yugi.id)).toHaveLength(1);
+    expect(app.drafts.currentPackOptions(draft.id, kaiba.id)).toHaveLength(1);
     expect(app.db.prepare("select count(*) as count from draft_cards where draft_id = ?").get(draft.id)).toEqual({
-      count: 16,
+      count: 2,
     });
   });
 
@@ -313,7 +315,7 @@ describe("draft service", () => {
       "guild-1",
       "channel-1",
       "cube night",
-      { setNames: ["Metal Raiders"] },
+      { setNames: ["Metal Raiders"], packSize: 1, packsPerPlayer: 1 },
       "user-1",
       yugi.id,
     );
@@ -332,12 +334,22 @@ describe("draft service", () => {
       frameType: "fusion",
       setName: "Metal Raiders",
     });
+    insertCatalogCard(app.db, {
+      id: 3,
+      name: "Big Shield Gardna",
+      type: "Warrior / Normal Monster",
+      frameType: "normal",
+      setName: "Metal Raiders",
+    });
 
     app.drafts.start(draft.id);
 
-    expect(app.db.prepare("select distinct catalog_card_id from draft_cards where draft_id = ?").all(draft.id)).toEqual([
-      { catalog_card_id: 1 },
-    ]);
+    const dealtCatalogIds = app.db
+      .prepare("select distinct catalog_card_id from draft_cards where draft_id = ?")
+      .all(draft.id)
+      .map((row: any) => row.catalog_card_id);
+    expect(dealtCatalogIds).not.toContain(2); // Fusionist is an extra-deck card
+    expect(dealtCatalogIds.length).toBeGreaterThan(0);
   });
 
   it("requires a pending draft to start", () => {
@@ -368,7 +380,7 @@ describe("draft service", () => {
 
     app.drafts.join(draft.id, kaiba.id);
 
-    for (let id = 1; id <= 16; id += 1) {
+    for (let id = 1; id <= 80; id += 1) {
       app.db.prepare(
         `
           insert into card_catalog (
@@ -465,7 +477,7 @@ describe("draft service", () => {
 
     app.drafts.join(draft.id, kaiba.id);
     app.drafts.join(draft.id, joey.id);
-    seedCatalogCards(app.db, 24);
+    seedCatalogCards(app.db, 120);
     app.drafts.start(draft.id);
 
     expect(app.drafts.pickOptions(draft.id, yugi.id)).toHaveLength(8);
@@ -579,7 +591,7 @@ describe("draft service", () => {
 
     app.drafts.join(draft.id, kaiba.id);
 
-    for (let id = 1; id <= 16; id += 1) {
+    for (let id = 1; id <= 80; id += 1) {
       app.db.prepare(
         `
           insert into card_catalog (
@@ -638,7 +650,7 @@ describe("draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 16);
+    seedCatalogCards(app.db, 80);
     app.drafts.start(draft.id);
 
     app.db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
@@ -678,7 +690,7 @@ describe("draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 16);
+    seedCatalogCards(app.db, 80);
     app.drafts.start(draft.id);
 
     app.db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
@@ -736,7 +748,7 @@ describe("draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 16);
+    seedCatalogCards(app.db, 80);
     app.drafts.start(draft.id);
 
     app.db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);

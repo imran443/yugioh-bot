@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseCustomCardIds } from "@/lib/custom-card-pool";
-import { getCached, putCards } from "@/lib/cards-cache";
+import { putCards } from "@/lib/cards-cache";
 import type { CardSummary } from "@/lib/card-types";
 import { SetPicker } from "@/components/draft/set-picker";
-import { CardPoolGrid } from "@/components/cards/card-pool-grid";
+import { CardPoolPanel } from "@/components/cards/card-pool-panel";
 
 export interface PoolBuilderValue {
   setNames: string[];
@@ -54,23 +54,22 @@ export function PoolBuilder({
       const myReq = ++reqId.current;
       setLoading(true);
       setApiError(null);
-      const { hits, missing } = getCached(customCardIds);
       try {
+        // Send the full customCardIds multiset (repeats preserved) so the
+        // route computes the authoritative materialized-cube qty
+        // (baseline + additive custom). qty cannot be derived from the
+        // textarea alone — it ignores set/include baselines.
         const res = await fetch("/api/cards/resolve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ setNames, cardIds: missing }),
+          body: JSON.stringify({ setNames, customCardIds }),
         });
         if (myReq !== reqId.current) return;
         if (!res.ok) { setApiError("Failed to resolve cards. Please try again."); return; }
         const data = (await res.json()) as { cards: CardSummary[]; unknownIds: number[] };
         if (myReq !== reqId.current) return;
         putCards(data.cards);
-        const byId = new Map<number, CardSummary>();
-        for (const c of [...hits, ...data.cards]) byId.set(c.id, c);
-        const qtyMap = new Map<number, number>();
-        for (const id of customCardIds) qtyMap.set(id, (qtyMap.get(id) ?? 0) + 1);
-        setCards([...byId.values()].map((c) => ({ ...c, qty: qtyMap.get(c.id) ?? 1 })));
+        setCards(data.cards);
         setUnknownIds(data.unknownIds);
       } catch {
         if (myReq === reqId.current) { setApiError("Failed to resolve cards. Please try again."); }
@@ -85,8 +84,6 @@ export function PoolBuilder({
   useEffect(() => {
     onPool?.(cards, unknownIds, loading);
   }, [cards, unknownIds, loading, onPool]);
-
-  const count = cards.length;
 
   return (
     <div className="space-y-4">
@@ -114,21 +111,15 @@ export function PoolBuilder({
       {apiError && <p className="text-sm text-destructive">{apiError}</p>}
 
       {showPreview && (
-        <div>
-          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-text-primary">
-            <span>Pool preview</span>
-            <span aria-live="polite" className="text-text-secondary tabular-nums">— {count} card{count === 1 ? "" : "s"}</span>
-            {loading && <span className="text-xs text-text-muted">resolving…</span>}
-          </div>
-          <CardPoolGrid
-            cards={cards}
-            unknownIds={unknownIds}
-            loading={loading}
-            heightClassName={previewHeightClassName}
-            emptyMessage="Add sets or card IDs above to preview the pool."
-            showSummary={false}
-          />
-        </div>
+        <CardPoolPanel
+          title="Pool preview"
+          cards={cards}
+          unknownIds={unknownIds}
+          loading={loading}
+          heightClassName={previewHeightClassName}
+          emptyMessage="Add sets or card IDs above to preview the pool."
+          countMode="copies"
+        />
       )}
     </div>
   );

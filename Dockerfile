@@ -95,9 +95,13 @@ COPY packages/web/package*.json packages/web/
 COPY packages/shared/package*.json packages/shared/
 # Copy full source — bind mounts in docker-compose.override.yml overlay these at runtime
 COPY . .
-# Pre-create the Next cache directory with the runtime UID/GID so the
-# anonymous volume mounted at /app/packages/web/.next remains writable.
-RUN mkdir -p /app/packages/web/.next && chown -R 1000:1000 /app/packages/web/.next
+# Next dev regenerates next-env.d.ts and writes .next/.turbo at runtime, but
+# the container runs as UID 1000 while `COPY . .` baked these as root. Make
+# the whole web package writable by the runtime user (skip the large,
+# read-only node_modules tree). Covers the .next anonymous-volume mount too.
+RUN mkdir -p /app/packages/web/.next \
+ && find /app/packages/web -maxdepth 1 -mindepth 1 ! -name node_modules \
+      -exec chown -R 1000:1000 {} +
 EXPOSE 3000
 WORKDIR /app/packages/web
 CMD ["/app/node_modules/.bin/next", "dev"]

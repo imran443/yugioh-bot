@@ -27,6 +27,7 @@ describe("shared database schema", () => {
       "card_catalog",
       "card_sets",
       "draft_cards",
+      "draft_cube",
       "draft_packs",
       "draft_picks",
       "draft_players",

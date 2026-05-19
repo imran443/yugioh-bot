@@ -3,15 +3,14 @@ import { describe, expect, it } from "vitest";
 import { migrate } from "../src/db/index.js";
 import { createDraftService } from "../src/services/drafts.js";
 
-function seedDb(db: Database.Database) {
+function seedDb(db: Database.Database, count = 20) {
   db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('g1', 'u1', 'Alice')").run();
   db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('g1', 'u2', 'Bob')").run();
-  // Insert catalog cards with set membership
   const insertCard = db.prepare(
     `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
      values (?, ?, 'Effect Monster', 'effect', '', '', ?, current_timestamp)`,
   );
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= count; i++) {
     insertCard.run(i, `Card ${i}`, JSON.stringify([{ set_name: "Set A" }]));
   }
 }
@@ -27,10 +26,27 @@ describe("pool snapshot", () => {
     expect(ids).toContain(1);
   });
 
+  it("resolvePoolCardIds is deterministic regardless of catalog row insertion order", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('g1', 'u1', 'Alice')").run();
+    const insertCard = db.prepare(
+      `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+       values (?, ?, 'Effect Monster', 'effect', '', '', ?, current_timestamp)`,
+    );
+    // Insert deliberately out of ygoprodeck_id order (rowid order != id order).
+    for (const id of [30, 10, 50, 20, 40]) {
+      insertCard.run(id, `Card ${id}`, JSON.stringify([{ set_name: "Set A" }]));
+    }
+    const drafts = createDraftService(db);
+    const ids = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
+    expect(ids).toEqual([10, 20, 30, 40, 50]);
+  });
+
   it("openWave uses poolCardIds when present, ignoring catalog changes", () => {
     const db = new Database(":memory:");
     migrate(db);
-    seedDb(db);
+    seedDb(db, 80);
 
     const drafts = createDraftService(db);
     const poolCardIds = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
@@ -65,10 +81,32 @@ describe("pool snapshot", () => {
     expect(cardIds).not.toContain(999);
   });
 
+  it("resolvePoolCardIds is a multiset: set baseline 1 + additive custom repeats", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    seedDb(db); // cards 1..20 in "Set A"
+    const drafts = createDraftService(db);
+
+    // Card 1 is in Set A (baseline 1) and pasted 3× => 4 copies.
+    // Card 999 is not in any catalog row => contributes nothing.
+    // Card 5 is in Set A only => 1 copy.
+    const ids = drafts.resolvePoolCardIds({
+      setNames: ["Set A"],
+      customCardIds: [1, 1, 1, 999],
+    });
+
+    const counts = new Map<number, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+
+    expect(counts.get(1)).toBe(4);
+    expect(counts.get(5)).toBe(1);
+    expect(counts.has(999)).toBe(false);
+  });
+
   it("openWave falls back to catalog when poolCardIds is absent (old draft)", () => {
     const db = new Database(":memory:");
     migrate(db);
-    seedDb(db);
+    seedDb(db, 80);
 
     const drafts = createDraftService(db);
     const alice = db.prepare("select id from players where discord_user_id = 'u1'").get() as { id: number };

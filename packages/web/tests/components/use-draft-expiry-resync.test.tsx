@@ -62,6 +62,47 @@ describe("useDraftExpiryResync", () => {
     });
   });
 
+  it("reconciles an active draft even while the pick timer is still counting down", async () => {
+    // Regression: a non-last picker only learns the step advanced via a single
+    // fire-and-forget resync broadcast. If that broadcast is lost (dropped HTTP
+    // relay, Socket.IO reconnect, backgrounded tab, or the step-completing pick
+    // threw SQLITE_BUSY before emitting it), the client must still converge to
+    // server truth on its own — not stay frozen on the stale pack until the
+    // full pick timer expires.
+    useDraftStore.setState({
+      ...baseState,
+      timerSeconds: 25,
+      isMyTurn: false,
+      pickStep: 2,
+      currentPack: [],
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          slug: "legendary-draft",
+          packRound: 2,
+          pickStep: 3,
+          currentPack: [{ id: 77, name: "Card 77", type: "Spell Card", frameType: "spell", effectText: "", imageUrl: "https://img/full/77", imageUrlSmall: "https://img/small/77" }],
+          myPool: [],
+          seats: [],
+          timerSeconds: 25,
+          isMyTurn: false,
+          completed: false,
+          pickSeconds: 60,
+        }),
+    } as unknown as Response);
+
+    render(<ResyncHarness slug="legendary-draft" />);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/drafts/legendary-draft");
+      expect(useDraftStore.getState().pickStep).toBe(3);
+      expect(useDraftStore.getState().currentPack.map((c) => c.id)).toEqual([77]);
+    });
+  });
+
   it("does not refetch when the draft is already completed", async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
     useDraftStore.setState({ ...baseState, completed: true, timerSeconds: 5 });

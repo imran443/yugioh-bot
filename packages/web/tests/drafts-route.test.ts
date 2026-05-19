@@ -231,12 +231,16 @@ describe("GET /api/drafts/[slug]", () => {
                   type: "Fiend / Normal Monster",
                   frameType: "normal",
                   desc: "A fiend with dark powers for confusing the enemy.",
-                  card_images: [
-                    {
-                      image_url: "https://img/full/summoned-skull",
-                      image_url_small: "https://img/small/summoned-skull",
-                    },
-                  ],
+                  card_images: [{ image_url: "https://img/full/summoned-skull", image_url_small: "https://img/small/summoned-skull" }],
+                  card_sets: [{ set_name: "Metal Raiders" }],
+                },
+                {
+                  id: 89631139,
+                  name: "Blue-Eyes White Dragon",
+                  type: "Dragon / Normal Monster",
+                  frameType: "normal",
+                  desc: "The ultimate Dragon warrior.",
+                  card_images: [{ image_url: "https://img/full/bewd", image_url_small: "https://img/small/bewd" }],
                   card_sets: [{ set_name: "Metal Raiders" }],
                 },
               ],
@@ -254,7 +258,7 @@ describe("GET /api/drafts/[slug]", () => {
     expect(response.status).toBe(200);
 
     const verifyDb = new Database(dbPath);
-    expect(verifyDb.prepare("select count(*) as count from card_catalog").get()).toEqual({ count: 1 });
+    expect(verifyDb.prepare("select count(*) as count from card_catalog").get()).toEqual({ count: 2 });
     expect(verifyDb.prepare("select count(*) as count from draft_cards where draft_id = ?").get(draft.id)).toEqual({ count: 2 });
     verifyDb.close();
   }, testTimeoutMs);
@@ -282,7 +286,7 @@ describe("GET /api/drafts/[slug]", () => {
       guildId,
       "channel-1",
       "uncached custom draft",
-      { customCardIds: [70781052], packSize: 1, packsPerPlayer: 1 },
+      { customCardIds: [70781052, 70781052], packSize: 1, packsPerPlayer: 1 },
       creatorUserId,
       creator.id,
     );

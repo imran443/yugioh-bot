@@ -6,7 +6,7 @@ import { downloadYdk } from "@/lib/ydk";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
-import { CardPoolGrid } from "@/components/cards/card-pool-grid";
+import { CardPoolPanel } from "@/components/cards/card-pool-panel";
 import { Layers, ChevronUp, Download } from "lucide-react";
 
 interface PoolPanelProps {
@@ -46,9 +46,14 @@ export function PoolPanel({ className }: PoolPanelProps) {
         <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Export YDK
       </Button>
-      <div className="rounded-xl border border-border bg-bg-elevated/40 p-3">
-        <CardPoolGrid cards={groupedPool} heightClassName="h-[26rem] xl:h-[34rem]" emptyMessage="No cards drafted yet." />
-      </div>
+      <CardPoolPanel
+        title="Drafted"
+        cards={groupedPool}
+        heightClassName="h-[26rem] xl:h-[34rem]"
+        emptyMessage="No cards drafted yet."
+        countMode="copies"
+        showSummary
+      />
     </div>
   );
 

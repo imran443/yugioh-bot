@@ -111,6 +111,13 @@ export function migrate(db: Database.Database) {
       unique (id, draft_id, wave_number)
     );
 
+    create table if not exists draft_cube (
+      draft_id integer not null references drafts(id),
+      position integer not null,
+      catalog_card_id integer not null references card_catalog(ygoprodeck_id),
+      primary key (draft_id, position)
+    );
+
     create table if not exists draft_picks (
       id integer primary key autoincrement,
       draft_id integer not null references drafts(id),

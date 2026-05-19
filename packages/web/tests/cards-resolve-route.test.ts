@@ -43,6 +43,13 @@ async function setupDb() {
   db.close();
 }
 
+function seedCard(db: import("better-sqlite3").Database, id: number, name: string) {
+  db.prepare(
+    `insert into card_catalog (ygoprodeck_id, name, type, frame_type, effect_text, atk, def, attribute, level, image_url, image_url_small, card_sets_json, cached_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, "Spellcaster / Normal Monster", "normal", "Test card.", 0, 0, "DARK", 1, `u${id}`, `s${id}`, JSON.stringify([]), new Date().toISOString());
+}
+
 describe("POST /api/cards/resolve", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -80,12 +87,53 @@ describe("POST /api/cards/resolve", () => {
     expect(json.unknownIds).toEqual([99999999]);
     const dm = json.cards.find((c: { id: number }) => c.id === 46986414);
     expect(dm).toMatchObject({ name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", imageUrl: "u1", imageUrlSmall: "s1" });
-    // The route only syncs IDs not already in the catalog; sets are resolved locally.
+    // qty is the true materialized-cube count: baseline(1, in selected set
+    // "Metal Raiders") + custom(1, listed once) = 2.
+    expect(dm.qty).toBe(2);
+    // Monster Reborn is not in the selected set → baseline 0, custom 1 → qty 1.
+    const mr = json.cards.find((c: { id: number }) => c.id === 83764718);
+    expect(mr.qty).toBe(1);
+    // The route only fetches custom passcodes missing from the local catalog
+    // (46986414 + 83764718 are seeded → cached); sets are already synced
+    // elsewhere, so setNames is empty here.
     expect(syncDraftPool).toHaveBeenCalledWith({
       setNames: [],
       customCardIds: [99999999],
       includeNames: [],
       excludeNames: [],
     });
+  });
+
+  it("returns one card entry per distinct id even when ids repeat", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "yugioh-cards-resolve-dedup-"));
+    const dbPath = join(tempDir, "test.sqlite");
+    tempDirs.push(tempDir);
+    process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "guild-1";
+    const Database = (await import("better-sqlite3")).default;
+    const { migrate } = await import("@yugidraft/shared/db");
+    const db = new Database(dbPath);
+    migrate(db);
+    // Two catalog cards; request repeats 101 three times.
+    seedCard(db, 101, "Alpha");
+    seedCard(db, 102, "Beta");
+    db.close();
+
+    const { POST } = await import("../app/api/cards/resolve/route");
+
+    const res = await POST(
+      new Request("http://test/api/cards/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setNames: [], customCardIds: [101, 101, 101, 102] }),
+      }),
+    );
+
+    const body = (await res.json()) as { cards: Array<{ id: number; qty: number }> };
+    const ids = body.cards.map((c) => c.id).sort((a, b) => a - b);
+    expect(ids).toEqual([101, 102]); // distinct, no triple 101
+    // …but the multiplicity is preserved as qty: 101 listed 3×, 102 once.
+    expect(body.cards.find((c) => c.id === 101)?.qty).toBe(3);
+    expect(body.cards.find((c) => c.id === 102)?.qty).toBe(1);
   });
 });

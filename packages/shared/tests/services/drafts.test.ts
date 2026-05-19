@@ -113,7 +113,7 @@ describe("shared draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", { setNames: ["Metal Raiders"] }, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 16);
+    seedCatalogCards(app.db, 80);
 
     const started = app.drafts.start(draft.id, new Date("2026-05-01T00:00:00.000Z"));
 
@@ -140,7 +140,7 @@ describe("shared draft service", () => {
       "guild-1",
       "channel-1",
       "custom pool night",
-      { setNames: ["Missing Set"], customCardIds: [101, 102], packSize: 2, packsPerPlayer: 1 },
+      { setNames: ["Missing Set"], customCardIds: [101, 101, 102, 102], packSize: 2, packsPerPlayer: 1 },
       "user-1",
       yugi.id,
     );
@@ -224,7 +224,7 @@ describe("shared draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", {}, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 16);
+    seedCatalogCards(app.db, 80);
     app.drafts.start(draft.id);
 
     const yugiPick = app.drafts.currentPackOptions(draft.id, yugi.id)[0];
@@ -249,7 +249,7 @@ describe("shared draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", { packSize: 8, packsPerPlayer: 5 }, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 50);
+    seedCatalogCards(app.db, 80);
     app.drafts.start(draft.id);
 
     // Get a valid card from Yugi's current pack
@@ -285,7 +285,7 @@ describe("shared draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", { packSize: 8, packsPerPlayer: 5 }, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 50);
+    seedCatalogCards(app.db, 80);
     // Deadline is in the future after start, so expiry will not fire
     app.drafts.start(draft.id, new Date());
 
@@ -313,7 +313,7 @@ describe("shared draft service", () => {
     const draft = app.drafts.create("guild-1", "channel-1", "cube night", { packSize: 8, packsPerPlayer: 5 }, "user-1", yugi.id);
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 50);
+    seedCatalogCards(app.db, 80);
     app.drafts.start(draft.id);
 
     // Pick 40 cards to complete the deck (both players need to pick so packs pass)
@@ -345,6 +345,17 @@ describe("shared draft service", () => {
     }
   });
 
+  it("creates the draft_cube table on migrate", () => {
+    const app = setup();
+    const row = app.db
+      .prepare("select name from sqlite_master where type = 'table' and name = 'draft_cube'")
+      .get() as { name: string } | undefined;
+    expect(row?.name).toBe("draft_cube");
+
+    const columns = (app.db.pragma("table_info(draft_cube)") as Array<{ name: string }>).map((c) => c.name);
+    expect(columns).toEqual(expect.arrayContaining(["draft_id", "position", "catalog_card_id"]));
+  });
+
   it("respects a custom cardsPerPlayer cap above the default 40", () => {
     const app = setup();
     const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
@@ -360,7 +371,7 @@ describe("shared draft service", () => {
     );
 
     app.drafts.join(draft.id, kaiba.id);
-    seedCatalogCards(app.db, 60);
+    seedCatalogCards(app.db, 100);
     app.drafts.start(draft.id);
 
     for (let i = 0; i < 60; i++) {
@@ -378,5 +389,181 @@ describe("shared draft service", () => {
 
     const draftRow = app.db.prepare("select status from drafts where id = ?").get(draft.id) as { status: string };
     expect(draftRow.status).toBe("completed");
+  });
+
+  it("openWave falls back to the legacy generator when no draft_cube rows exist", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "legacy night", {}, "user-1", yugi.id);
+
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 80);
+    app.drafts.start(draft.id);
+
+    // After Task 6, startDraft materializes cube rows, so the cube path runs.
+    const cubeCount = (
+      app.db.prepare("select count(*) as n from draft_cube where draft_id = ?").get(draft.id) as { n: number }
+    ).n;
+    expect(cubeCount).toBe(80);
+    expect(app.drafts.currentPackOptions(draft.id, yugi.id)).toHaveLength(8);
+    expect(app.drafts.currentPackOptions(draft.id, kaiba.id)).toHaveLength(8);
+  });
+
+  it("blocks start when the cube has too few total cards", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "small cube", { setNames: ["Metal Raiders"] }, "user-1", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 16); // 16 < 80 slots
+
+    expect(() => app.drafts.start(draft.id)).toThrow(/Cube too small/);
+  });
+
+  it("blocks start when there are too few distinct card types", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    // 2 distinct ids, each pasted 40× => 80 total, packSize 8 needs 8 distinct.
+    const customCardIds = [...Array(40).fill(101), ...Array(40).fill(102)];
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "skewed",
+      { customCardIds, packSize: 8, packsPerPlayer: 5 },
+      "user-1",
+      yugi.id,
+    );
+    app.drafts.join(draft.id, kaiba.id);
+    for (const id of [101, 102]) {
+      app.db
+        .prepare(
+          `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+           values (?, ?, 'Spellcaster / Normal Monster', 'normal', '', '', '[]', '2026-01-01T00:00:00Z')`,
+        )
+        .run(id, `Custom ${id}`);
+    }
+
+    expect(() => app.drafts.start(draft.id)).toThrow(/distinct/i);
+  });
+
+  it("blocks start when a card has more copies than packs", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    // totalPacks = 2 players × 5 = 10. Card 101 pasted 11× (> 10).
+    const customCardIds = [...Array(11).fill(101), ...Array.from({ length: 69 }, (_, i) => 200 + i)];
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "over-copied",
+      { customCardIds, packSize: 8, packsPerPlayer: 5 },
+      "user-1",
+      yugi.id,
+    );
+    app.drafts.join(draft.id, kaiba.id);
+    const ins = app.db.prepare(
+      `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+       values (?, ?, 'Spellcaster / Normal Monster', 'normal', '', '', '[]', '2026-01-01T00:00:00Z')`,
+    );
+    ins.run(101, "Custom 101");
+    for (let i = 0; i < 69; i += 1) ins.run(200 + i, `Custom ${200 + i}`);
+
+    expect(() => app.drafts.start(draft.id)).toThrow(/only 10 packs exist/);
+  });
+
+  it("materializes draft_cube at start and deals wave 1 from it", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "cube night", { setNames: ["Metal Raiders"] }, "user-1", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 80); // 80 distinct == slots
+
+    app.drafts.start(draft.id);
+
+    const cubeRows = app.db
+      .prepare("select position, catalog_card_id from draft_cube where draft_id = ? order by position")
+      .all(draft.id) as Array<{ position: number; catalog_card_id: number }>;
+    expect(cubeRows).toHaveLength(80); // packSize 8 × (2 players × 5 packs)
+    expect(cubeRows.map((r) => r.position)).toEqual(Array.from({ length: 80 }, (_, i) => i));
+
+    // Wave 1 = first 2 packs of the cube (one per player), each 8 distinct.
+    const wave1 = app.db
+      .prepare("select catalog_card_id from draft_cards where draft_id = ? and wave_number = 1 order by draft_pack_id, position")
+      .all(draft.id) as Array<{ catalog_card_id: number }>;
+    expect(wave1).toHaveLength(16);
+    expect(wave1.map((r) => r.catalog_card_id)).toEqual(
+      cubeRows.slice(0, 16).map((r) => r.catalog_card_id),
+    );
+    expect(app.drafts.currentPackOptions(draft.id, yugi.id)).toHaveLength(8);
+  });
+
+  it("legacy guard: a started draft with draft_cube deleted opens later waves via the generator", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    const draft = app.drafts.create("guild-1", "channel-1", "midflight", { setNames: ["Metal Raiders"] }, "user-1", yugi.id);
+    app.drafts.join(draft.id, kaiba.id);
+    seedCatalogCards(app.db, 80);
+    app.drafts.start(draft.id);
+
+    // Simulate a pre-deploy in-flight draft: drop its cube rows.
+    app.db.prepare("delete from draft_cube where draft_id = ?").run(draft.id);
+
+    // Drive wave 1 to completion so openWave(wave 2) fires (legacy branch).
+    for (let step = 0; step < 8; step += 1) {
+      const y = app.drafts.currentPackOptions(draft.id, yugi.id);
+      const k = app.drafts.currentPackOptions(draft.id, kaiba.id);
+      if (y.length > 0) app.drafts.pickCard(draft.id, yugi.id, y[0].id);
+      if (k.length > 0) app.drafts.pickCard(draft.id, kaiba.id, k[0].id);
+    }
+
+    const wave2 = app.db
+      .prepare("select count(*) as n from draft_cards where draft_id = ? and wave_number = 2")
+      .get(draft.id) as { n: number };
+    expect(wave2.n).toBeGreaterThan(0);
+  });
+
+  it("materializes a repeated custom card id as multiple cube copies", () => {
+    const app = setup();
+    const yugi = insertPlayer(app.db, "guild-1", "user-1", "Yugi");
+    const kaiba = insertPlayer(app.db, "guild-1", "user-2", "Kaiba");
+    // totalPacks = packsPerPlayer 1 × 2 players = 2; slots = packSize 2 × 2 = 4.
+    // Card 101 pasted twice => 2 copies (== totalPacks, the allowed max).
+    const draft = app.drafts.create(
+      "guild-1",
+      "channel-1",
+      "multiplicity",
+      { customCardIds: [101, 101, 102, 103], packSize: 2, packsPerPlayer: 1 },
+      "user-1",
+      yugi.id,
+    );
+    app.drafts.join(draft.id, kaiba.id);
+    const ins = app.db.prepare(
+      `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+       values (?, ?, 'Spellcaster / Normal Monster', 'normal', '', '', '[]', '2026-01-01T00:00:00Z')`,
+    );
+    ins.run(101, "Custom 101");
+    ins.run(102, "Custom 102");
+    ins.run(103, "Custom 103");
+
+    app.drafts.start(draft.id);
+
+    const counts = app.db
+      .prepare(
+        "select catalog_card_id, count(*) as n from draft_cube where draft_id = ? group by catalog_card_id order by catalog_card_id",
+      )
+      .all(draft.id) as Array<{ catalog_card_id: number; n: number }>;
+    expect(counts).toEqual([
+      { catalog_card_id: 101, n: 2 }, // pasted twice => two draftable copies
+      { catalog_card_id: 102, n: 1 },
+      { catalog_card_id: 103, n: 1 },
+    ]);
+    const total = app.db
+      .prepare("select count(*) as n from draft_cube where draft_id = ?")
+      .get(draft.id) as { n: number };
+    expect(total.n).toBe(4);
   });
 });
