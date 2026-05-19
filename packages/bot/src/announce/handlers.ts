@@ -11,6 +11,7 @@ import {
   tournamentStartedAnnouncement,
   reportPendingAnnouncement,
 } from "./messages.js";
+import { announceTournamentCompleted } from "../lib/announce-tournament-completed.js";
 import { deleteNotifyMessage } from "../lib/notify-message.js";
 
 export function createAnnounceHandlers({
@@ -80,6 +81,10 @@ export function createAnnounceHandlers({
 
     async onMatchResolved(p) {
       await deleteNotifyMessage(client, db, p.matchId);
+    },
+
+    async onTournamentCompleted({ tournamentId }) {
+      await announceTournamentCompleted(client, db, guildSettings, tournamentId);
     },
   };
 }

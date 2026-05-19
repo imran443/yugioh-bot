@@ -20,7 +20,8 @@ export type AnnouncePayload =
       opponentName: string;
       opponentLost: boolean;
     }
-  | { kind: "match-resolved"; matchId: number };
+  | { kind: "match-resolved"; matchId: number }
+  | { kind: "tournament-completed"; tournamentId: number };
 
 export type AnnounceResult = { ok: true } | { ok: false; error: string };
 

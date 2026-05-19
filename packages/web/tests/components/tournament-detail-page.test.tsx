@@ -35,7 +35,7 @@ const tournament = {
     { playerId: 44, displayName: "Dave" },
   ],
   isParticipant: true,
-  currentUserPlayerId: 11,
+  currentUserPlayerId: 11 as number | null,
   matches: [
     { id: 101, matchId: 1001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {} },
     { id: 102, matchId: 1002, roundNumber: 1, playerOneId: 33, playerTwoId: 44, playerOneName: "Carol", playerTwoName: "Dave", status: "completed", winnerId: 33, reporterId: null, metadata: {} },
@@ -55,7 +55,7 @@ const roundRobinTournament = {
     { playerId: 33, displayName: "Carol" },
   ],
   isParticipant: false,
-  currentUserPlayerId: null,
+  currentUserPlayerId: null as number | null,
   matches: [
     { id: 201, matchId: 2001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {} },
     { id: 202, matchId: 2002, roundNumber: 2, playerOneId: 11, playerTwoId: 33, playerOneName: "Alice", playerTwoName: "Carol", status: "completed", winnerId: 11, reporterId: null, metadata: {} },
@@ -76,7 +76,7 @@ const singleElimTournament = {
     { playerId: 44, displayName: "Dave" },
   ],
   isParticipant: false,
-  currentUserPlayerId: null,
+  currentUserPlayerId: null as number | null,
   matches: [
     { id: 301, matchId: 3001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "completed", winnerId: 11, reporterId: null, metadata: {} },
     { id: 302, matchId: 3002, roundNumber: 1, playerOneId: 33, playerTwoId: 44, playerOneName: "Carol", playerTwoName: "Dave", status: "completed", winnerId: 33, reporterId: null, metadata: {} },

@@ -51,6 +51,7 @@ import { createTournamentService } from "@yugidraft/shared/services";
 import { createAnnounceHandlers } from "./announce/handlers.js";
 import { createAnnounceServer } from "./announce/server.js";
 import { deleteNotifyMessage } from "./lib/notify-message.js";
+import { announceTournamentCompleted } from "./lib/announce-tournament-completed.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -126,6 +127,8 @@ function buildDraftStatus(draft: Draft) {
   return { embed, components };
 }
 
+const guildSettings = createGuildSettingsService(db);
+
 const deps = {
   db,
   matches: createMatchService(db),
@@ -134,9 +137,10 @@ const deps = {
   drafts: createDraftService(db),
   cards: createCardCatalogService(db),
   deleteNotifyMessage: (matchId: number) => deleteNotifyMessage(client, db, matchId),
+  announceTournamentCompleted: (tournamentId: number) => announceTournamentCompleted(client, db, guildSettings, tournamentId),
   templates: createDraftTemplateService(db),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
-  guildSettings: createGuildSettingsService(db),
+  guildSettings,
   cleanup,
   messenger: {
     async postStatus(draft: Draft) {

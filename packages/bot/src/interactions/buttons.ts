@@ -38,6 +38,7 @@ type ButtonDependencies = {
   cards: CardCatalogService;
   db: Database.Database;
   deleteNotifyMessage?: (matchId: number) => Promise<void>;
+  announceTournamentCompleted?: (tournamentId: number) => Promise<void>;
 };
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
@@ -723,6 +724,12 @@ export async function handleButton(
         ephemeral: true,
       });
       return;
+    }
+
+    if (action === "approve" && match.tournamentId) {
+      if (deps.matches.claimTournamentCompletionAnnouncement(match.tournamentId)) {
+        void deps.announceTournamentCompleted?.(match.tournamentId);
+      }
     }
 
     const tournamentRow = match.tournamentId

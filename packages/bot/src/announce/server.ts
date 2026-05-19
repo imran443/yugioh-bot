@@ -21,7 +21,8 @@ export type AnnouncePayload =
       opponentName: string;
       opponentLost: boolean;
     }
-  | { kind: "match-resolved"; matchId: number };
+  | { kind: "match-resolved"; matchId: number }
+  | { kind: "tournament-completed"; tournamentId: number };
 
 type OmitKind<T extends { kind: string }> = Omit<T, "kind">;
 
@@ -33,6 +34,7 @@ export interface AnnounceHandlers {
   onTournamentStarted(payload: OmitKind<Extract<AnnouncePayload, { kind: "tournament-started" }>>): Promise<void>;
   onMatchReportPending(payload: OmitKind<Extract<AnnouncePayload, { kind: "match-report-pending" }>>): Promise<void>;
   onMatchResolved(payload: OmitKind<Extract<AnnouncePayload, { kind: "match-resolved" }>>): Promise<void>;
+  onTournamentCompleted(payload: OmitKind<Extract<AnnouncePayload, { kind: "tournament-completed" }>>): Promise<void>;
 }
 
 export function createAnnounceServer(opts: {
@@ -47,6 +49,7 @@ export function createAnnounceServer(opts: {
     "/internal/announce/tournament-started": (d) => opts.handlers.onTournamentStarted(d),
     "/internal/announce/match-report-pending": (d) => opts.handlers.onMatchReportPending(d),
     "/internal/announce/match-resolved": (d) => opts.handlers.onMatchResolved(d),
+    "/internal/announce/tournament-completed": (d) => opts.handlers.onTournamentCompleted(d),
   };
 
   async function handle(req: Request): Promise<Response> {

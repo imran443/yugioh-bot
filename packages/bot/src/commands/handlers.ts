@@ -56,6 +56,7 @@ type CommandDependencies = {
   templates: DraftTemplateService;
   draftImages: DraftImageService;
   messenger: DraftMessenger;
+  announceTournamentCompleted?: (tournamentId: number) => Promise<void>;
 };
 
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
@@ -364,7 +365,10 @@ async function handleApprove(
     return;
   }
 
-  deps.matches.approve(match.id, player.id);
+  const approved = deps.matches.approve(match.id, player.id);
+  if (approved.tournamentId && deps.matches.claimTournamentCompletionAnnouncement(approved.tournamentId)) {
+    void deps.announceTournamentCompleted?.(approved.tournamentId);
+  }
   await interaction.reply(`Approved match #${match.id}.`);
 }
 
