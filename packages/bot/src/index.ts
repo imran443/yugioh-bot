@@ -192,6 +192,7 @@ const draftTimer = createDraftTimerService({
       db,
       drafts: deps.drafts,
       messenger: deps.messenger,
+      guildSettings: deps.guildSettings,
     });
     await announceHandlers.onDraftCompleted({
       draftId: draft.id,
@@ -385,7 +386,7 @@ client.once("ready", () => {
   if (announceSecret) {
     const announceServer = createAnnounceServer({
       secret: announceSecret,
-      handlers: createAnnounceHandlers({ client, db, drafts: deps.drafts, messenger: deps.messenger }),
+      handlers: createAnnounceHandlers({ client, db, drafts: deps.drafts, messenger: deps.messenger, guildSettings: deps.guildSettings }),
     });
     announceServer.listen(announcePort);
   } else {
