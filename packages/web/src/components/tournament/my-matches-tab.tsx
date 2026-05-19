@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { MatchCard } from "./match-card";
+import { MatchBoard } from "./match-board";
 import { YourActionCard } from "./your-action-card";
 import { deriveMyMatches } from "./use-my-matches";
 import type { TournamentDetail } from "./types";
@@ -15,8 +14,6 @@ export function MyMatchesTab({
   tournamentSlug: string;
   onChanged: () => void;
 }) {
-  const [reportingMatch, setReportingMatch] = useState<number | null>(null);
-
   if (!tournament.isParticipant || tournament.currentUserPlayerId === null) {
     return (
       <p className="text-sm text-text-secondary">
@@ -27,6 +24,14 @@ export function MyMatchesTab({
 
   const { mine, actionMatch } = deriveMyMatches(tournament);
   const remainingMine = actionMatch ? mine.filter((m) => m.id !== actionMatch.id) : mine;
+
+  if (mine.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-surface px-5 py-6 text-sm text-text-secondary">
+        You do not have any matches in this view yet.
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -41,26 +46,14 @@ export function MyMatchesTab({
       {remainingMine.length > 0 && (
         <section>
           <h3 className="mb-3 text-sm font-semibold text-text-muted">Your Matches</h3>
-          <div className="space-y-3">
-            {remainingMine.map((match) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                tournamentSlug={tournamentSlug}
-                tournamentFormat={tournament.format}
-                currentUserPlayerId={tournament.currentUserPlayerId}
-                isHost={false}
-                isReporting={reportingMatch === match.id}
-                onReport={() => setReportingMatch(match.id)}
-                onCancelReport={() => setReportingMatch(null)}
-                onReported={() => {
-                  setReportingMatch(null);
-                  onChanged();
-                }}
-                onResolved={onChanged}
-              />
-            ))}
-          </div>
+          <MatchBoard
+            matches={remainingMine}
+            tournamentSlug={tournamentSlug}
+            tournamentFormat={tournament.format}
+            currentUserPlayerId={tournament.currentUserPlayerId}
+            isHost={false}
+            onChanged={onChanged}
+          />
         </section>
       )}
     </div>

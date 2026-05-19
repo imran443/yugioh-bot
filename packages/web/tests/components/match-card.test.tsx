@@ -43,6 +43,26 @@ describe("MatchCard host reopen", () => {
     await waitFor(() => expect(onResolved).toHaveBeenCalled());
   });
 
+  it("exposes testids and responsive layout classes for the board (PR #29)", () => {
+    render(
+      <MatchCard
+        match={completed}
+        tournamentSlug="slug1"
+        tournamentFormat="single_elim"
+        currentUserPlayerId={99}
+        isHost={false}
+        isReporting={false}
+        onReport={() => {}}
+        onCancelReport={() => {}}
+        onReported={() => {}}
+        onResolved={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("tournament-match-card-3")).toHaveClass("2xl:p-5");
+    expect(screen.getByTestId("tournament-match-card-header-3")).toHaveClass("lg:flex-col");
+    expect(screen.getByTestId("tournament-match-card-actions-3")).toHaveClass("w-full");
+  });
+
   it("does not show Reopen for single-elim", () => {
     render(
       <MatchCard

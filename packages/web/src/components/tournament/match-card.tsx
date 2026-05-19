@@ -139,8 +139,14 @@ export function MatchCard({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      data-testid={`tournament-match-card-${match.id}`}
+      className="rounded-xl border border-border bg-surface p-4 2xl:p-5"
+    >
+      <div
+        data-testid={`tournament-match-card-header-${match.id}`}
+        className="flex flex-col gap-3 lg:flex-col lg:items-start lg:justify-between xl:flex-row xl:items-center"
+      >
         <div className="flex items-center gap-3">
           <div className="flex flex-col gap-1">
             <span
@@ -175,7 +181,10 @@ export function MatchCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div
+          data-testid={`tournament-match-card-actions-${match.id}`}
+          className="flex w-full flex-wrap items-center gap-2 lg:w-full xl:w-auto xl:justify-end"
+        >
           {getStatusBadge()}
           {isOpen && !isReporting && (
             <Button variant="primary" size="sm" onClick={onReport}>
