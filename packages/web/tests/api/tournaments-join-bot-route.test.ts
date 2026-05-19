@@ -46,10 +46,11 @@ describe("POST /api/tournaments/[slug]/join-bot", () => {
     auth.mockReset();
     notifyWsTournament.mockReset();
     auth.mockResolvedValue({ user: { id: "u-org", name: "Organizer" } });
-    process.env.NODE_ENV = "development";
+    vi.stubEnv("NODE_ENV", "development");
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     delete process.env.DATABASE_PATH;
     delete process.env.WS_INTERNAL_URL;
     delete process.env.WS_INTERNAL_SECRET;
