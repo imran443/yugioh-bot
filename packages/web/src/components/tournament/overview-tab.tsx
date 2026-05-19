@@ -38,7 +38,6 @@ export function OverviewTab({
 
   const allRounds = tournament.matches.map((m) => m.roundNumber);
   const maxRound = allRounds.length > 0 ? Math.max(...allRounds) : 0;
-  const highestActiveRound = allRounds.length > 0 ? Math.min(...allRounds) : 0;
   const completedMatches = tournament.matches.filter((m) => m.status === "completed").length;
   const totalMatches = tournament.matches.length;
 
