@@ -220,7 +220,10 @@ export default function TournamentDetailPage() {
 
   return (
     <div>
-      <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+      <div
+        data-testid="tournament-page-shell"
+        className="mx-auto max-w-[120rem] p-4 sm:p-6 lg:p-8 2xl:px-10"
+      >
         {header}
         <Tabs tabs={tabs} value={activeTab} onChange={handleTabChange} />
         {renderPanel()}
