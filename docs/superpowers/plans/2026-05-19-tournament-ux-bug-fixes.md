@@ -378,6 +378,8 @@ git commit -m "fix(bot): gate match approve/deny by approver with friendly error
 
 ## Phase 3 — Bug 3: Tournament-completed announcement (bot + shared)
 
+> **⚠️ SUPERSEDED.** The Task-7 verification revealed three approval paths that can complete a tournament (`bot/src/interactions/buttons.ts`, `bot/src/commands/handlers.ts` `handleApprove`, `web/app/api/matches/[id]/approve/route.ts`), not one. The user chose the **complete fix (all 3 paths)**. The authoritative design is **"## Phase 3 (REVISED)"** below — implement that. The original Tasks 5–7 here are kept only for history; Task 5 and Task 6 carry over verbatim into the revised plan.
+
 ### Task 5: Add `completed_announced_at` migration column
 
 **Files:**
@@ -565,6 +567,153 @@ Expected: PASS — announce fires once; second approve is a no-op (`changes === 
 git add packages/bot/src/interactions/buttons.ts packages/bot/src/index.ts packages/bot/tests/services/tournament-reporting.test.ts
 git commit -m "feat(bot): announce tournament completion once when final match is approved"
 ```
+
+---
+
+## Phase 3 (REVISED) — Tournament-completed announcement across ALL approval paths
+
+**Design:** Completion detection is centralized in the shared match service via a race-safe one-shot claim. Every approval path (bot button, bot slash command, web API) calls `matches.approve()` then, if the returned match belongs to a tournament, asks the shared service to *claim* the completion announcement. The claim succeeds (returns `true`) for exactly one caller, only when the tournament is now `completed` and not yet announced. The winning caller then triggers the Discord announcement through a single shared bot routine (`announceTournamentCompleted(client, db, guildSettings, tournamentId)`). Bot paths call it directly via an injected dep (mirrors the existing `deleteNotifyMessage` injection); the web path reaches it through a new `tournament-completed` announce-server kind.
+
+### Task R5 — shared: `tournaments.completed_announced_at` column
+
+**Files:** Modify `packages/shared/src/db/schema.ts`; Test `packages/shared/tests/db/schema.test.ts` (file already exists post-merge — append the assertion).
+
+- [ ] Step 1 (RED): in `schema.test.ts`, after `migrate(db)`, assert `pragma table_info(tournaments)` column names include `"completed_announced_at"`.
+- [ ] Step 2: run `npx vitest run packages/shared/tests/db/schema.test.ts` → FAIL (column missing).
+- [ ] Step 3: in `schema.ts`, beside the existing `addColumnIfMissing(db, "matches", "notify_message_id", "text");` add `addColumnIfMissing(db, "tournaments", "completed_announced_at", "text");`.
+- [ ] Step 4: rerun → PASS.
+- [ ] Step 5: commit `feat(shared): add tournaments.completed_announced_at column`.
+
+### Task R6 — bot: `tournamentCompletedAnnouncement` message builder
+
+**Files:** Modify `packages/bot/src/announce/messages.ts`; Test `packages/bot/tests/announce/messages.test.ts`.
+
+- [ ] Step 1 (RED): assert `tournamentCompletedAnnouncement({ name: "locals", webSlug: "abc", webUrl: "https://app.test" })` === `"🏆 **locals** has completed! Final standings: https://app.test/tournament/abc"`.
+- [ ] Step 2: run messages test → FAIL (not exported).
+- [ ] Step 3: add, mirroring `tournamentStartedAnnouncement` and using the existing `webBaseUrl` helper:
+```ts
+export function tournamentCompletedAnnouncement(input: {
+  name: string;
+  webSlug: string;
+  webUrl?: string;
+}): string {
+  return `🏆 **${input.name}** has completed! Final standings: ${webBaseUrl(input.webUrl)}/tournament/${input.webSlug}`;
+}
+```
+- [ ] Step 4: rerun → PASS.
+- [ ] Step 5: commit `feat(bot): add tournament-completed announcement message`.
+
+### Task R7 — shared: race-safe completion claim on the match service
+
+**Files:** Modify `packages/shared/src/services/matches.ts` (add a method to the returned service object ~line 214, and to the `MatchService` exported type); Test new `packages/shared/tests/services/tournament-completion-claim.test.ts`.
+
+Depends on R5 (column must exist).
+
+- [ ] Step 1 (RED): new test. Build an in-memory DB (`migrate`), seed a tournament with `status='completed'` and `completed_announced_at` NULL, plus an `active` (not completed) tournament. Assert:
+  - `claimTournamentCompletionAnnouncement(completedId)` returns `true` the FIRST call;
+  - the SAME id returns `false` on the SECOND call (one-shot);
+  - `claimTournamentCompletionAnnouncement(activeId)` returns `false` (not completed);
+  - after the first successful claim, `tournaments.completed_announced_at` for that row is non-null.
+  (Mirror the seeding style of existing `packages/shared/tests/services/*` tests.)
+- [ ] Step 2: run `npx vitest run packages/shared/tests/services/tournament-completion-claim.test.ts` → FAIL (method missing).
+- [ ] Step 3: add to the object returned by `createMatchService` (and to the `MatchService` type):
+```ts
+claimTournamentCompletionAnnouncement(tournamentId: number): boolean {
+  const result = db
+    .prepare(
+      "update tournaments set completed_announced_at = current_timestamp " +
+      "where id = ? and status = 'completed' and completed_announced_at is null",
+    )
+    .run(tournamentId);
+  return result.changes === 1;
+},
+```
+Do NOT change the `approve`/`deny` signatures. Find the exact `MatchService` type (grep `MatchService` in `packages/shared/src`) and add the method signature there too.
+- [ ] Step 4: rerun → PASS.
+- [ ] Step 5: commit `feat(shared): add race-safe tournament completion announcement claim`.
+
+### Task R8 — bot: shared `announceTournamentCompleted` routine + `tournament-completed` announce kind
+
+**Files:** Create `packages/bot/src/lib/announce-tournament-completed.ts`; Modify `packages/bot/src/announce/server.ts` and `packages/bot/src/announce/handlers.ts`; Tests `packages/bot/tests/announce/server-routes.test.ts` and `packages/bot/tests/announce/handlers.test.ts` (extend, following existing patterns).
+
+Depends on R6.
+
+- [ ] Step 1 (RED): (a) server-routes test: posting to `/internal/announce/tournament-completed` with `{ tournamentId: 7 }` invokes `handlers.onTournamentCompleted({ tournamentId: 7 })`. (b) handlers test: `onTournamentCompleted` for a tournament with a `web_slug` and a configured guild announce channel calls `channel.send` with the `tournamentCompletedAnnouncement` text; and is a no-op when `web_slug` is null or no announce channel configured. (Mirror existing announce server-routes/handlers test harness — fake client/channel, in-memory db, stub guildSettings.)
+- [ ] Step 2: run those two test files → FAIL (kind/handler/lib missing).
+- [ ] Step 3: implement:
+  - `packages/bot/src/lib/announce-tournament-completed.ts`:
+```ts
+import type { Client } from "discord.js";
+import type Database from "better-sqlite3";
+import { tournamentCompletedAnnouncement } from "../announce/messages.js";
+
+export async function announceTournamentCompleted(
+  client: Client,
+  db: Database.Database,
+  guildSettings: { get(guildId: string): { announceChannelId: string | null } },
+  tournamentId: number,
+): Promise<void> {
+  const t = db
+    .prepare("select name, web_slug, guild_id from tournaments where id = ?")
+    .get(tournamentId) as { name: string; web_slug: string | null; guild_id: string } | undefined;
+  if (!t?.web_slug) return;
+  const channelId = guildSettings.get(t.guild_id).announceChannelId;
+  if (!channelId) return;
+  const channel = await client.channels.fetch(channelId);
+  if (!channel || !("send" in channel) || !channel.isTextBased()) return;
+  await channel.send(tournamentCompletedAnnouncement({ name: t.name, webSlug: t.web_slug }));
+}
+```
+  (Match the actual `guildSettings` service type used elsewhere in the bot — read `createGuildSettingsService` and use its real return shape rather than the structural placeholder above.)
+  - `announce/server.ts`: add `| { kind: "tournament-completed"; tournamentId: number }` to `AnnouncePayload`; add `onTournamentCompleted(payload: OmitKind<Extract<AnnouncePayload, { kind: "tournament-completed" }>>): Promise<void>;` to `AnnounceHandlers`; add route `"/internal/announce/tournament-completed": (d) => opts.handlers.onTournamentCompleted(d)`.
+  - `announce/handlers.ts`: implement `onTournamentCompleted({ tournamentId })` by delegating to `announceTournamentCompleted(client, db, guildSettings, tournamentId)` (the factory already has `client`, `db`, `guildSettings`).
+- [ ] Step 4: rerun → PASS (plus existing announce tests still green).
+- [ ] Step 5: commit `feat(bot): add tournament-completed announce kind + shared post routine`.
+
+### Task R9 — wire all three approval paths
+
+**Files:** Modify `packages/bot/src/interactions/buttons.ts`, `packages/bot/src/commands/handlers.ts`, `packages/bot/src/index.ts`, `packages/web/app/api/matches/[id]/approve/route.ts`, `packages/web/src/lib/announce-bot.ts`; Tests: `packages/bot/tests/interactions/buttons.test.ts`, the bot command handlers test for `handleApprove`, `packages/web/tests/match-resolve-notify.test.ts` (or the nearest web approve-route test — find it).
+
+Depends on R7 and R8.
+
+Common pattern at each path — after a successful `approve` returning `match`:
+```ts
+if (match.tournamentId != null && matchesService.claimTournamentCompletionAnnouncement(match.tournamentId)) {
+  <trigger announcement for match.tournamentId>
+}
+```
+
+- [ ] Step 1 (RED): add one test per path:
+  - **bot button** (`buttons.test.ts`): approving the final match of a tournament invokes the injected `announceTournamentCompleted` callback exactly once with the tournament id; approving a non-final match does NOT; a second approval in the already-completed tournament does NOT (claim returns false). Use the existing buttons harness; pass a spy `announceTournamentCompleted` in deps.
+  - **bot slash** (bot command handlers test): `handleApprove` of a final match invokes the injected callback once.
+  - **web** (web approve-route test): approving the final match calls `announceToBot` with `{ kind: "tournament-completed", tournamentId }`; non-final does not. Mock `announceToBot` as the existing web route tests do.
+- [ ] Step 2: run those three test files → FAIL.
+- [ ] Step 3: implement:
+  - `buttons.ts`: add `announceTournamentCompleted?: (tournamentId: number) => Promise<void>;` to `ButtonDependencies`. In the consolidated handler, AFTER the success branch obtains `match` and BEFORE the final success `interaction.reply`, add:
+```ts
+if (
+  action === "approve" &&
+  match.tournamentId != null &&
+  deps.matches.claimTournamentCompletionAnnouncement(match.tournamentId) &&
+  deps.announceTournamentCompleted
+) {
+  await deps.announceTournamentCompleted(match.tournamentId);
+}
+```
+  - `commands/handlers.ts`: add the same optional field to `CommandDependencies`. In `handleApprove`, capture the return: `const approved = deps.matches.approve(match.id, player.id);` then before its reply add the same guarded block using `approved.tournamentId` and `deps.announceTournamentCompleted`.
+  - `index.ts`: import `announceTournamentCompleted` from `./lib/announce-tournament-completed.js`; inject `announceTournamentCompleted: (tid) => announceTournamentCompleted(client, db, deps.guildSettings, tid)` into BOTH the button deps object (~line 136 area) and the command deps object (mirror how `deleteNotifyMessage` is injected).
+  - `web/src/lib/announce-bot.ts`: add `| { kind: "tournament-completed"; tournamentId: number }` to its `AnnouncePayload` union (keep in sync with the bot server union).
+  - `web/app/api/matches/[id]/approve/route.ts`: after `const approved = matches.approve(matchId, player.id);`, add:
+```ts
+if (approved.tournamentId != null && matches.claimTournamentCompletionAnnouncement(approved.tournamentId)) {
+  void announceToBot(
+    { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+    { kind: "tournament-completed", tournamentId: approved.tournamentId },
+  );
+}
+```
+- [ ] Step 4: rerun the three test files → PASS, and rerun `buttons.test.ts` + the command handlers test + announce tests to confirm no regressions.
+- [ ] Step 5: commit `feat: announce tournament completion from bot button, slash command, and web approval`.
 
 ---
 
