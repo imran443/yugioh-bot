@@ -49,6 +49,7 @@ import { createMatchService } from "@yugidraft/shared/services";
 import { createTournamentService } from "@yugidraft/shared/services";
 import { createAnnounceHandlers } from "./announce/handlers.js";
 import { createAnnounceServer } from "./announce/server.js";
+import { deleteNotifyMessage } from "./lib/notify-message.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -131,6 +132,7 @@ const deps = {
   tournaments: createTournamentService(db),
   drafts: createDraftService(db),
   cards: createCardCatalogService(db),
+  deleteNotifyMessage: (matchId: number) => deleteNotifyMessage(client, db, matchId),
   templates: createDraftTemplateService(db),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
   guildSettings: createGuildSettingsService(db),
