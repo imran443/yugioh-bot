@@ -682,12 +682,48 @@ export async function handleButton(
     return;
   }
 
-  const approveMatch = /^dashboard_approve:(\d+)$/.exec(interaction.customId);
+  const RESOLVE_RE = /^dashboard_(approve|deny):(\d+)(?::([^:]+))?$/;
+  const resolveMatch = RESOLVE_RE.exec(interaction.customId);
 
-  if (approveMatch) {
+  if (resolveMatch) {
+    const action = resolveMatch[1] as "approve" | "deny";
+    const matchId = Number(resolveMatch[2]);
+    const expectedApproverDiscordId = resolveMatch[3];
+
+    if (expectedApproverDiscordId && interaction.user.id !== expectedApproverDiscordId) {
+      await interaction.reply({
+        content: `Only <@${expectedApproverDiscordId}> can respond to this match report.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
     const guildId = requireGuildId(interaction);
     const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-    const match = deps.matches.approve(Number(approveMatch[1]), player.id);
+
+    // Map raw service errors to one friendly message (no nested ternaries — lookup table).
+    const FRIENDLY_ERRORS: Record<string, string> = {
+      "Match not found":
+        "This match report is no longer available — it may have been resolved or the data was reset.",
+      "Match is not pending": "This match report has already been resolved.",
+      "Only the opponent can approve this match":
+        "Only your opponent can respond to this match report.",
+    };
+
+    let match;
+    try {
+      match =
+        action === "approve"
+          ? deps.matches.approve(matchId, player.id)
+          : deps.matches.deny(matchId, player.id);
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "";
+      await interaction.reply({
+        content: FRIENDLY_ERRORS[raw] ?? "Could not process this match report.",
+        ephemeral: true,
+      });
+      return;
+    }
 
     const tournamentRow = match.tournamentId
       ? deps.db.prepare("select web_slug from tournaments where id = ?").get(match.tournamentId) as { web_slug: string | null } | undefined
@@ -701,30 +737,10 @@ export async function handleButton(
     if (deps.deleteNotifyMessage) {
       await deps.deleteNotifyMessage(match.id);
     }
-    await interaction.reply({ content: `Approved match #${match.id}.`, ephemeral: true });
-    return;
-  }
-
-  const denyMatch = /^dashboard_deny:(\d+)$/.exec(interaction.customId);
-
-  if (denyMatch) {
-    const guildId = requireGuildId(interaction);
-    const player = deps.players.upsert(guildId, interaction.user.id, displayName(interaction.user));
-    const match = deps.matches.deny(Number(denyMatch[1]), player.id);
-
-    const tournamentRow = match.tournamentId
-      ? deps.db.prepare("select web_slug from tournaments where id = ?").get(match.tournamentId) as { web_slug: string | null } | undefined
-      : undefined;
-    if (tournamentRow?.web_slug) {
-      void notifyWsTournament(
-        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
-        { kind: "match-updated", slug: tournamentRow.web_slug },
-      );
-    }
-    if (deps.deleteNotifyMessage) {
-      await deps.deleteNotifyMessage(match.id);
-    }
-    await interaction.reply({ content: `Denied match #${match.id}.`, ephemeral: true });
+    await interaction.reply({
+      content: `${action === "approve" ? "Approved" : "Denied"} match #${match.id}.`,
+      ephemeral: true,
+    });
     return;
   }
 

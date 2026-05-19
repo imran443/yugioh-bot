@@ -558,6 +558,101 @@ describe("button interactions", () => {
     expect(app.tournaments.participants(tournament.id)).toEqual([]);
   });
 
+  it("blocks wrong user from approving with new customId form", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const match = app.matches.report({
+      guildId: "guild-1",
+      reporterId: yugi.id,
+      opponentId: kaiba.id,
+      winnerId: yugi.id,
+      source: "casual",
+    });
+    // "user-3" is NOT the expected approver (user-2 / Kaiba is)
+    const { interaction, replies } = fakeButton({
+      customId: `dashboard_approve:${match.id}:user-2`,
+      user: { id: "user-3", username: "Pegasus" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringMatching(/only <@user-2> can respond/i),
+      ephemeral: true,
+    });
+    // Match should remain pending — no DB write
+    expect(app.matches.stats(yugi.id)).toEqual({ wins: 0, losses: 0 });
+  });
+
+  it("replies with a friendly message for a stale approve button", async () => {
+    const app = setup();
+    // matchId 999999 does not exist
+    const { interaction, replies } = fakeButton({
+      customId: "dashboard_approve:999999:user-2",
+      user: { id: "user-2", username: "Kaiba" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringMatching(/no longer available/i),
+      ephemeral: true,
+    });
+  });
+
+  it("replies with a friendly message when approving an already-resolved match", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const match = app.matches.report({
+      guildId: "guild-1",
+      reporterId: yugi.id,
+      opponentId: kaiba.id,
+      winnerId: yugi.id,
+      source: "casual",
+    });
+    // First approval resolves the match
+    app.matches.approve(match.id, kaiba.id);
+    // Second approval should get "already been resolved" message
+    const { interaction, replies } = fakeButton({
+      customId: `dashboard_approve:${match.id}:user-2`,
+      user: { id: "user-2", username: "Kaiba" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringMatching(/already been resolved/i),
+      ephemeral: true,
+    });
+  });
+
+  it("approves a match via legacy id-only customId as the real opponent", async () => {
+    const app = setup();
+    const yugi = app.players.upsert("guild-1", "user-1", "Yugi");
+    const kaiba = app.players.upsert("guild-1", "user-2", "Kaiba");
+    const match = app.matches.report({
+      guildId: "guild-1",
+      reporterId: yugi.id,
+      opponentId: kaiba.id,
+      winnerId: yugi.id,
+      source: "casual",
+    });
+    const { interaction, replies } = fakeButton({
+      customId: `dashboard_approve:${match.id}`,
+      user: { id: "user-2", username: "Kaiba" },
+    });
+
+    await handleButton(interaction, app);
+
+    expect(replies[0]).toMatchObject({
+      content: expect.stringMatching(/approved match #/i),
+      ephemeral: true,
+    });
+    expect(app.matches.stats(yugi.id)).toEqual({ wins: 1, losses: 0 });
+  });
+
   it("exports a completed draft deck from button", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "user-7", "Yugi");
