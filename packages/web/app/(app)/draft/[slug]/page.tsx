@@ -41,6 +41,7 @@ interface DraftData {
   config: {
     packSize?: number;
     packsPerPlayer?: number;
+    cardsPerPlayer?: number;
     pickSeconds?: number;
     setNames?: string[];
     customCardIds?: number[];

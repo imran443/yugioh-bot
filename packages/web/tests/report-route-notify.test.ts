@@ -7,7 +7,7 @@ import { migrate } from "@yugidraft/shared/db";
 import { createTournamentService } from "@yugidraft/shared/services";
 
 const auth = vi.fn();
-const announceToBot = vi.fn(async () => ({ ok: true as const }));
+const announceToBot = vi.fn(async (..._args: unknown[]) => ({ ok: true as const }));
 vi.mock("@/lib/auth", () => ({ auth }));
 vi.mock("@/lib/announce-bot", () => ({ announceToBot }));
 const tempDirs: string[] = [];

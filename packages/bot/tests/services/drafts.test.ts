@@ -145,6 +145,7 @@ describe("draft service", () => {
         excludeNames: ["Pot of Greed"],
         packSize: 8,
         packsPerPlayer: 5,
+        cardsPerPlayer: 40,
         pickSeconds: 45,
         alternatePassDirection: true,
         randomizeSeats: false,
@@ -154,6 +155,8 @@ describe("draft service", () => {
       pickDeadlineAt: null,
       statusMessageId: null,
       webSlug: expect.any(String),
+      tournamentId: undefined,
+      completeMessageId: undefined,
     });
     expect(app.drafts.findById(draft.id)).toEqual(draft);
     expect(app.drafts.findByName("guild-1", "cube night")).toEqual(draft);
@@ -618,7 +621,7 @@ describe("draft service", () => {
 
     app.db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
 
-    expect(() => app.drafts.pickOptions(draft.id, yugi.id)).toThrow("Draft must be active");
+    expect(app.drafts.pickOptions(draft.id, yugi.id)).toEqual([]);
     expect(() => app.drafts.pickCard(draft.id, kaiba.id, secondOption.id)).toThrow("Draft must be active");
 
     app.db.prepare("update drafts set status = 'active', current_wave_number = 2 where id = ?").run(draft.id);
