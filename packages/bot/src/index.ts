@@ -45,6 +45,7 @@ import {
   selectTournamentReminderTargets,
 } from "./reminders/tournament-reminders.js";
 import { createDraftTimerService } from "./services/draft-timer.js";
+import { createNotifyCleanupService } from "./services/notify-cleanup.js";
 import { createMatchService } from "@yugidraft/shared/services";
 import { createTournamentService } from "@yugidraft/shared/services";
 import { createAnnounceHandlers } from "./announce/handlers.js";
@@ -382,6 +383,13 @@ client.once("ready", () => {
       console.error("Failed to run initial draft timer tick:", error);
       draftTimer.start();
     });
+
+  const notifyCleanup = createNotifyCleanupService({
+    db,
+    ttlMinutes: Number(process.env.NOTIFY_MESSAGE_TTL_MINUTES ?? 720),
+    deleteNotifyMessage: (matchId: number) => deleteNotifyMessage(client, db, matchId),
+  });
+  notifyCleanup.start();
 
   const announceSecret = process.env.BOT_ANNOUNCE_SECRET ?? "";
   const announcePort = Number(process.env.BOT_ANNOUNCE_PORT ?? 4001);
