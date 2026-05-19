@@ -41,11 +41,14 @@ export function OverviewTab({
   const completedMatches = tournament.matches.filter((m) => m.status === "completed").length;
   const totalMatches = tournament.matches.length;
 
-  // Highest round that has at least one non-completed match, or maxRound if all done
-  const currentRound =
-    maxRound > 0
-      ? tournament.matches.find((m) => m.status !== "completed")?.roundNumber ?? maxRound
-      : 0;
+  // Round numbers are a real, sequential bracket concept only for single elimination.
+  // For round-robin all rounds are generated up front and played in any order, so the
+  // "current round" is a meaningless scheduling artifact — show progress only.
+  const roundsAreMeaningful = tournament.format === "single_elim";
+  const incompleteRounds = tournament.matches
+    .filter((m) => m.status !== "completed")
+    .map((m) => m.roundNumber);
+  const currentRound = incompleteRounds.length > 0 ? Math.min(...incompleteRounds) : maxRound;
 
   return (
     <div>
@@ -62,11 +65,19 @@ export function OverviewTab({
       {tournament.status === "active" && totalMatches > 0 && (
         <section className="mb-6 rounded-xl border border-border bg-surface p-5">
           <p className="text-sm text-text-secondary">
-            <span className="font-semibold text-text-primary">
-              Round {currentRound} of {maxRound}
-            </span>
-            {" · "}
-            {completedMatches}/{totalMatches} matches done
+            {roundsAreMeaningful && maxRound > 0 ? (
+              <>
+                <span className="font-semibold text-text-primary">
+                  Round {currentRound} of {maxRound}
+                </span>
+                {" · "}
+                {completedMatches}/{totalMatches} matches done
+              </>
+            ) : (
+              <span className="font-semibold text-text-primary">
+                {completedMatches}/{totalMatches} matches done
+              </span>
+            )}
           </p>
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-bg-deep">
             <div
