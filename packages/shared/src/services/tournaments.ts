@@ -33,6 +33,8 @@ function mapTournament(row: any): Tournament {
     status: row.status,
     createdByUserId: row.created_by_user_id,
     webSlug: row.web_slug ?? undefined,
+    deadlineAt: row.deadline_at ?? undefined,
+    reportConfirmWindowHours: row.report_confirm_window_hours ?? undefined,
   };
 }
 
