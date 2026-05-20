@@ -45,6 +45,7 @@ import {
   selectTournamentReminderTargets,
 } from "./reminders/tournament-reminders.js";
 import { createDraftTimerService } from "./services/draft-timer.js";
+import { createTournamentTimerService } from "./services/tournament-timer.js";
 import { createNotifyCleanupService } from "./services/notify-cleanup.js";
 import { createMatchService } from "@yugidraft/shared/services";
 import { createTournamentService } from "@yugidraft/shared/services";
@@ -52,6 +53,7 @@ import { createAnnounceHandlers } from "./announce/handlers.js";
 import { createAnnounceServer } from "./announce/server.js";
 import { deleteNotifyMessage } from "./lib/notify-message.js";
 import { announceTournamentCompleted } from "./lib/announce-tournament-completed.js";
+import { notifyWsTournament } from "./lib/notify-ws-tournament.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -207,6 +209,48 @@ const draftTimer = createDraftTimerService({
       name: draft.name,
       webSlug: draft.webSlug,
     });
+  },
+});
+
+const tournamentTimer = createTournamentTimerService({
+  tournaments: deps.tournaments,
+  matches: deps.matches,
+  onMatchAutoResolved: async (match) => {
+    // Clean up the pending approval message (mirrors approve path).
+    await deps.deleteNotifyMessage(match.id).catch((err) =>
+      console.warn(`[tournament-timer] deleteNotifyMessage failed for ${match.id}:`, err),
+    );
+
+    if (match.tournamentId) {
+      // Announce completion once if this auto-approval finished the tournament.
+      if (deps.matches.claimTournamentCompletionAnnouncement(match.tournamentId)) {
+        await deps.announceTournamentCompleted(match.tournamentId).catch((err) =>
+          console.warn(`[tournament-timer] announce failed for ${match.tournamentId}:`, err),
+        );
+      }
+      const row = deps.db
+        .prepare("select web_slug from tournaments where id = ?")
+        .get(match.tournamentId) as { web_slug: string | null } | undefined;
+      if (row?.web_slug) {
+        await notifyWsTournament(
+          { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
+          { kind: "match-updated", slug: row.web_slug },
+        );
+      }
+    }
+  },
+  onTournamentClosed: async (tournament) => {
+    if (deps.matches.claimTournamentCompletionAnnouncement(tournament.id)) {
+      await deps.announceTournamentCompleted(tournament.id).catch((err) =>
+        console.warn(`[tournament-timer] announce failed for ${tournament.id}:`, err),
+      );
+    }
+    if (tournament.webSlug) {
+      await notifyWsTournament(
+        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
+        { kind: "match-updated", slug: tournament.webSlug },
+      );
+    }
   },
 });
 
@@ -386,6 +430,14 @@ client.once("ready", () => {
     .catch((error) => {
       console.error("Failed to run initial draft timer tick:", error);
       draftTimer.start();
+    });
+
+  tournamentTimer
+    .tick()
+    .then(() => tournamentTimer.start())
+    .catch((error) => {
+      console.error("Failed to run initial tournament timer tick:", error);
+      tournamentTimer.start();
     });
 
   const notifyCleanup = createNotifyCleanupService({
