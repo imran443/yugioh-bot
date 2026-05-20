@@ -50,6 +50,12 @@ export async function POST(
       { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
       { kind: "match-resolved", matchId },
     );
+    if (approved.tournamentId && matches.claimTournamentCompletionAnnouncement(approved.tournamentId)) {
+      void announceToBot(
+        { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+        { kind: "tournament-completed", tournamentId: approved.tournamentId },
+      );
+    }
     if (match.tournament_slug) {
       void notifyWsTournament(
         { url: env.wsInternalUrl, secret: env.wsInternalSecret },

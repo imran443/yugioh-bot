@@ -77,6 +77,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { deadlineAt, reportConfirmWindowHours } = body as {
+    deadlineAt?: string | null;
+    reportConfirmWindowHours?: number | null;
+  };
+
+  if (deadlineAt != null) {
+    const ts = Date.parse(deadlineAt);
+    if (Number.isNaN(ts) || ts <= Date.now()) {
+      return NextResponse.json({ error: "deadline must be a valid future date" }, { status: 400 });
+    }
+  }
+
+  if (reportConfirmWindowHours != null) {
+    if (
+      !Number.isInteger(reportConfirmWindowHours) ||
+      reportConfirmWindowHours < 1 ||
+      reportConfirmWindowHours > 720
+    ) {
+      return NextResponse.json(
+        { error: "confirm window must be an integer between 1 and 720 hours" },
+        { status: 400 }
+      );
+    }
+  }
+
   const guildId = env.discordGuildId;
   if (!guildId) {
     return NextResponse.json(
@@ -91,7 +116,16 @@ export async function POST(request: NextRequest) {
     const organizerPlayer = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
 
     const tournaments = createTournamentService(db);
-    const tournament = tournaments.create(guildId, name, format as "round_robin" | "single_elim", session.user.id);
+    const tournament = tournaments.create(
+      guildId,
+      name,
+      format as "round_robin" | "single_elim",
+      session.user.id,
+      {
+        deadlineAt: deadlineAt ?? null,
+        reportConfirmWindowHours: reportConfirmWindowHours ?? null,
+      },
+    );
     tournaments.join(tournament.id, organizerPlayer.id);
 
     return NextResponse.json(

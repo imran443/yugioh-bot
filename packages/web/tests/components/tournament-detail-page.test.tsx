@@ -35,7 +35,7 @@ const tournament = {
     { playerId: 44, displayName: "Dave" },
   ],
   isParticipant: true,
-  currentUserPlayerId: 11,
+  currentUserPlayerId: 11 as number | null,
   matches: [
     { id: 101, matchId: 1001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {} },
     { id: 102, matchId: 1002, roundNumber: 1, playerOneId: 33, playerTwoId: 44, playerOneName: "Carol", playerTwoName: "Dave", status: "completed", winnerId: 33, reporterId: null, metadata: {} },
@@ -43,10 +43,53 @@ const tournament = {
   ],
 };
 
+const roundRobinTournament = {
+  id: 2,
+  name: "Round Robin Cup",
+  format: "round_robin",
+  status: "active",
+  createdByUserId: "user-1",
+  participants: [
+    { playerId: 11, displayName: "Alice" },
+    { playerId: 22, displayName: "Bob" },
+    { playerId: 33, displayName: "Carol" },
+  ],
+  isParticipant: false,
+  currentUserPlayerId: null as number | null,
+  matches: [
+    { id: 201, matchId: 2001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {} },
+    { id: 202, matchId: 2002, roundNumber: 2, playerOneId: 11, playerTwoId: 33, playerOneName: "Alice", playerTwoName: "Carol", status: "completed", winnerId: 11, reporterId: null, metadata: {} },
+    { id: 203, matchId: 2003, roundNumber: 3, playerOneId: 22, playerTwoId: 33, playerOneName: "Bob", playerTwoName: "Carol", status: "completed", winnerId: 22, reporterId: null, metadata: {} },
+  ],
+};
+
+const singleElimTournament = {
+  id: 3,
+  name: "Single Elim Cup",
+  format: "single_elim",
+  status: "active",
+  createdByUserId: "user-1",
+  participants: [
+    { playerId: 11, displayName: "Alice" },
+    { playerId: 22, displayName: "Bob" },
+    { playerId: 33, displayName: "Carol" },
+    { playerId: 44, displayName: "Dave" },
+  ],
+  isParticipant: false,
+  currentUserPlayerId: null as number | null,
+  matches: [
+    { id: 301, matchId: 3001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "completed", winnerId: 11, reporterId: null, metadata: {} },
+    { id: 302, matchId: 3002, roundNumber: 1, playerOneId: 33, playerTwoId: 44, playerOneName: "Carol", playerTwoName: "Dave", status: "completed", winnerId: 33, reporterId: null, metadata: {} },
+    { id: 303, matchId: 3003, roundNumber: 2, playerOneId: 11, playerTwoId: 33, playerOneName: "Alice", playerTwoName: "Carol", status: "open", winnerId: null, reporterId: null, metadata: {} },
+  ],
+};
+
 function stubFetch(overrides?: {
   currentUserPlayerId?: number | null;
   status?: string;
+  tournamentData?: typeof tournament;
 }) {
+  const base = overrides?.tournamentData ?? tournament;
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/auth/session") {
@@ -54,9 +97,9 @@ function stubFetch(overrides?: {
     }
     if (url === "/api/tournaments/goat-cup") {
       return Response.json({
-        ...tournament,
-        status: overrides?.status ?? tournament.status,
-        currentUserPlayerId: overrides?.currentUserPlayerId ?? tournament.currentUserPlayerId,
+        ...base,
+        status: overrides?.status ?? base.status,
+        currentUserPlayerId: overrides?.currentUserPlayerId ?? base.currentUserPlayerId,
       });
     }
     if (url === "/api/tournaments/goat-cup/join-bot") {
@@ -64,6 +107,11 @@ function stubFetch(overrides?: {
     }
     return Response.json([], { status: 200 });
   });
+}
+
+function renderPage(tournamentData: typeof tournament) {
+  vi.stubGlobal("fetch", stubFetch({ tournamentData }));
+  render(<TournamentDetailPage />);
 }
 
 afterEach(() => {
@@ -132,5 +180,17 @@ describe("TournamentDetailPage (tabbed integration)", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/tournaments/goat-cup/join-bot", { method: "POST" });
     });
+  });
+
+  it("round-robin overview shows match progress but NOT a round number", async () => {
+    renderPage(roundRobinTournament);
+    expect(await screen.findByText(/2\/3 matches done/i)).toBeTruthy();
+    expect(screen.queryByText(/round \d+ of \d+/i)).toBeNull();
+  });
+
+  it("single-elim overview still shows the current round", async () => {
+    renderPage(singleElimTournament);
+    expect(await screen.findByText(/round 2 of 2/i)).toBeTruthy();
+    expect(screen.getByText(/2\/3 matches done/i)).toBeTruthy();
   });
 });

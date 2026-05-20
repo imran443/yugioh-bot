@@ -6,6 +6,7 @@ import {
   isEffectMonster,
   isNormalMonster,
   getTypeLabel,
+  tributeTierForLevel,
   type CardSummary,
 } from "../src/lib/card-types";
 
@@ -33,5 +34,15 @@ describe("card-types", () => {
     expect(getTypeLabel(monster.type)).toBe("Monster");
     expect(getTypeLabel(trap.type)).toBe("Trap");
     expect(getTypeLabel("Spell Card")).toBe("Spell");
+  });
+  it("maps monster level to a tribute tier", () => {
+    expect(tributeTierForLevel(undefined)).toBeNull();
+    expect(tributeTierForLevel(null)).toBeNull();
+    expect(tributeTierForLevel(1)).toBe("none");
+    expect(tributeTierForLevel(4)).toBe("none");
+    expect(tributeTierForLevel(5)).toBe("one");
+    expect(tributeTierForLevel(6)).toBe("one");
+    expect(tributeTierForLevel(7)).toBe("two");
+    expect(tributeTierForLevel(12)).toBe("two");
   });
 });

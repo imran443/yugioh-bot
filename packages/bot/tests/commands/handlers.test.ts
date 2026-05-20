@@ -122,6 +122,7 @@ function fakeInteraction(input: {
   roles?: Record<string, FakeRole>;
   users?: Record<string, FakeUser>;
   strings?: Record<string, string>;
+  integers?: Record<string, number>;
 }) {
   const replies: Array<string | { content: string; ephemeral?: boolean; components?: readonly unknown[]; files?: readonly unknown[] }> = [];
   const interaction: CommandInteractionLike = {
@@ -135,6 +136,7 @@ function fakeInteraction(input: {
       getString: (name) => input.strings?.[name] ?? null,
       getRole: (name) => input.roles?.[name] ?? null,
       getUser: (name) => input.users?.[name] ?? null,
+      getInteger: (name) => input.integers?.[name] ?? null,
     },
     reply: (message) => {
       replies.push(message);
@@ -1247,6 +1249,28 @@ describe("command handlers", () => {
     expect(JSON.parse(JSON.stringify(replies[0])).components[0].components[0].custom_id).toBe(
       `join_tournament:${tournament.id}`,
     );
+  });
+
+  it("passes confirm_hours and deadline_days through /event create", async () => {
+    const app = setup();
+    const yugi = { id: "user-1", username: "Yugi" };
+    const { interaction } = fakeInteraction({
+      commandName: "event",
+      subcommand: "create",
+      user: yugi,
+      strings: { name: "Cup", format: "round_robin" },
+      integers: { confirm_hours: 6, deadline_days: 3 },
+    });
+
+    await handleCommand(interaction, app);
+
+    const row = app.db.prepare("select deadline_at, report_confirm_window_hours from tournaments where name = 'Cup'").get() as {
+      deadline_at: string | null;
+      report_confirm_window_hours: number | null;
+    };
+    expect(row.report_confirm_window_hours).toBe(6);
+    expect(row.deadline_at).not.toBeNull(); // now + 3 days, ISO
+    expect(new Date(row.deadline_at!).getTime()).toBeGreaterThan(Date.now());
   });
 
   it("/event join replies clearly for duplicate joins", async () => {

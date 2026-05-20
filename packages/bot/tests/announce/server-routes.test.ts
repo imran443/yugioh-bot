@@ -18,6 +18,7 @@ describe("announce server new routes", () => {
         onDraftCompleted: vi.fn(),
         onTournamentCreated: vi.fn(),
         onTournamentStarted: vi.fn(),
+        onTournamentCompleted: vi.fn(),
         onMatchReportPending,
         onMatchResolved,
       },
@@ -46,5 +47,33 @@ describe("announce server new routes", () => {
       guildId: "g",
       matchId: 2,
     });
+  });
+
+  it("dispatches tournament-completed", async () => {
+    const onTournamentCompleted = vi.fn(async () => {});
+    const server = createAnnounceServer({
+      secret: "s",
+      handlers: {
+        onDraftCreated: vi.fn(),
+        onDraftStarted: vi.fn(),
+        onDraftCompleted: vi.fn(),
+        onTournamentCreated: vi.fn(),
+        onTournamentStarted: vi.fn(),
+        onTournamentCompleted,
+        onMatchReportPending: vi.fn(),
+        onMatchResolved: vi.fn(),
+      },
+    });
+    const body = JSON.stringify({ tournamentId: 7 });
+    const sig = sign(body, "s");
+    const res = await server.handle(
+      new Request("http://x/internal/announce/tournament-completed", {
+        method: "POST",
+        body,
+        headers: { "x-announce-signature": sig },
+      }),
+    );
+    expect(res.status).toBe(204);
+    expect(onTournamentCompleted).toHaveBeenCalledWith({ tournamentId: 7 });
   });
 });

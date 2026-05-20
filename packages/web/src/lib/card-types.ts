@@ -46,3 +46,14 @@ export function getTypeBadgeClass(type: string): string {
 export function getTypeLabel(type: string): string {
   return isMonster(type) ? "Monster" : isSpell(type) ? "Spell" : isTrap(type) ? "Trap" : "Other";
 }
+
+export type TributeTier = "none" | "one" | "two";
+
+// null = not a leveled monster (spells/traps, or no level), so it only ever
+// matches the "Any" tribute selection.
+export function tributeTierForLevel(level: number | null | undefined): TributeTier | null {
+  if (level == null) return null;
+  if (level <= 4) return "none";
+  if (level <= 6) return "one";
+  return "two";
+}

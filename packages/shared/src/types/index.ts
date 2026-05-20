@@ -71,6 +71,8 @@ export interface Tournament {
   status: "pending" | "active" | "cancelled" | "completed";
   createdByUserId: string;
   webSlug?: string;
+  deadlineAt?: string; // ISO timestamp; undefined = no deadline
+  reportConfirmWindowHours?: number; // undefined = use DEFAULT_REPORT_CONFIRM_HOURS
 }
 
 export interface TournamentPlayer {

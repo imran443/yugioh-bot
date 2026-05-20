@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Link as LinkIcon, Check, Play, UserPlus, X, LogOut, Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TournamentSettingsForm } from "./tournament-settings-form";
 import type { TournamentDetail } from "./types";
 
 interface TournamentLobbyProps {
@@ -353,6 +354,18 @@ export function TournamentLobby({
             Join Tournament
           </Button>
         </div>
+      )}
+
+      {/* Timing settings — organizer only */}
+      {isCreator && (
+        <section className="mb-6">
+          <TournamentSettingsForm
+            tournamentSlug={tournamentSlug}
+            initialDeadlineAt={tournament.deadlineAt}
+            initialReportConfirmWindowHours={tournament.reportConfirmWindowHours}
+            onSaved={onChanged}
+          />
+        </section>
       )}
 
       {/* Cancel — quiet destructive footer link, organizer only */}

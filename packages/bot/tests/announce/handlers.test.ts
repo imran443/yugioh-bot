@@ -35,4 +35,27 @@ describe("announce handlers", () => {
 
     expect(send).toHaveBeenCalledWith("Signups are open for **test1**. Pick cards: http://localhost:3000/draft/1d4wjhls");
   });
+
+  it("posts tournament-completed announcement to the announce channel", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const channel = { isTextBased: () => true, send };
+    const db = {
+      prepare: vi.fn().mockReturnValue({
+        get: vi.fn().mockReturnValue({ name: "Test Cup", web_slug: "test-cup", guild_id: "g1" }),
+      }),
+    };
+    const handlers = createAnnounceHandlers({
+      client: { channels: { fetch: vi.fn().mockResolvedValue(channel) } } as any,
+      db: db as any,
+      guildSettings: { get: vi.fn().mockReturnValue({ announceChannelId: "ch1" }) } as any,
+      drafts: {} as any,
+      messenger: {} as any,
+    });
+
+    await handlers.onTournamentCompleted({ tournamentId: 7 });
+
+    expect(send).toHaveBeenCalledWith(
+      "🏆 **Test Cup** has completed! Final standings: http://localhost:3000/tournament/test-cup",
+    );
+  });
 });
