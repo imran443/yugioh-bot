@@ -298,6 +298,18 @@ describe("shared database schema", () => {
     );
   });
 
+  it("adds tournament timing columns", () => {
+    const db = new Database(":memory:");
+
+    migrate(db);
+
+    const cols = getTableInfo(db, "tournaments").map((column) => column.name);
+    expect(cols).toContain("deadline_at");
+    expect(cols).toContain("report_confirm_window_hours");
+
+    db.close();
+  });
+
   it("backfills web_slug for tournaments that pre-date the column", () => {
     const db = new Database(":memory:");
     // Simulate legacy schema without web_slug
