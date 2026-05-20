@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { generateSingleElimFirstRound } from "../tournaments/formats.js";
+import { DEFAULT_REPORT_CONFIRM_HOURS } from "./constants.js";
 
 export type MatchSource = "casual" | "tournament";
 export type MatchStatus = "pending" | "approved" | "denied";
@@ -291,6 +292,45 @@ export function createMatchService(db: Database.Database) {
       }
 
       return findById(matchId);
+    },
+
+    autoApprove(matchId: number): Match {
+      const match = findById(matchId);
+      if (match.status !== "pending") {
+        return match;
+      }
+
+      db.prepare(
+        `
+        update matches
+        set status = 'approved', approver_id = null, resolved_at = current_timestamp
+        where id = ?
+      `,
+      ).run(matchId);
+
+      const approvedMatch = findById(matchId);
+      completeTournamentMatch(approvedMatch);
+
+      return findById(matchId);
+    },
+
+    findOverduePendingConfirmations(now: string): Match[] {
+      return db
+        .prepare(
+          `
+          select m.* from matches m
+          join tournaments t on t.id = m.tournament_id
+          where m.status = 'pending'
+            and m.source = 'tournament'
+            and m.tournament_id is not null
+            and t.status = 'active'
+            and datetime(m.created_at,
+              '+' || coalesce(t.report_confirm_window_hours, ${DEFAULT_REPORT_CONFIRM_HOURS}) || ' hours') <= datetime(?)
+          order by m.id asc
+        `,
+        )
+        .all(now)
+        .map(mapMatch);
     },
 
     stats(playerId: number): MatchStats {
