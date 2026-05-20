@@ -7,6 +7,7 @@ import {
   type TournamentPairing,
 } from "../tournaments/formats.js";
 import { generateWebSlug } from "../util/web-slug.js";
+import { MAX_REPORT_CONFIRM_HOURS, MIN_REPORT_CONFIRM_HOURS } from "./constants.js";
 
 export type TournamentFormat = "round_robin" | "single_elim";
 export type TournamentStatus = "pending" | "active" | "cancelled" | "completed";
@@ -134,14 +135,25 @@ export function createTournamentService(db: Database.Database) {
     return mapTournamentMatch(row);
   };
 
+  const validateWindow = (hours: number | null | undefined) => {
+    if (hours === null || hours === undefined) return;
+    if (!Number.isInteger(hours) || hours < MIN_REPORT_CONFIRM_HOURS || hours > MAX_REPORT_CONFIRM_HOURS) {
+      throw new Error(
+        `Confirm window must be an integer between ${MIN_REPORT_CONFIRM_HOURS} and ${MAX_REPORT_CONFIRM_HOURS} hours`,
+      );
+    }
+  };
+
   return {
     create(
       guildId: string,
       name: string,
       format: TournamentFormat,
       createdByUserId: string,
+      options?: { deadlineAt?: string | null; reportConfirmWindowHours?: number | null },
     ): Tournament {
       assertFormat(format);
+      validateWindow(options?.reportConfirmWindowHours);
 
       const existingCurrent = db
         .prepare(
@@ -161,15 +173,23 @@ export function createTournamentService(db: Database.Database) {
 
       const insert = db.prepare(
         `
-          insert into tournaments (guild_id, name, format, status, created_by_user_id, web_slug)
-          values (?, ?, ?, 'pending', ?, ?)
+          insert into tournaments (guild_id, name, format, status, created_by_user_id, web_slug, deadline_at, report_confirm_window_hours)
+          values (?, ?, ?, 'pending', ?, ?, ?, ?)
         `,
       );
 
       let result;
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
-          result = insert.run(guildId, name, format, createdByUserId, generateWebSlug());
+          result = insert.run(
+            guildId,
+            name,
+            format,
+            createdByUserId,
+            generateWebSlug(),
+            options?.deadlineAt ?? null,
+            options?.reportConfirmWindowHours ?? null,
+          );
           break;
         } catch (err: any) {
           if (err?.code !== "SQLITE_CONSTRAINT_UNIQUE" || attempt === 4) throw err;
@@ -679,6 +699,61 @@ export function createTournamentService(db: Database.Database) {
       ).run(tournamentId);
 
       return findById(tournamentId);
+    },
+
+    updateSettings(
+      tournamentId: number,
+      patch: { deadlineAt?: string | null; reportConfirmWindowHours?: number | null },
+    ): Tournament {
+      const tournament = findById(tournamentId);
+
+      if (tournament.status === "completed" || tournament.status === "cancelled") {
+        throw new Error(`Cannot edit settings of a ${tournament.status} tournament`);
+      }
+
+      if ("reportConfirmWindowHours" in patch) {
+        validateWindow(patch.reportConfirmWindowHours);
+      }
+
+      const sets: string[] = [];
+      const params: Array<string | number | null> = [];
+      if ("deadlineAt" in patch) {
+        sets.push("deadline_at = ?");
+        params.push(patch.deadlineAt ?? null);
+      }
+      if ("reportConfirmWindowHours" in patch) {
+        sets.push("report_confirm_window_hours = ?");
+        params.push(patch.reportConfirmWindowHours ?? null);
+      }
+
+      if (sets.length > 0) {
+        params.push(tournamentId);
+        db.prepare(`update tournaments set ${sets.join(", ")} where id = ?`).run(...params);
+      }
+
+      return findById(tournamentId);
+    },
+
+    closeForDeadline(tournamentId: number): Tournament {
+      db.prepare(
+        "update tournaments set status = 'completed', ended_at = current_timestamp where id = ? and status = 'active'",
+      ).run(tournamentId);
+      return findById(tournamentId);
+    },
+
+    findOverdueActive(now: string): Tournament[] {
+      return db
+        .prepare(
+          `
+          select * from tournaments
+          where status = 'active'
+            and deadline_at is not null
+            and deadline_at <= ?
+          order by id asc
+        `,
+        )
+        .all(now)
+        .map(mapTournament);
     },
   };
 }
