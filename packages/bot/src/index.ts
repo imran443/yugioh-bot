@@ -280,6 +280,7 @@ function toCommandInteraction(
 
         return user ? { id: user.id, username: user.username, displayName: user.displayName } : null;
       },
+      getInteger: (name, required = false) => interaction.options.getInteger(name, required),
     },
     reply: async (message) => {
       await interaction.reply(message);

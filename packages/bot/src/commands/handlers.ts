@@ -38,6 +38,7 @@ export type CommandInteractionLike = {
     getString(name: string, required?: boolean): string | null;
     getRole(name: string, required?: boolean): DiscordRoleLike | null;
     getUser(name: string, required?: boolean): DiscordUserLike | null;
+    getInteger(name: string, required?: boolean): number | null;
   };
   reply(message: string | CommandReplyLike): Promise<void> | void;
 };
@@ -453,7 +454,16 @@ async function handleEvent(
     case "create": {
       const name = requireStringOption(interaction, "name");
       const format = requireStringOption(interaction, "format") as TournamentFormat;
-      const tournament = deps.tournaments.create(guildId, name, format, interaction.user.id);
+      const confirmHours = interaction.options.getInteger("confirm_hours");
+      const deadlineDays = interaction.options.getInteger("deadline_days");
+      const deadlineAt =
+        deadlineDays && deadlineDays > 0
+          ? new Date(Date.now() + deadlineDays * 24 * 60 * 60 * 1000).toISOString()
+          : null;
+      const tournament = deps.tournaments.create(guildId, name, format, interaction.user.id, {
+        deadlineAt,
+        reportConfirmWindowHours: confirmHours ?? null,
+      });
       const seededUserIds = new Set<string>();
 
       for (const optionName of playerSeedOptionNames) {
