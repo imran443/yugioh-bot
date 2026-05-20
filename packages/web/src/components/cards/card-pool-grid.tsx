@@ -9,11 +9,13 @@ import { CardHoverPopup } from "@/components/draft/card-hover-popup";
 import { CardArt } from "@/components/cards/card-art";
 import {
   isMonster, isSpell, isTrap, isEffectMonster, isNormalMonster, getTypeBadgeClass, getTypeLabel,
-  type CardSummary,
+  tributeTierForLevel,
+  type CardSummary, type TributeTier,
 } from "@/lib/card-types";
 
 type PoolFilter = "all" | "effect" | "normal" | "spell" | "trap";
 type PoolSort = "newest" | "oldest" | "name" | "type";
+type PoolTribute = "any" | TributeTier;
 
 type GridEntry =
   | { kind: "card"; card: CardSummary }
@@ -75,6 +77,12 @@ const SORT_BUTTONS: Array<{ label: string; value: PoolSort }> = [
   { label: "Name", value: "name" },
   { label: "Type", value: "type" },
 ];
+const TRIBUTE_BUTTONS: Array<{ label: string; value: PoolTribute }> = [
+  { label: "Any", value: "any" },
+  { label: "No Trib", value: "none" },
+  { label: "1 Trib", value: "one" },
+  { label: "2 Trib", value: "two" },
+];
 
 function CardPoolGridBase({
   cards,
@@ -91,6 +99,7 @@ function CardPoolGridBase({
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<PoolFilter>("all");
   const [activeSort, setActiveSort] = useState<PoolSort>("newest");
+  const [activeTribute, setActiveTribute] = useState<PoolTribute>("any");
   const [hoveredCard, setHoveredCard] = useState<CardSummary | null>(null);
   const [tapped, setTapped] = useState<CardSummary | null>(null);
   const [popupPosition, setPopupPosition] = useState<{ left: number; top: number } | null>(null);
@@ -120,7 +129,9 @@ function CardPoolGridBase({
         (activeFilter === "normal" && isNormalMonster(card)) ||
         (activeFilter === "spell" && isSpell(card.type)) ||
         (activeFilter === "trap" && isTrap(card.type));
-      return matchSearch && matchFilter;
+      const matchTribute =
+        activeTribute === "any" || tributeTierForLevel(card.level) === activeTribute;
+      return matchSearch && matchFilter && matchTribute;
     });
     if (activeSort === "newest") list = [...list].reverse();
     else if (activeSort === "name") list = [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -129,7 +140,7 @@ function CardPoolGridBase({
       list = [...list].sort((a, b) => order(a) - order(b));
     }
     return list;
-  }, [cards, deferredSearch, activeFilter, activeSort]);
+  }, [cards, deferredSearch, activeFilter, activeSort, activeTribute]);
 
   const showSkeleton = loading && cards.length === 0;
   const previewEnabled = !cubeEditMode && !onCardClick;
@@ -220,6 +231,15 @@ function CardPoolGridBase({
           <Button key={fb.value} type="button" size="sm" variant={activeFilter === fb.value ? "secondary" : "ghost"}
             onClick={() => setActiveFilter(fb.value)} aria-pressed={activeFilter === fb.value} className="rounded-full px-3 text-xs">
             {fb.label}
+          </Button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {TRIBUTE_BUTTONS.map((tb) => (
+          <Button key={tb.value} type="button" size="sm" variant={activeTribute === tb.value ? "secondary" : "ghost"}
+            onClick={() => setActiveTribute(tb.value)} aria-pressed={activeTribute === tb.value} className="rounded-full px-3 text-xs">
+            {tb.label}
           </Button>
         ))}
       </div>
