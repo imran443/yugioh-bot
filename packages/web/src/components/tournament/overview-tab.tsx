@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { YourActionCard } from "./your-action-card";
+import { TournamentSettingsForm } from "./tournament-settings-form";
 import { deriveMyMatches } from "./use-my-matches";
 import type { TournamentDetail, StandingsRow } from "./types";
 
@@ -142,6 +143,17 @@ export function OverviewTab({
               </tbody>
             </table>
           )}
+        </section>
+      )}
+
+      {tournament.status === "active" && isHost && (
+        <section className="mt-6">
+          <TournamentSettingsForm
+            tournamentSlug={tournamentSlug}
+            initialDeadlineAt={tournament.deadlineAt}
+            initialReportConfirmWindowHours={tournament.reportConfirmWindowHours}
+            onSaved={onChanged}
+          />
         </section>
       )}
     </div>

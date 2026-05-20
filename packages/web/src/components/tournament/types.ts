@@ -27,6 +27,8 @@ export interface TournamentDetail {
   matches: Match[];
   isParticipant: boolean;
   currentUserPlayerId: number | null;
+  deadlineAt?: string;
+  reportConfirmWindowHours?: number;
 }
 
 export interface StandingsRow {
