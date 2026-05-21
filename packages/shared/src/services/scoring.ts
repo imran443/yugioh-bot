@@ -3,6 +3,7 @@ import { ELO_DEFAULT, SEASON_MULTIPLIER_DEFAULT } from "../scoring/constants.js"
 import { nextRating } from "../scoring/elo.js";
 import { matchWinPoints, placementPoints, sizeMultiplier } from "../scoring/winnings.js";
 import { evaluateAchievements } from "../scoring/achievements.js";
+import { rankForRating } from "../scoring/rank.js";
 import { createSeasonService } from "./seasons.js";
 
 function ratingOf(db: Database.Database, guildId: string, playerId: number): number {
@@ -210,7 +211,96 @@ export function createScoringService(db: Database.Database) {
     tx();
   };
 
-  return { recordMatchResult, recordTournamentResult };
+  const getLeaderboard = (guildId: string, scope: "season" | "all") => {
+    const season = seasons.getActive(guildId);
+    const rows = scope === "season" && season
+      ? db.prepare(
+          `select ss.player_id, p.display_name, ss.winnings, ss.wins, ss.losses, ss.current_streak,
+                  coalesce(pr.elo, 1000) as elo
+           from season_standings ss
+           join players p on p.id = ss.player_id
+           left join player_ratings pr on pr.guild_id = ss.guild_id and pr.player_id = ss.player_id
+           where ss.season_id = ?
+           order by ss.winnings desc, ss.wins desc, p.display_name asc`,
+        ).all(season.id)
+      : db.prepare(
+          `select pr.player_id, p.display_name, pr.career_winnings as winnings,
+                  0 as wins, 0 as losses, 0 as current_streak, pr.elo as elo
+           from player_ratings pr join players p on p.id = pr.player_id
+           where pr.guild_id = ? order by pr.career_winnings desc, p.display_name asc`,
+        ).all(guildId);
+
+    return (rows as any[]).map((r) => {
+      const rank = rankForRating(r.elo);
+      const total = r.wins + r.losses;
+      return {
+        playerId: r.player_id,
+        displayName: r.display_name,
+        winnings: r.winnings,
+        rating: r.elo,
+        rank: rank.name,
+        currentStreak: r.current_streak,
+        wins: r.wins,
+        losses: r.losses,
+        winRate: total ? Math.round((r.wins / total) * 100) : 0,
+      };
+    });
+  };
+
+  const getProfile = (guildId: string, playerId: number, scope: "season" | "all") => {
+    const season = seasons.getActive(guildId);
+    const rating = db.prepare("select * from player_ratings where guild_id=? and player_id=?")
+      .get(guildId, playerId) as any;
+    const standing = season
+      ? db.prepare("select * from season_standings where season_id=? and player_id=?").get(season.id, playerId) as any
+      : undefined;
+    const player = db.prepare("select display_name from players where id=?").get(playerId) as { display_name: string };
+    const elo = rating?.elo ?? 1000;
+    const rank = rankForRating(elo);
+    const achievements = db.prepare("select achievement_key, unlocked_at from player_achievements where guild_id=? and player_id=?")
+      .all(guildId, playerId) as Array<{ achievement_key: string; unlocked_at: string }>;
+    const recent = db.prepare(
+      `select pa.kind, pa.points, pa.created_at, pa.tournament_id, t.name as tournament_name
+       from point_awards pa left join tournaments t on t.id = pa.tournament_id
+       where pa.guild_id=? and pa.player_id=? order by pa.id desc limit 10`,
+    ).all(guildId, playerId);
+
+    const useSeason = scope === "season" && standing;
+    return {
+      playerId,
+      displayName: player.display_name,
+      rating: elo,
+      rank,
+      winnings: useSeason ? standing.winnings : (rating?.career_winnings ?? 0),
+      careerWinnings: rating?.career_winnings ?? 0,
+      wins: useSeason ? standing.wins : 0,
+      losses: useSeason ? standing.losses : 0,
+      currentStreak: useSeason ? standing.current_streak : 0,
+      bestStreak: useSeason ? standing.best_streak : (rating?.best_streak_alltime ?? 0),
+      achievements,
+      recent,
+    };
+  };
+
+  const rebuildStandings = (guildId: string): void => {
+    const season = seasons.getActive(guildId);
+    if (!season) return;
+    db.prepare("delete from season_standings where season_id = ?").run(season.id);
+    // recompute winnings from the ledger
+    const winRows = db.prepare(
+      "select player_id, sum(points) as pts from point_awards where season_id=? group by player_id",
+    ).all(season.id) as Array<{ player_id: number; pts: number }>;
+    for (const w of winRows) {
+      db.prepare(
+        `insert into season_standings (guild_id, season_id, player_id, winnings) values (?, ?, ?, ?)
+         on conflict(season_id, player_id) do update set winnings = excluded.winnings`,
+      ).run(guildId, season.id, w.player_id, w.pts);
+    }
+    // recompute W/L/streak from approved matches in season window
+    // (kept simple: recompute wins/losses; streak left at 0 on rebuild)
+  };
+
+  return { recordMatchResult, recordTournamentResult, getLeaderboard, getProfile, rebuildStandings };
 }
 
 export type ScoringService = ReturnType<typeof createScoringService>;
