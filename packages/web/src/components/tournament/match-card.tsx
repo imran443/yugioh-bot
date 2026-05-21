@@ -6,6 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Match } from "./types";
 
+export interface MatchProjection {
+  winWinnings: number;
+  winRating: number;
+  loseRating: number;
+}
+
 async function handleReport(
   tournamentSlug: string,
   tournamentMatchId: number,
@@ -36,6 +42,7 @@ export function MatchCard({
   currentUserPlayerId,
   isHost,
   isReporting,
+  projection,
   onReport,
   onCancelReport,
   onReported,
@@ -47,6 +54,7 @@ export function MatchCard({
   currentUserPlayerId: number | null;
   isHost: boolean;
   isReporting: boolean;
+  projection?: MatchProjection | null;
   onReport: () => void;
   onCancelReport: () => void;
   onReported: () => void;
@@ -248,6 +256,17 @@ export function MatchCard({
           <p className="mb-3 text-sm text-text-secondary">
             Report your result:
           </p>
+          {projection && (
+            <p className="mb-3 font-mono text-xs text-text-muted">
+              <span className="text-accent-success">
+                Win → +{projection.winWinnings} pts, +{projection.winRating} elo
+              </span>
+              {" · "}
+              <span className="text-accent-cta">
+                Lose → +0 pts, {projection.loseRating} elo
+              </span>
+            </p>
+          )}
           <div className="flex gap-3">
             <Button
               variant="primary"
