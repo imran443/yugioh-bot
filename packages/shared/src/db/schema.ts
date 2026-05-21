@@ -299,4 +299,70 @@ export function migrate(db: Database.Database) {
       announce_channel_id text
     );
   `);
+
+  db.exec(`
+    create table if not exists seasons (
+      id integer primary key autoincrement,
+      guild_id text not null,
+      number integer not null,
+      name text,
+      status text not null,
+      started_at text not null default current_timestamp,
+      ended_at text,
+      created_by_user_id text
+    );
+
+    create unique index if not exists seasons_one_active
+      on seasons (guild_id) where status = 'active';
+
+    create table if not exists player_ratings (
+      guild_id text not null,
+      player_id integer not null references players(id),
+      elo integer not null default 1000,
+      career_winnings integer not null default 0,
+      best_streak_alltime integer not null default 0,
+      primary key (guild_id, player_id)
+    );
+
+    create table if not exists point_awards (
+      id integer primary key autoincrement,
+      guild_id text not null,
+      season_id integer not null references seasons(id),
+      player_id integer not null references players(id),
+      kind text not null,                 -- 'match_win' | 'placement'
+      placement text,                     -- 'champion' | 'runnerUp' | 'top4' (placement awards only)
+      match_id integer references matches(id),
+      tournament_id integer references tournaments(id),
+      points integer not null,
+      opponent_elo integer,
+      size_multiplier real,
+      created_at text not null default current_timestamp
+    );
+
+    create unique index if not exists point_awards_match_unique
+      on point_awards (match_id, kind) where match_id is not null;
+
+    create unique index if not exists point_awards_placement_unique
+      on point_awards (tournament_id, player_id, kind) where kind = 'placement';
+
+    create table if not exists season_standings (
+      guild_id text not null,
+      season_id integer not null references seasons(id),
+      player_id integer not null references players(id),
+      winnings integer not null default 0,
+      wins integer not null default 0,
+      losses integer not null default 0,
+      current_streak integer not null default 0,
+      best_streak integer not null default 0,
+      primary key (season_id, player_id)
+    );
+
+    create table if not exists player_achievements (
+      guild_id text not null,
+      player_id integer not null references players(id),
+      achievement_key text not null,
+      unlocked_at text not null default current_timestamp,
+      primary key (guild_id, player_id, achievement_key)
+    );
+  `);
 }
