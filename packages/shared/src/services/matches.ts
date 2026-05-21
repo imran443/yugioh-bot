@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { generateSingleElimFirstRound } from "../tournaments/formats.js";
+import { createScoringService } from "./scoring.js";
 
 export type MatchSource = "casual" | "tournament";
 export type MatchStatus = "pending" | "approved" | "denied";
@@ -52,6 +53,15 @@ function mapMatch(row: any): Match {
 }
 
 export function createMatchService(db: Database.Database) {
+  const scoring = createScoringService(db);
+  const safe = (fn: () => void) => {
+    try {
+      fn();
+    } catch (err) {
+      console.error("[scoring] failed", err);
+    }
+  };
+
   const findById = (matchId: number): Match => {
     const row = db.prepare("select * from matches where id = ?").get(matchId);
 
@@ -111,6 +121,7 @@ export function createMatchService(db: Database.Database) {
         db.prepare(
           "update tournaments set status = 'completed', ended_at = current_timestamp where id = ?",
         ).run(match.tournamentId);
+        safe(() => scoring.recordTournamentResult(match.tournamentId!));
       }
       return;
     }
@@ -168,6 +179,7 @@ export function createMatchService(db: Database.Database) {
       db.prepare(
         "update tournaments set status = 'completed', ended_at = current_timestamp where id = ?",
       ).run(match.tournamentId);
+      safe(() => scoring.recordTournamentResult(match.tournamentId!));
       return;
     }
 
@@ -264,6 +276,7 @@ export function createMatchService(db: Database.Database) {
 
       const approvedMatch = findById(matchId);
       completeTournamentMatch(approvedMatch);
+      safe(() => scoring.recordMatchResult(matchId));
 
       return findById(matchId);
     },
