@@ -32,6 +32,11 @@
     "./ws": {
       "types": "./dist/ws/index.d.ts",
       "default": "./dist/ws/index.js"
+    },
+    "./scoring": {
+      "types": "./dist/scoring/index.d.ts",
+      "source": "./src/scoring/index.ts",
+      "default": "./dist/scoring/index.js"
     }
   },
   "scripts": {

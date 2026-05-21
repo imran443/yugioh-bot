@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Swords, Check } from "lucide-react";
 import { MatchCard, type MatchProjection } from "./match-card";
-import { projectMatch } from "@yugidraft/shared/services";
+import { projectMatch } from "@yugidraft/shared/scoring";
 import type { Match } from "./types";
 
 export function YourActionCard({

@@ -11,7 +11,7 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ACHIEVEMENTS } from "@yugidraft/shared/services";
+import { ACHIEVEMENTS } from "@yugidraft/shared/scoring";
 import type { ScoringService } from "@yugidraft/shared/services";
 
 // ---------- types ----------
