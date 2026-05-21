@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { ELO_DEFAULT, SEASON_MULTIPLIER_DEFAULT } from "../scoring/constants.js";
 import { nextRating } from "../scoring/elo.js";
-import { matchWinPoints } from "../scoring/winnings.js";
+import { matchWinPoints, placementPoints, sizeMultiplier } from "../scoring/winnings.js";
 import { evaluateAchievements } from "../scoring/achievements.js";
 import { createSeasonService } from "./seasons.js";
 
@@ -157,7 +157,60 @@ export function createScoringService(db: Database.Database) {
     tx();
   };
 
-  return { recordMatchResult };
+  const participantCount = (tournamentId: number): number => {
+    const row = db.prepare("select count(*) as c from tournament_participants where tournament_id = ?").get(tournamentId) as { c: number };
+    return row.c;
+  };
+
+  // placement may be provided by the caller (it knows the bracket) or derived from tournament_matches wins
+  const derivePlacement = (tournamentId: number): { champion?: number; runnerUp?: number; top4: number[] } => {
+    const rows = db.prepare(
+      `select m.winner_id as pid, count(*) as wins
+       from tournament_matches tm join matches m on m.id = tm.match_id
+       where tm.tournament_id = ? and tm.status='completed' and m.winner_id is not null
+       group by m.winner_id order by wins desc`,
+    ).all(tournamentId) as Array<{ pid: number; wins: number }>;
+    return {
+      champion: rows[0]?.pid,
+      runnerUp: rows[1]?.pid,
+      top4: rows.slice(2, 4).map((r) => r.pid),
+    };
+  };
+
+  const recordTournamentResult = (
+    tournamentId: number,
+    placement?: { champion?: number; runnerUp?: number; top4: number[] },
+  ): void => {
+    const tournament = db.prepare("select * from tournaments where id = ?").get(tournamentId) as any;
+    if (!tournament) return;
+    const guildId = tournament.guild_id as string;
+    const season = seasons.ensureActive(guildId);
+    const place = placement ?? derivePlacement(tournamentId);
+    const n = participantCount(tournamentId);
+
+    const award = (playerId: number | undefined, tier: "champion" | "runnerUp" | "top4") => {
+      if (playerId == null) return;
+      const points = placementPoints(tier, n);
+      const inserted = db.prepare(
+        `insert or ignore into point_awards (guild_id, season_id, player_id, kind, placement, tournament_id, points, size_multiplier)
+         values (?, ?, ?, 'placement', ?, ?, ?, ?)`,
+      ).run(guildId, season.id, playerId, tier, tournamentId, points, sizeMultiplier(n));
+      if (inserted.changes === 1) {
+        upsertRating(db, guildId, playerId, { addWinnings: points });
+        bumpStanding(db, guildId, season.id, playerId, { addWinnings: points });
+        refreshAchievements(guildId, playerId);
+      }
+    };
+
+    const tx = db.transaction(() => {
+      award(place.champion, "champion");
+      award(place.runnerUp, "runnerUp");
+      for (const p of place.top4) award(p, "top4");
+    });
+    tx();
+  };
+
+  return { recordMatchResult, recordTournamentResult };
 }
 
 export type ScoringService = ReturnType<typeof createScoringService>;
