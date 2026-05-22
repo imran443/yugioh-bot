@@ -31,6 +31,14 @@ export function tournamentStartedAnnouncement(input: { name: string; webSlug: st
   return `**${input.name}** has started. Bracket: ${webBaseUrl(input.webUrl)}/tournament/${input.webSlug}`;
 }
 
+export function tournamentCompletedAnnouncement(input: {
+  name: string;
+  webSlug: string;
+  webUrl?: string;
+}): string {
+  return `🏆 **${input.name}** has completed! Final standings: ${webBaseUrl(input.webUrl)}/tournament/${input.webSlug}`;
+}
+
 export function draftCompletedAnnouncement(input: { name: string; webSlug: string; webUrl?: string }): {
   content: string;
   components: ActionRowBuilder<ButtonBuilder>[];
@@ -64,11 +72,11 @@ export function reportPendingAnnouncement(input: {
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
-          .setCustomId(`dashboard_approve:${input.matchId}`)
+          .setCustomId(`dashboard_approve:${input.matchId}:${input.opponentDiscordId}`)
           .setLabel("Approve")
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
-          .setCustomId(`dashboard_deny:${input.matchId}`)
+          .setCustomId(`dashboard_deny:${input.matchId}:${input.opponentDiscordId}`)
           .setLabel("Deny")
           .setStyle(ButtonStyle.Danger),
       ),

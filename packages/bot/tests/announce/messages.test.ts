@@ -3,6 +3,8 @@ import {
   draftCreatedAnnouncement,
   tournamentCreatedAnnouncement,
   tournamentStartedAnnouncement,
+  tournamentCompletedAnnouncement,
+  reportPendingAnnouncement,
 } from "../../src/announce/messages.js";
 
 describe("announce messages", () => {
@@ -10,6 +12,21 @@ describe("announce messages", () => {
     expect(draftCreatedAnnouncement({ name: "test1", webSlug: "1d4wjhls" })).toBe(
       "Signups are open for **test1**. Pick cards: http://localhost:3000/draft/1d4wjhls",
     );
+  });
+
+  it("encodes the expected approver discord id in the approve/deny customIds", () => {
+    const { components } = reportPendingAnnouncement({
+      matchId: 42, tournamentName: "locals", roundNumber: 3,
+      reporterName: "Alice", opponentDiscordId: "999", opponentLost: true,
+    });
+    const ids = components[0].components.map((c) => (c.toJSON() as { custom_id: string }).custom_id);
+    expect(ids).toEqual(["dashboard_approve:42:999", "dashboard_deny:42:999"]);
+  });
+
+  it("formats the tournament-completed announcement to the tournament results page", () => {
+    expect(
+      tournamentCompletedAnnouncement({ name: "locals", webSlug: "abc", webUrl: "https://app.test" }),
+    ).toBe("🏆 **locals** has completed! Final standings: https://app.test/tournament/abc");
   });
 
   it("formats tournament announcements with the configured web URL", () => {

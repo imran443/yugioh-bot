@@ -16,6 +16,8 @@ type TournamentRow = {
   status: string;
   created_by_user_id: string;
   web_slug: string | null;
+  deadline_at: string | null;
+  report_confirm_window_hours: number | null;
 };
 
 function resolveTournamentBySlug(db: ReturnType<typeof getDb>, slug: string): TournamentRow | undefined {
@@ -119,6 +121,8 @@ export async function GET(
       status: tournament.status,
       createdByUserId: tournament.created_by_user_id,
       webSlug: tournament.web_slug ?? undefined,
+      deadlineAt: tournament.deadline_at ?? undefined,
+      reportConfirmWindowHours: tournament.report_confirm_window_hours ?? undefined,
       participants,
       matches: matchesWithNames,
       isParticipant,
@@ -197,15 +201,25 @@ export async function PUT(
       return NextResponse.json({ error: "Only the tournament creator can modify it" }, { status: 403 });
     }
 
-    if (tournament.status !== "pending") {
-      return NextResponse.json({ error: "Can only modify pending tournaments" }, { status: 400 });
+    if (tournament.status === "completed" || tournament.status === "cancelled") {
+      return NextResponse.json({ error: `Cannot edit a ${tournament.status} tournament` }, { status: 400 });
     }
 
     const tournamentId = tournament.id;
     const body = await request.json();
-    const { name } = body as { name?: string };
+    const { name, deadlineAt, reportConfirmWindowHours } = body as {
+      name?: string;
+      deadlineAt?: string | null;
+      reportConfirmWindowHours?: number | null;
+    };
 
     if (name !== undefined) {
+      if (tournament.status !== "pending") {
+        return NextResponse.json(
+          { error: "Name can only be changed before the tournament starts" },
+          { status: 400 }
+        );
+      }
       if (!name.trim()) {
         return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
       }
@@ -223,7 +237,36 @@ export async function PUT(
       db.prepare("update tournaments set name = ? where id = ?").run(name, tournamentId);
     }
 
-    const updated = db.prepare("select id, name, format, status, web_slug from tournaments where id = ?").get(tournamentId) as any;
+    if (deadlineAt !== undefined && deadlineAt !== null) {
+      const ts = Date.parse(deadlineAt);
+      if (Number.isNaN(ts) || ts <= Date.now()) {
+        return NextResponse.json({ error: "deadline must be a valid future date" }, { status: 400 });
+      }
+    }
+
+    const tournaments = createTournamentService(db);
+    const patch: { deadlineAt?: string | null; reportConfirmWindowHours?: number | null } = {};
+    if (deadlineAt !== undefined) patch.deadlineAt = deadlineAt;
+    if (reportConfirmWindowHours !== undefined) patch.reportConfirmWindowHours = reportConfirmWindowHours;
+    if (Object.keys(patch).length > 0) {
+      try {
+        tournaments.updateSettings(tournamentId, patch);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to update settings";
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+
+      void notifyWsTournament(
+        { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+        { kind: "match-updated", slug },
+      );
+    }
+
+    const updated = db
+      .prepare(
+        "select id, name, format, status, web_slug, deadline_at, report_confirm_window_hours from tournaments where id = ?"
+      )
+      .get(tournamentId) as any;
 
     return NextResponse.json({
       id: updated.id,
@@ -231,6 +274,8 @@ export async function PUT(
       format: updated.format,
       status: updated.status,
       webSlug: updated.web_slug ?? undefined,
+      deadlineAt: updated.deadline_at ?? undefined,
+      reportConfirmWindowHours: updated.report_confirm_window_hours ?? undefined,
     });
   } catch (error) {
     console.error("[api/tournaments/[slug] PUT] error:", error);

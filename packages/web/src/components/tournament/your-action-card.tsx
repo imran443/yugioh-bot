@@ -22,6 +22,11 @@ export function YourActionCard({
   const [reporting, setReporting] = useState(false);
   const [projection, setProjection] = useState<MatchProjection | null>(null);
 
+  const roundLabel =
+    tournamentFormat === "single_elim" && actionMatch != null
+      ? ` — Round ${actionMatch.roundNumber}`
+      : "";
+
   // Fetch projection when we know both players
   useEffect(() => {
     setProjection(null);
@@ -61,7 +66,7 @@ export function YourActionCard({
     <section className="mb-6 rounded-xl border border-accent-primary/40 bg-accent-primary/5 p-5">
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-accent-primary">
         <Swords className="h-4 w-4" />
-        Your match — Round {actionMatch.roundNumber}
+        Your match{roundLabel}
       </div>
       <MatchCard
         match={actionMatch}

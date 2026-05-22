@@ -83,6 +83,21 @@ export const commandDefinitions = [
         )
         .addUserOption((option) =>
           option.setName(playerSeedOptions[7]).setDescription("Seeded player 8").setRequired(false),
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("confirm_hours")
+            .setDescription("Hours an opponent has to confirm a report before it auto-approves")
+            .setMinValue(1)
+            .setMaxValue(720)
+            .setRequired(false),
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("deadline_days")
+            .setDescription("Auto-close the event this many days from now")
+            .setMinValue(1)
+            .setRequired(false),
         ),
     )
     .addSubcommand((subcommand) =>

@@ -16,6 +16,6 @@ describe("reportPendingAnnouncement", () => {
     expect(msg.content).toContain("Friday Cube");
     expect(msg.content.toLowerCase()).toContain("lost");
     const ids = msg.components[0].components.map((c: any) => c.data.custom_id);
-    expect(ids).toEqual(["dashboard_approve:42", "dashboard_deny:42"]);
+    expect(ids).toEqual(["dashboard_approve:42:111", "dashboard_deny:42:111"]);
   });
 });

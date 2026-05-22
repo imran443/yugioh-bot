@@ -20,6 +20,13 @@ const cards: CardSummary[] = [
   { id: 3, name: "Monster Reborn", type: "Spell Card", frameType: "spell", effectText: "...", imageUrl: "u3", imageUrlSmall: "s3" },
 ];
 
+const leveledCards: CardSummary[] = [
+  { id: 10, name: "Low Monster", type: "Beast / Normal Monster", frameType: "normal", level: 4, effectText: "...", imageUrl: "u10", imageUrlSmall: "s10" },
+  { id: 11, name: "Mid Monster", type: "Beast / Effect Monster", frameType: "effect", level: 6, effectText: "...", imageUrl: "u11", imageUrlSmall: "s11" },
+  { id: 12, name: "High Monster", type: "Dragon / Effect Monster", frameType: "effect", level: 8, effectText: "...", imageUrl: "u12", imageUrlSmall: "s12" },
+  { id: 13, name: "Plain Spell", type: "Spell Card", frameType: "spell", effectText: "...", imageUrl: "u13", imageUrlSmall: "s13" },
+];
+
 describe("CardPoolGrid", () => {
   beforeEach(() => installVirtualizerJsdomEnv());
   it("renders a tile per card with an accessible preview label", () => {
@@ -41,6 +48,38 @@ describe("CardPoolGrid", () => {
     fireEvent.click(screen.getByRole("button", { name: /^traps$/i }));
     expect(screen.getByRole("button", { name: /preview mirror force/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /preview monster reborn/i })).toBeNull();
+  });
+
+  it("narrows by tribute tier: No Trib shows only level 1-4 monsters", () => {
+    render(<CardPoolGrid cards={leveledCards} />);
+    fireEvent.click(screen.getByRole("button", { name: /^no trib$/i }));
+    expect(screen.getByRole("button", { name: /preview low monster/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /preview mid monster/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview high monster/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview plain spell/i })).toBeNull();
+  });
+
+  it("narrows by tribute tier: 1 Trib shows only level 5-6 monsters", () => {
+    render(<CardPoolGrid cards={leveledCards} />);
+    fireEvent.click(screen.getByRole("button", { name: /^1 trib$/i }));
+    expect(screen.getByRole("button", { name: /preview mid monster/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /preview low monster/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview high monster/i })).toBeNull();
+  });
+
+  it("narrows by tribute tier: 2 Trib shows only level 7+ monsters", () => {
+    render(<CardPoolGrid cards={leveledCards} />);
+    fireEvent.click(screen.getByRole("button", { name: /^2 trib$/i }));
+    expect(screen.getByRole("button", { name: /preview high monster/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /preview low monster/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview mid monster/i })).toBeNull();
+  });
+
+  it("ANDs the tribute tier with the type filter, yielding the no-match message for impossible combos", () => {
+    render(<CardPoolGrid cards={leveledCards} />);
+    fireEvent.click(screen.getByRole("button", { name: /^spells$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^1 trib$/i }));
+    expect(screen.getByText(/no cards match/i)).toBeTruthy();
   });
 
   it("shows the empty message when there are no cards", () => {

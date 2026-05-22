@@ -14,6 +14,8 @@ export function CreateTournamentForm() {
   const [name, setName] = React.useState("");
   const [format, setFormat] = React.useState<"round_robin" | "single_elim">("round_robin");
   const [channelId, setChannelId] = React.useState("");
+  const [deadline, setDeadline] = React.useState("");
+  const [confirmHours, setConfirmHours] = React.useState("");
   const [channels, setChannels] = React.useState<Channel[]>([]);
   const [channelsLoading, setChannelsLoading] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
@@ -50,7 +52,12 @@ export function CreateTournamentForm() {
       const res = await fetch("/api/tournaments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), format }),
+        body: JSON.stringify({
+          name: name.trim(),
+          format,
+          deadlineAt: deadline ? new Date(deadline).toISOString() : null,
+          reportConfirmWindowHours: confirmHours.trim() ? Number(confirmHours) : null,
+        }),
       });
 
       if (!res.ok) {
@@ -130,6 +137,41 @@ export function CreateTournamentForm() {
             ))
           )}
         </select>
+      </div>
+
+      <div>
+        <label htmlFor="tournament-deadline" className="mb-1 block text-sm font-medium text-text-primary">
+          Deadline <span className="text-text-secondary">(optional)</span>
+        </label>
+        <input
+          id="tournament-deadline"
+          type="datetime-local"
+          value={deadline}
+          onChange={(e) => setDeadline(e.target.value)}
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+        />
+        <p className="mt-1 text-xs text-text-secondary">
+          Auto-closes the tournament once this time passes.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="tournament-confirm-hours" className="mb-1 block text-sm font-medium text-text-primary">
+          Confirm window (hours) <span className="text-text-secondary">(optional)</span>
+        </label>
+        <input
+          id="tournament-confirm-hours"
+          type="number"
+          min={1}
+          max={720}
+          value={confirmHours}
+          placeholder="24"
+          onChange={(e) => setConfirmHours(e.target.value)}
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
+        />
+        <p className="mt-1 text-xs text-text-secondary">
+          Reports auto-approve if the opponent doesn&apos;t confirm in time (default 24).
+        </p>
       </div>
 
       <Button type="submit" loading={submitting} size="lg" className="w-full">
