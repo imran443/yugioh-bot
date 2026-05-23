@@ -53,7 +53,7 @@ import { createAnnounceHandlers } from "./announce/handlers.js";
 import { createAnnounceServer } from "./announce/server.js";
 import { deleteNotifyMessage } from "./lib/notify-message.js";
 import { announceTournamentCompleted } from "./lib/announce-tournament-completed.js";
-import { notifyWsTournament } from "./lib/notify-ws-tournament.js";
+import { createBroadcaster, httpTransport } from "@yugidraft/shared/notify";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -131,6 +131,10 @@ function buildDraftStatus(draft: Draft) {
 
 const guildSettings = createGuildSettingsService(db);
 
+const broadcaster = createBroadcaster(
+  httpTransport({ url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" }),
+);
+
 const deps = {
   db,
   matches: createMatchService(db),
@@ -144,6 +148,7 @@ const deps = {
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
   guildSettings,
   cleanup,
+  broadcaster,
   messenger: {
     async postStatus(draft: Draft) {
       const channel = await client.channels.fetch(draft.channelId);
@@ -189,10 +194,7 @@ const deps = {
 const draftTimer = createDraftTimerService({
   drafts: deps.drafts,
   messenger: deps.messenger,
-  wsCfg: {
-    url: process.env.WS_INTERNAL_URL ?? "",
-    secret: process.env.WS_INTERNAL_SECRET ?? "",
-  },
+  broadcaster,
   onDraftCompleted: async (draftId) => {
     const draft = deps.drafts.findById(draftId);
     if (!draft.webSlug || !draft.channelId) return;
@@ -232,10 +234,7 @@ const tournamentTimer = createTournamentTimerService({
         .prepare("select web_slug from tournaments where id = ?")
         .get(match.tournamentId) as { web_slug: string | null } | undefined;
       if (row?.web_slug) {
-        await notifyWsTournament(
-          { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
-          { kind: "match-updated", slug: row.web_slug },
-        );
+        void broadcaster.tournament({ kind: "match-updated", slug: row.web_slug });
       }
     }
   },
@@ -246,10 +245,7 @@ const tournamentTimer = createTournamentTimerService({
       );
     }
     if (tournament.webSlug) {
-      await notifyWsTournament(
-        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
-        { kind: "match-updated", slug: tournament.webSlug },
-      );
+      void broadcaster.tournament({ kind: "match-updated", slug: tournament.webSlug });
     }
   },
 });

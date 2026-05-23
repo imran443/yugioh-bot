@@ -9,6 +9,7 @@ import { createDraftService } from "../../src/services/drafts.js";
 import { createDraftTemplateService } from "../../src/services/draft-templates.js";
 import { createMatchService } from "@yugidraft/shared/services";
 import { createTournamentService } from "@yugidraft/shared/services";
+import { recordingTransport, createBroadcaster } from "@yugidraft/shared/notify";
 
 const mockSetNames = ["Legend of Blue Eyes White Dragon", "Metal Raiders", "Pharaoh's Servant"];
 
@@ -111,7 +112,10 @@ function setup(options: { cardsBySet?: Record<string, unknown[]>; fetchCalls?: s
     },
   };
 
-  return { db, matches, players, tournaments, drafts, cards, templates, draftImages, messenger, postStatusCalls, updateStatusCalls };
+  const rec = recordingTransport();
+  const broadcaster = createBroadcaster(rec.transport);
+
+  return { db, matches, players, tournaments, drafts, cards, templates, draftImages, messenger, postStatusCalls, updateStatusCalls, broadcaster, broadcasterCalls: rec.calls };
 }
 
 function fakeInteraction(input: {
