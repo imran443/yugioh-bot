@@ -8,6 +8,7 @@ import type { TournamentDetail } from "../../src/components/tournament/types";
 const pending: TournamentDetail = {
   id: 1, name: "Friday", format: "round_robin", status: "pending", createdByUserId: "host",
   isParticipant: false, currentUserPlayerId: null,
+  startedAt: null, createdAt: "2026-01-01T00:00:00Z",
   participants: [{ playerId: 1, displayName: "Ann" }],
   matches: [],
 };

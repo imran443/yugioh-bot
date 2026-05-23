@@ -10,10 +10,11 @@ import type { TournamentDetail } from "../../src/components/tournament/types";
 const t: TournamentDetail = {
   id: 1, name: "RR", format: "round_robin", status: "active", createdByUserId: "host",
   isParticipant: true, currentUserPlayerId: 10,
+  startedAt: null, createdAt: "2026-01-01T00:00:00Z",
   participants: [{ playerId: 10, displayName: "Me" }, { playerId: 20, displayName: "Bob" }],
   matches: [
-    { id: 1, matchId: null, roundNumber: 1, playerOneId: 10, playerTwoId: 20, playerOneName: "Me", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {} },
-    { id: 2, matchId: null, roundNumber: 1, playerOneId: 20, playerTwoId: 30, playerOneName: "Bob", playerTwoName: "Cy", status: "open", winnerId: null, reporterId: null, metadata: {} },
+    { id: 1, matchId: null, roundNumber: 1, playerOneId: 10, playerTwoId: 20, playerOneName: "Me", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, resolvedAt: null, metadata: {} },
+    { id: 2, matchId: null, roundNumber: 1, playerOneId: 20, playerTwoId: 30, playerOneName: "Bob", playerTwoName: "Cy", status: "open", winnerId: null, reporterId: null, resolvedAt: null, metadata: {} },
   ],
 };
 

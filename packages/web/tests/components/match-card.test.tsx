@@ -8,7 +8,7 @@ import type { Match } from "../../src/components/tournament/types";
 const completed: Match = {
   id: 3, matchId: 9, roundNumber: 1, playerOneId: 10, playerTwoId: 20,
   playerOneName: "Me", playerTwoName: "Bob", status: "completed",
-  winnerId: 10, reporterId: 10, metadata: {},
+  winnerId: 10, reporterId: 10, resolvedAt: null, metadata: {},
 };
 
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });

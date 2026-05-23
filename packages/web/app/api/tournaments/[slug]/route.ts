@@ -18,6 +18,8 @@ type TournamentRow = {
   web_slug: string | null;
   deadline_at: string | null;
   report_confirm_window_hours: number | null;
+  created_at: string;
+  started_at: string | null;
 };
 
 function resolveTournamentBySlug(db: ReturnType<typeof getDb>, slug: string): TournamentRow | undefined {
@@ -70,7 +72,8 @@ export async function GET(
           tm.metadata_json,
           m.winner_id,
           m.reporter_id,
-          m.approver_id
+          m.approver_id,
+          m.resolved_at
         from tournament_matches tm
         left join matches m on m.id = tm.match_id
         where tm.tournament_id = ?
@@ -90,6 +93,7 @@ export async function GET(
         winnerId: row.winner_id,
         reporterId: row.reporter_id,
         approverId: row.approver_id,
+        resolvedAt: row.resolved_at,
       }));
 
     const playerMap = new Map(participants.map((p) => [p.playerId, p.displayName]));
@@ -123,6 +127,8 @@ export async function GET(
       webSlug: tournament.web_slug ?? undefined,
       deadlineAt: tournament.deadline_at ?? undefined,
       reportConfirmWindowHours: tournament.report_confirm_window_hours ?? undefined,
+      startedAt: tournament.started_at ?? null,
+      createdAt: tournament.created_at,
       participants,
       matches: matchesWithNames,
       isParticipant,

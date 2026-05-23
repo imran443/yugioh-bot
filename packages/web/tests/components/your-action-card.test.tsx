@@ -7,7 +7,7 @@ import type { Match } from "../../src/components/tournament/types";
 
 const openMine: Match = {
   id: 1, matchId: null, roundNumber: 2, playerOneId: 10, playerTwoId: 20,
-  playerOneName: "Me", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {},
+  playerOneName: "Me", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, resolvedAt: null, metadata: {},
 };
 
 describe("YourActionCard", () => {

@@ -6,10 +6,11 @@ const base: TournamentDetail = {
   id: 1, name: "RR", format: "round_robin", status: "active",
   createdByUserId: "host", participants: [], isParticipant: true,
   currentUserPlayerId: 10,
+  startedAt: null, createdAt: "2026-01-01T00:00:00Z",
   matches: [
-    { id: 1, matchId: null, roundNumber: 1, playerOneId: 10, playerTwoId: 20, playerOneName: "Me", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {} },
-    { id: 2, matchId: 5, roundNumber: 1, playerOneId: 20, playerTwoId: 10, playerOneName: "Bob", playerTwoName: "Me", status: "pending_approval", winnerId: 20, reporterId: 20, metadata: {} },
-    { id: 3, matchId: null, roundNumber: 1, playerOneId: 20, playerTwoId: 30, playerOneName: "Bob", playerTwoName: "Cy", status: "open", winnerId: null, reporterId: null, metadata: {} },
+    { id: 1, matchId: null, roundNumber: 1, playerOneId: 10, playerTwoId: 20, playerOneName: "Me", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, resolvedAt: null, metadata: {} },
+    { id: 2, matchId: 5, roundNumber: 1, playerOneId: 20, playerTwoId: 10, playerOneName: "Bob", playerTwoName: "Me", status: "pending_approval", winnerId: 20, reporterId: 20, resolvedAt: null, metadata: {} },
+    { id: 3, matchId: null, roundNumber: 1, playerOneId: 20, playerTwoId: 30, playerOneName: "Bob", playerTwoName: "Cy", status: "open", winnerId: null, reporterId: null, resolvedAt: null, metadata: {} },
   ],
 };
 

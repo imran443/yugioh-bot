@@ -14,6 +14,7 @@ export interface Match {
   status: string;
   winnerId: number | null;
   reporterId: number | null;
+  resolvedAt: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -27,6 +28,8 @@ export interface TournamentDetail {
   matches: Match[];
   isParticipant: boolean;
   currentUserPlayerId: number | null;
+  startedAt: string | null;
+  createdAt: string;
   deadlineAt?: string;
   reportConfirmWindowHours?: number;
 }
