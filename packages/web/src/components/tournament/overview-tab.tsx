@@ -77,7 +77,7 @@ export function OverviewTab({
               onSaved={onChanged}
             />
           )}
-          {isHost && <OverviewHostControls tournamentSlug={tournamentSlug} />}
+          {isHost && <OverviewHostControls tournamentSlug={tournamentSlug} onCompleted={onChanged} />}
         </aside>
       </div>
     </div>

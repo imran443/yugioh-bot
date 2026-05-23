@@ -63,6 +63,7 @@ export default function TournamentDetailPage() {
     onParticipantLeft: () => fetchTournament(),
     onStarted: () => fetchTournament(),
     onCancelled: () => fetchTournament(),
+    onCompleted: () => fetchTournament(),
     onMatchUpdated: () => fetchTournament(),
   });
 
