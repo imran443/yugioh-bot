@@ -6,9 +6,9 @@ import { MatchBoard } from "../../src/components/tournament/match-board";
 import type { Match } from "../../src/components/tournament/types";
 
 const matches: Match[] = [
-  { id: 101, matchId: 1001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, metadata: {} },
-  { id: 102, matchId: 1002, roundNumber: 1, playerOneId: 33, playerTwoId: 44, playerOneName: "Carol", playerTwoName: "Dave", status: "completed", winnerId: 33, reporterId: null, metadata: {} },
-  { id: 103, matchId: 1003, roundNumber: 2, playerOneId: 11, playerTwoId: 33, playerOneName: "Alice", playerTwoName: "Carol", status: "open", winnerId: null, reporterId: null, metadata: {} },
+  { id: 101, matchId: 1001, roundNumber: 1, playerOneId: 11, playerTwoId: 22, playerOneName: "Alice", playerTwoName: "Bob", status: "open", winnerId: null, reporterId: null, resolvedAt: null, metadata: {} },
+  { id: 102, matchId: 1002, roundNumber: 1, playerOneId: 33, playerTwoId: 44, playerOneName: "Carol", playerTwoName: "Dave", status: "completed", winnerId: 33, reporterId: null, resolvedAt: null, metadata: {} },
+  { id: 103, matchId: 1003, roundNumber: 2, playerOneId: 11, playerTwoId: 33, playerOneName: "Alice", playerTwoName: "Carol", status: "open", winnerId: null, reporterId: null, resolvedAt: null, metadata: {} },
 ];
 
 afterEach(() => { vi.clearAllMocks(); });
