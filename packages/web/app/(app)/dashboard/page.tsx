@@ -7,6 +7,7 @@ import { DraftCard, type DraftCardProps } from "@/components/draft/draft-card";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { createScoringService } from "@yugidraft/shared/services";
+import { RankBadge } from "@/components/rank/rank-badge";
 
 interface Stats {
   wins: number;
@@ -142,7 +143,7 @@ export default async function DashboardPage() {
         <StatCard
           icon={<Star className="h-5 w-5 text-accent-primary" />}
           label="Rank"
-          value={rankName !== null ? rankName : "—"}
+          value={rankName !== null ? <RankBadge rank={rankName} /> : "—"}
         />
         <StatCard
           icon={
@@ -217,7 +218,7 @@ function StatCard({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string | number;
+  value: React.ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
