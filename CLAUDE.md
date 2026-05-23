@@ -77,3 +77,17 @@ Card data is fetched from ygoprodeck.com and cached in the `card_catalog` SQLite
 ## Design context (`.impeccable.md`)
 
 Dark-mode-first competitive UI. High-contrast card displays, crisp typography, minimal chrome. Accent colors from Yu-Gi-Oh brand (purple/gold) used sparingly for active states. Design principles: speed over ceremony, live state is truth, draft-room immersion, Discord is the lobby.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `imran443/yugioh-bot`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
