@@ -210,4 +210,20 @@ describe("TournamentDetailPage (tabbed integration)", () => {
 
     expect(await screen.findByRole("button", { name: /cancel tournament/i })).toBeInTheDocument();
   });
+
+  it("organizer can end an ACTIVE tournament from the Overview", async () => {
+    // tournament fixture: status active, createdByUserId 'user-1' === session user.
+    searchParams = new URLSearchParams("tab=overview");
+    const fetchMock = stubFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TournamentDetailPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /end tournament now/i }));
+    fireEvent.click(screen.getByRole("button", { name: /yes, end now/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tournaments/goat-cup/complete", { method: "POST" });
+    });
+  });
 });
