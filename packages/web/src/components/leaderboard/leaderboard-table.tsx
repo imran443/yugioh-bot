@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trophy, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RankBadge } from "@/components/rank/rank-badge";
 
 export interface LeaderboardRow {
   playerId: number;
@@ -22,30 +23,6 @@ interface LeaderboardTableProps {
   currentPlayerId: number | null;
   scope: "season" | "all";
   onScopeChange: (scope: "season" | "all") => void;
-}
-
-const RANK_COLORS: Record<string, string> = {
-  Diamond: "#a78bfa",
-  Platinum: "#7dd3fc",
-  Gold: "#f5c451",
-  Silver: "#cbd5e1",
-  Bronze: "#d6a06a",
-};
-
-function RankBadge({ rank }: { rank: string }) {
-  const color = RANK_COLORS[rank] ?? "#9aa0b8";
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
-      style={{
-        background: `${color}18`,
-        color,
-        border: `1px solid ${color}40`,
-      }}
-    >
-      {rank}
-    </span>
-  );
 }
 
 function PositionNumber({ pos }: { pos: number }) {
