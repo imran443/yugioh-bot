@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { createMatchService, createPlayerService } from "@yugidraft/shared/services";
-import { env } from "@/lib/env";
-import { notifyWsTournament } from "@/lib/notify-ws-tournament";
-import { announceToBot } from "@/lib/announce-bot";
+import { broadcaster, announcer } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -46,19 +44,14 @@ export async function POST(
     }
 
     const approved = matches.approve(matchId, player.id);
-    void announceToBot(
-      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+    void announcer.announce(
       { kind: "match-resolved", matchId },
     );
     if (approved.tournamentId && matches.claimTournamentCompletionAnnouncement(approved.tournamentId)) {
-      void announceToBot(
-        { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
-        { kind: "tournament-completed", tournamentId: approved.tournamentId },
-      );
+      void announcer.announce({ kind: "tournament-completed", tournamentId: approved.tournamentId });
     }
     if (match.tournament_slug) {
-      void notifyWsTournament(
-        { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+      void broadcaster.tournament(
         { kind: "match-updated", slug: match.tournament_slug },
       );
     }

@@ -5,15 +5,16 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.fn();
-const notifyWs = vi.fn();
+const broadcaster = { draft: vi.fn(), tournament: vi.fn() };
 const tempDirs: string[] = [];
 
 vi.mock("@/lib/auth", () => ({
   auth,
 }));
 
-vi.mock("@/lib/notify-ws", () => ({
-  notifyWs,
+vi.mock("@/lib/notify", () => ({
+  broadcaster,
+  announcer: { announce: vi.fn() },
 }));
 
 async function createStartedDraftDb() {
@@ -93,7 +94,7 @@ describe("POST /api/drafts/[slug]/pick websocket events", () => {
   beforeEach(() => {
     vi.resetModules();
     auth.mockReset();
-    notifyWs.mockReset();
+    broadcaster.draft.mockReset();
     auth.mockResolvedValue({ user: { id: "user-2", name: "Kaiba" } });
   });
 
@@ -125,15 +126,13 @@ describe("POST /api/drafts/[slug]/pick websocket events", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(notifyWs).toHaveBeenCalledTimes(2);
-    expect(notifyWs).toHaveBeenNthCalledWith(
+    expect(broadcaster.draft).toHaveBeenCalledTimes(2);
+    expect(broadcaster.draft).toHaveBeenNthCalledWith(
       1,
-      { url: "http://ws:3001", secret: "secret" },
       { kind: "pick", slug: draft.webSlug, playerId: 2, packRound: 1, pickStep: 1 },
     );
-    expect(notifyWs).toHaveBeenNthCalledWith(
+    expect(broadcaster.draft).toHaveBeenNthCalledWith(
       2,
-      { url: "http://ws:3001", secret: "secret" },
       { kind: "resync", slug: draft.webSlug, packRound: 1, pickStep: 2 },
     );
   });

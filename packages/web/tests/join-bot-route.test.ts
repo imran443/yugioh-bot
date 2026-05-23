@@ -4,15 +4,16 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.fn();
-const notifyWs = vi.fn();
+const broadcaster = { draft: vi.fn(), tournament: vi.fn() };
 const tempDirs: string[] = [];
 
 vi.mock("@/lib/auth", () => ({
   auth,
 }));
 
-vi.mock("@/lib/notify-ws", () => ({
-  notifyWs,
+vi.mock("@/lib/notify", () => ({
+  broadcaster,
+  announcer: { announce: vi.fn() },
 }));
 
 async function createPendingDraftDb() {
@@ -52,7 +53,7 @@ describe("POST /api/drafts/[slug]/join-bot", () => {
   beforeEach(() => {
     vi.resetModules();
     auth.mockReset();
-    notifyWs.mockReset();
+    broadcaster.draft.mockReset();
     auth.mockResolvedValue({ user: { id: "creator-user", name: "Yugi" } });
   });
 
@@ -79,9 +80,8 @@ describe("POST /api/drafts/[slug]/join-bot", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(notifyWs).toHaveBeenCalledOnce();
-    expect(notifyWs).toHaveBeenCalledWith(
-      { url: "http://ws:3001", secret: "secret" },
+    expect(broadcaster.draft).toHaveBeenCalledOnce();
+    expect(broadcaster.draft).toHaveBeenCalledWith(
       { kind: "seats", slug: draft.webSlug },
     );
   });

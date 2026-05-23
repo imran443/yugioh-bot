@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "../helpers";
-import { notifyWs } from "@/lib/notify-ws";
+import { broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -87,9 +87,7 @@ export async function POST(
       }
     }
 
-    const wsCfg = { url: env.wsInternalUrl, secret: env.wsInternalSecret };
-
-    void notifyWs(wsCfg, {
+    void broadcaster.draft({
       kind: "pick",
       slug,
       playerId: player.id,
@@ -99,12 +97,12 @@ export async function POST(
 
     const after = drafts.findById(draft.id);
     if (after.status === DRAFT_STATUS.completed) {
-      void notifyWs(wsCfg, { kind: "complete", slug });
+      void broadcaster.draft({ kind: "complete", slug });
     } else if (
       after.currentPackRound !== currentStep.currentPackRound ||
       after.currentPickStep !== currentStep.currentPickStep
     ) {
-      void notifyWs(wsCfg, {
+      void broadcaster.draft({
         kind: "resync",
         slug,
         packRound: after.currentPackRound,

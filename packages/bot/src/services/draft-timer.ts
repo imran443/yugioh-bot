@@ -1,16 +1,16 @@
 import type { DraftMessenger } from "../commands/handlers.js";
 import type { DraftService } from "./drafts.js";
-import { notifyWs } from "../lib/notify-ws.js";
+import type { Broadcaster } from "@yugidraft/shared/notify";
 
 export function createDraftTimerService({
   drafts,
   messenger,
-  wsCfg,
+  broadcaster,
   onDraftCompleted,
 }: {
   drafts: DraftService;
   messenger: DraftMessenger;
-  wsCfg: { url: string; secret: string };
+  broadcaster: Broadcaster;
   onDraftCompleted?: (draftId: number) => Promise<void>;
 }) {
   let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -19,15 +19,9 @@ export function createDraftTimerService({
     const activeDrafts = drafts.listActive();
 
     for (const draft of activeDrafts) {
-      if (!draft.pickDeadlineAt) {
-        continue;
-      }
-
+      if (!draft.pickDeadlineAt) continue;
       const deadline = new Date(draft.pickDeadlineAt);
-
-      if (deadline > now) {
-        continue;
-      }
+      if (deadline > now) continue;
 
       try {
         drafts.expireCurrentPickStep(draft.id, now);
@@ -37,14 +31,16 @@ export function createDraftTimerService({
         if (!updatedDraft.webSlug) continue;
 
         if (updatedDraft.status === "completed") {
-          await notifyWs(wsCfg, "complete", updatedDraft.webSlug);
+          await broadcaster.draft({ kind: "complete", slug: updatedDraft.webSlug });
           if (onDraftCompleted) {
             await onDraftCompleted(updatedDraft.id).catch((err) =>
               console.warn(`[draft-timer] onDraftCompleted failed for ${updatedDraft.id}:`, err),
             );
           }
         } else {
-          await notifyWs(wsCfg, "resync", updatedDraft.webSlug, {
+          await broadcaster.draft({
+            kind: "resync",
+            slug: updatedDraft.webSlug,
             packRound: updatedDraft.currentPackRound,
             pickStep: updatedDraft.currentPickStep,
           });
@@ -60,14 +56,9 @@ export function createDraftTimerService({
       if (intervalId) return;
       intervalId = setInterval(() => tick(), 1000);
     },
-
     stop() {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
     },
-
     tick,
   };
 }

@@ -27,14 +27,21 @@ A **Tournament**'s lifecycle status. `pending` = accepting participants; `active
 **Invite link**:
 A shareable URL based on the tournament's `web_slug` (e.g., `/tournament/abcd1234`). Any signed-in Discord user who opens the link can join while the tournament is **pending**. Not rotatable — if leaked, cancel and recreate.
 
-**Announcement**:
-A Discord message posted by the bot into a guild's announce channel containing the tournament's name, format, current participant count, organizer mention, and a link to the **Invite link**. Triggered manually by the **Organizer** via an "Announce in Discord" button.
-
 **Kick**:
 The **Organizer**'s removal of a **Participant** from a **pending** Tournament. Distinct from **Leave**, which is participant-initiated.
 
 **Leave**:
 A **Participant**'s self-removal from a **pending** Tournament. Available to all participants, including the **Organizer**.
+
+### Notifications
+
+**Announcement**:
+A Discord message the bot posts into a guild's announce channel about a **Draft** or **Tournament** lifecycle event. Triggered _automatically_ (draft/tournament created, started, completed) or _manually_ by the **Organizer** via an "Announce in Discord" button. For a tournament it carries the name, **Format**, current participant count, organizer mention, and a link to the **Invite link**. User-visible; the manual trigger surfaces success/failure back to the Organizer.
+_Avoid_: notification (reserved — see **Broadcast**)
+
+**Broadcast**:
+A fire-and-forget real-time state push to the WebSocket server (relayed to browser clients in a **Draft** or **Tournament** room) about a state change — a pick, resync, seat update, status, or completion. No user-visible Discord message; no result is awaited. Distinct from an **Announcement**.
+_Avoid_: announcement, event
 
 ## Relationships
 

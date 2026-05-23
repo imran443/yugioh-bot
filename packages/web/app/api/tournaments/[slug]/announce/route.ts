@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createTournamentService, createGuildSettingsService } from "@yugidraft/shared/services";
-import { announceToBot } from "@/lib/announce-bot";
+import { announcer } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -54,8 +54,7 @@ export async function POST(
     const tournaments = createTournamentService(db);
     const participantCount = tournaments.participantCount(tournament.id);
 
-    const result = await announceToBot(
-      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+    const result = await announcer.announce(
       {
         kind: "tournament-created",
         tournamentId: tournament.id,
