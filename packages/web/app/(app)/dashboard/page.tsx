@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Trophy, Layers, Swords, TrendingUp, ArrowRight, Target } from "lucide-react";
+import { Trophy, Layers, Swords, TrendingUp, ArrowRight, Target, Flame, Star, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TournamentCard, type TournamentCardProps } from "@/components/tournament/tournament-card";
 import { DraftCard, type DraftCardProps } from "@/components/draft/draft-card";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { createScoringService } from "@yugidraft/shared/services";
+import { RankBadge } from "@/components/rank/rank-badge";
 
 interface Stats {
   wins: number;
@@ -28,7 +30,26 @@ export default async function DashboardPage() {
   let drafts: DraftCardProps[] = [];
   let stats: Stats = { wins: 0, losses: 0 };
 
+  // Profile stats (winnings / rank / streak) — only if this user has a player row
+  let seasonWinnings: number | null = null;
+  let rankName: string | null = null;
+  let currentStreak: number | null = null;
+
   if (playerIds.length > 0) {
+    // Use first player row (single-guild assumption on dashboard)
+    const firstPlayer = playerRows[0];
+    if (firstPlayer) {
+      try {
+        const scoring = createScoringService(db);
+        const profile = scoring.getProfile(firstPlayer.guild_id, firstPlayer.id, "season");
+        seasonWinnings = profile.winnings;
+        rankName = profile.rank.name;
+        currentStreak = profile.currentStreak;
+      } catch {
+        // No player_ratings row yet — leave nulls, show dashes
+      }
+    }
+
     const ph = playerIds.map(() => "?").join(",");
 
     tournaments = db
@@ -114,6 +135,25 @@ export default async function DashboardPage() {
         <StatCard icon={<Target className="h-5 w-5 text-accent-cta" />} label="Losses" value={stats.losses} />
         <StatCard icon={<Swords className="h-5 w-5 text-accent-primary" />} label="Matches" value={totalGames} />
         <StatCard icon={<TrendingUp className="h-5 w-5 text-accent-success" />} label="Win Rate" value={`${winRate}%`} />
+        <StatCard
+          icon={<Coins className="h-5 w-5 text-accent-gold" />}
+          label="Season Winnings"
+          value={seasonWinnings !== null ? seasonWinnings : "—"}
+        />
+        <StatCard
+          icon={<Star className="h-5 w-5 text-accent-primary" />}
+          label="Rank"
+          value={rankName !== null ? <RankBadge rank={rankName} /> : "—"}
+        />
+        <StatCard
+          icon={
+            currentStreak !== null && currentStreak > 0
+              ? <Flame className="h-5 w-5 text-accent-cta" />
+              : <TrendingUp className="h-5 w-5 text-text-muted" />
+          }
+          label="Win Streak"
+          value={currentStreak !== null ? currentStreak : "—"}
+        />
       </div>
 
       <section className="mb-8">
@@ -178,7 +218,7 @@ function StatCard({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string | number;
+  value: React.ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface p-4">

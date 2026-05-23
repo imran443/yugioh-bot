@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Swords, Check } from "lucide-react";
-import { MatchCard } from "./match-card";
+import { MatchCard, type MatchProjection } from "./match-card";
+import { projectMatch } from "@yugidraft/shared/scoring";
 import type { Match } from "./types";
 
 export function YourActionCard({
@@ -19,10 +20,38 @@ export function YourActionCard({
   onChanged: () => void;
 }) {
   const [reporting, setReporting] = useState(false);
+  const [projection, setProjection] = useState<MatchProjection | null>(null);
+
   const roundLabel =
     tournamentFormat === "single_elim" && actionMatch != null
       ? ` — Round ${actionMatch.roundNumber}`
       : "";
+
+  // Fetch projection when we know both players
+  useEffect(() => {
+    setProjection(null);
+    if (!actionMatch || !currentUserPlayerId) return;
+
+    const oppId =
+      actionMatch.playerOneId === currentUserPlayerId
+        ? actionMatch.playerTwoId
+        : actionMatch.playerOneId;
+
+    if (!oppId) return;
+
+    let cancelled = false;
+    Promise.all([
+      fetch(`/api/player/${currentUserPlayerId}`).then((r) => r.ok ? r.json() : null),
+      fetch(`/api/player/${oppId}`).then((r) => r.ok ? r.json() : null),
+    ]).then(([myProfile, oppProfile]) => {
+      if (cancelled) return;
+      const myElo: number = myProfile?.rating ?? 1000;
+      const oppElo: number = oppProfile?.rating ?? 1000;
+      const proj = projectMatch({ myElo, oppElo, seasonMultiplier: 1 });
+      setProjection({ winWinnings: proj.winWinnings, winRating: proj.winRating, loseRating: proj.loseRating });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [actionMatch, currentUserPlayerId]);
 
   if (!actionMatch) {
     return (
@@ -46,6 +75,7 @@ export function YourActionCard({
         currentUserPlayerId={currentUserPlayerId}
         isHost={false}
         isReporting={reporting}
+        projection={projection}
         onReport={() => setReporting(true)}
         onCancelReport={() => setReporting(false)}
         onReported={() => {
