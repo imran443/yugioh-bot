@@ -64,7 +64,9 @@ export function RankBadge({
         background: `${visual.color}18`,
         border: `1px solid ${visual.color}40`,
       }}
-      onAnimationEnd={() => setPopping(false)}
+      onAnimationEnd={(e) => {
+        if (e.animationName === "rank-pop") setPopping(false);
+      }}
     >
       <svg
         className="rank-gem flex-shrink-0"
