@@ -17,7 +17,7 @@ import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftService } from "../services/drafts.js";
 import type { MatchService } from "@yugidraft/shared/services";
 import type { TournamentService } from "@yugidraft/shared/services";
-import { notifyWsTournament } from "../lib/notify-ws-tournament.js";
+import type { Broadcaster } from "@yugidraft/shared/notify";
 
 export type ButtonInteractionLike = {
   customId: string;
@@ -39,6 +39,7 @@ type ButtonDependencies = {
   db: Database.Database;
   deleteNotifyMessage?: (matchId: number) => Promise<void>;
   announceTournamentCompleted?: (tournamentId: number) => Promise<void>;
+  broadcaster: Broadcaster;
 };
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
@@ -288,10 +289,7 @@ async function handleJoinTournament(
 
     throw error;
   }
-  void notifyWsTournament(
-    { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
-    { kind: "participant-joined", slug: tournament.webSlug ?? "", playerId: player.id, displayName: displayName(interaction.user) },
-  );
+  void deps.broadcaster.tournament({ kind: "participant-joined", slug: tournament.webSlug ?? "", playerId: player.id, displayName: displayName(interaction.user) });
   await interaction.reply(`${displayName(interaction.user)} joined event: ${tournament.name}.`);
 }
 
@@ -314,10 +312,7 @@ async function handleReportResult(
   const winnerId = result === "win" ? player.id : opponentId;
   const match = deps.tournaments.reportTournamentMatch(tournamentMatch.id, player.id, winnerId);
 
-  void notifyWsTournament(
-    { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
-    { kind: "match-updated", slug: tournament.webSlug ?? "" },
-  );
+  void deps.broadcaster.tournament({ kind: "match-updated", slug: tournament.webSlug ?? "" });
   await interaction.reply({
     content: `Match reported as ${result}. Your opponent must approve or deny it. Match #${match.id}`,
     ephemeral: true,
@@ -736,10 +731,7 @@ export async function handleButton(
       ? deps.db.prepare("select web_slug from tournaments where id = ?").get(match.tournamentId) as { web_slug: string | null } | undefined
       : undefined;
     if (tournamentRow?.web_slug) {
-      void notifyWsTournament(
-        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
-        { kind: "match-updated", slug: tournamentRow.web_slug },
-      );
+      void deps.broadcaster.tournament({ kind: "match-updated", slug: tournamentRow.web_slug });
     }
     if (deps.deleteNotifyMessage) {
       await deps.deleteNotifyMessage(match.id);

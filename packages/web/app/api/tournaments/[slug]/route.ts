@@ -3,8 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createTournamentService } from "@yugidraft/shared/services";
-import { announceToBot } from "@/lib/announce-bot";
-import { notifyWsTournament } from "@/lib/notify-ws-tournament";
+import { announcer, broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -18,6 +17,8 @@ type TournamentRow = {
   web_slug: string | null;
   deadline_at: string | null;
   report_confirm_window_hours: number | null;
+  created_at: string;
+  started_at: string | null;
 };
 
 function resolveTournamentBySlug(db: ReturnType<typeof getDb>, slug: string): TournamentRow | undefined {
@@ -70,7 +71,8 @@ export async function GET(
           tm.metadata_json,
           m.winner_id,
           m.reporter_id,
-          m.approver_id
+          m.approver_id,
+          m.resolved_at
         from tournament_matches tm
         left join matches m on m.id = tm.match_id
         where tm.tournament_id = ?
@@ -90,6 +92,7 @@ export async function GET(
         winnerId: row.winner_id,
         reporterId: row.reporter_id,
         approverId: row.approver_id,
+        resolvedAt: row.resolved_at,
       }));
 
     const playerMap = new Map(participants.map((p) => [p.playerId, p.displayName]));
@@ -123,6 +126,8 @@ export async function GET(
       webSlug: tournament.web_slug ?? undefined,
       deadlineAt: tournament.deadline_at ?? undefined,
       reportConfirmWindowHours: tournament.report_confirm_window_hours ?? undefined,
+      startedAt: tournament.started_at ?? null,
+      createdAt: tournament.created_at,
       participants,
       matches: matchesWithNames,
       isParticipant,
@@ -166,8 +171,7 @@ export async function DELETE(
 
     db.prepare("update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?").run(tournament.id);
 
-    void notifyWsTournament(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.tournament(
       { kind: "cancelled", slug },
     );
 
@@ -256,10 +260,7 @@ export async function PUT(
         return NextResponse.json({ error: message }, { status: 400 });
       }
 
-      void notifyWsTournament(
-        { url: env.wsInternalUrl, secret: env.wsInternalSecret },
-        { kind: "match-updated", slug },
-      );
+      void broadcaster.tournament({ kind: "match-updated", slug });
     }
 
     const updated = db
@@ -309,8 +310,7 @@ export async function POST(
     const tournaments = createTournamentService(db);
     const started = tournaments.start(tournament.id);
 
-    void announceToBot(
-      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+    void announcer.announce(
       {
         kind: "tournament-started",
         tournamentId: started.id,
@@ -321,8 +321,7 @@ export async function POST(
       },
     );
 
-    void notifyWsTournament(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.tournament(
       { kind: "started", slug },
     );
 

@@ -7,16 +7,16 @@ import { migrate } from "@yugidraft/shared/db";
 import { createTournamentService } from "@yugidraft/shared/services";
 
 const auth = vi.fn();
-const announceToBot = vi.fn(async (..._args: unknown[]) => ({ ok: true as const }));
+const announcer = { announce: vi.fn(async (..._args: unknown[]) => ({ ok: true as const })) };
 vi.mock("@/lib/auth", () => ({ auth }));
-vi.mock("@/lib/announce-bot", () => ({ announceToBot }));
+vi.mock("@/lib/notify", () => ({ announcer, broadcaster: { draft: vi.fn(), tournament: vi.fn() } }));
 const tempDirs: string[] = [];
 
 describe("report route notifies opponent", () => {
   beforeEach(() => {
     vi.resetModules();
     auth.mockReset();
-    announceToBot.mockClear();
+    announcer.announce.mockClear();
     auth.mockResolvedValue({ user: { id: "u-a", name: "Alice" } });
   });
   afterEach(() => {
@@ -54,8 +54,8 @@ describe("report route notifies opponent", () => {
       { params: Promise.resolve({ slug: "slug1" }) },
     );
     expect(res.status).toBe(200);
-    expect(announceToBot).toHaveBeenCalledTimes(1);
-    const payload = announceToBot.mock.calls[0][1];
+    expect(announcer.announce).toHaveBeenCalledTimes(1);
+    const payload = announcer.announce.mock.calls[0][0];
     expect(payload).toMatchObject({
       kind: "match-report-pending",
       slug: "slug1",

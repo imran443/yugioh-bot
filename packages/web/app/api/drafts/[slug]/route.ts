@@ -4,8 +4,7 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "./helpers";
-import { announceToBot } from "@/lib/announce-bot";
-import { notifyWs } from "@/lib/notify-ws";
+import { announcer, broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -82,8 +81,7 @@ export async function DELETE(
     const drafts = createDraftService(db);
     const cancelled = drafts.cancel(draft.id);
 
-    void notifyWs(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.draft(
       { kind: "status", slug, status: DRAFT_STATUS.cancelled },
     );
 
@@ -253,8 +251,7 @@ export async function POST(
 
     const started = drafts.start(draft.id);
 
-    void announceToBot(
-      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+    void announcer.announce(
       {
         kind: "draft-started",
         draftId: started.id,
@@ -264,8 +261,7 @@ export async function POST(
       },
     );
 
-    void notifyWs(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.draft(
       { kind: "status", slug: started.webSlug ?? slug, status: DRAFT_STATUS.active },
     );
 

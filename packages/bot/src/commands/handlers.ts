@@ -7,7 +7,7 @@ import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { Draft, DraftService } from "../services/drafts.js";
 import type { MatchService } from "@yugidraft/shared/services";
 import type { TournamentFormat, TournamentService } from "@yugidraft/shared/services";
-import { notifyWsTournament } from "../lib/notify-ws-tournament.js";
+import type { Broadcaster } from "@yugidraft/shared/notify";
 
 export type DiscordUserLike = {
   id: string;
@@ -58,6 +58,7 @@ type CommandDependencies = {
   draftImages: DraftImageService;
   messenger: DraftMessenger;
   announceTournamentCompleted?: (tournamentId: number) => Promise<void>;
+  broadcaster: Broadcaster;
 };
 
 const playerSeedOptionNames = Array.from({ length: 8 }, (_, index) => `player${index + 1}`);
@@ -497,10 +498,7 @@ async function handleEvent(
 
         throw error;
       }
-      void notifyWsTournament(
-        { url: process.env.WS_INTERNAL_URL ?? "", secret: process.env.WS_INTERNAL_SECRET ?? "" },
-        { kind: "participant-joined", slug: tournament.webSlug ?? "", playerId: player.id, displayName: displayName(interaction.user) },
-      );
+      void deps.broadcaster.tournament({ kind: "participant-joined", slug: tournament.webSlug ?? "", playerId: player.id, displayName: displayName(interaction.user) });
       await interaction.reply(`Joined event: ${tournament.name}.`);
       return;
     }

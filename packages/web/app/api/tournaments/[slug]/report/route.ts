@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { env } from "@/lib/env";
-import { notifyWsTournament } from "@/lib/notify-ws-tournament";
-import { announceToBot } from "@/lib/announce-bot";
+import { broadcaster, announcer } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -131,8 +129,7 @@ export async function POST(
       "update tournament_matches set match_id = ?, status = 'pending_approval' where id = ?"
     ).run(matchId, tournamentMatch.id);
 
-    void notifyWsTournament(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.tournament(
       { kind: "match-updated", slug },
     );
 
@@ -165,8 +162,7 @@ export async function POST(
       | undefined;
 
     if (meta) {
-      void announceToBot(
-        { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+      void announcer.announce(
         {
           kind: "match-report-pending",
           guildId: tournament.guild_id,

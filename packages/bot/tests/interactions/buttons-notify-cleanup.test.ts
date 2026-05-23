@@ -6,10 +6,12 @@ import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftService } from "../../src/services/drafts.js";
 import { createMatchService, createTournamentService } from "@yugidraft/shared/services";
+import { recordingTransport, createBroadcaster } from "@yugidraft/shared/notify";
 
 function setup() {
   const db = new Database(":memory:");
   migrate(db);
+  const rec = recordingTransport();
   return {
     db,
     matches: createMatchService(db),
@@ -17,6 +19,7 @@ function setup() {
     tournaments: createTournamentService(db),
     drafts: createDraftService(db),
     cards: createCardCatalogService(db),
+    broadcaster: createBroadcaster(rec.transport),
   };
 }
 

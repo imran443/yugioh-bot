@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createDraftService, createPlayerService } from "@yugidraft/shared/services";
-import { notifyWs } from "@/lib/notify-ws";
+import { broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -46,8 +46,7 @@ export async function POST(
     const drafts = createDraftService(db);
     drafts.join(draft.id, bot.id);
 
-    void notifyWs(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.draft(
       { kind: "seats", slug },
     );
 

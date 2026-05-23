@@ -8,7 +8,10 @@ const auth = vi.fn();
 const tempDirs: string[] = [];
 vi.mock("@/lib/auth", () => ({ auth }));
 // Avoid real inter-service HTTP calls during settings edits.
-vi.mock("@/lib/notify-ws-tournament", () => ({ notifyWsTournament: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/notify", () => ({
+  broadcaster: { draft: vi.fn(), tournament: vi.fn() },
+  announcer: { announce: vi.fn() },
+}));
 
 const SLUG = "abc123";
 

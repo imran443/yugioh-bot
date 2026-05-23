@@ -61,6 +61,15 @@ describe("createInternalHttpHandler — tournament routes", () => {
     expect(emit).toHaveBeenCalledWith("tournament:cancelled", {});
   });
 
+  it("broadcasts completed", async () => {
+    const { io, to, emit } = makeIo();
+    const handle = createInternalHttpHandler({ io: io as any, secret: SECRET });
+    const res = await handle(makeRequest("/internal/tournament/completed", { slug: "abc" }));
+    expect(res.status).toBe(204);
+    expect(to).toHaveBeenCalledWith("tournament:abc");
+    expect(emit).toHaveBeenCalledWith("tournament:completed", {});
+  });
+
   it("broadcasts match-updated to the tournament room", async () => {
     const { io, to, emit } = makeIo();
     const handle = createInternalHttpHandler({ io: io as any, secret: SECRET });

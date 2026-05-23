@@ -7,6 +7,7 @@ import { createDraftImageService } from "../../src/services/draft-images.js";
 import { createDraftService } from "../../src/services/drafts.js";
 import { createDraftTimerService } from "../../src/services/draft-timer.js";
 import { createTournamentService } from "@yugidraft/shared/services";
+import { recordingTransport, createBroadcaster } from "@yugidraft/shared/notify";
 
 function seedDraftCatalog(app: ReturnType<typeof setup>, count: number) {
   const insertCard = app.db.prepare(
@@ -88,7 +89,9 @@ describe("draft timer service", () => {
     seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
-    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, wsCfg: { url: "", secret: "" } });
+    const rec = recordingTransport();
+    const broadcaster = createBroadcaster(rec.transport);
+    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, broadcaster });
     const now = new Date(Date.now() + 60000); // 60s after start, past default 45s deadline
 
     await timer.tick(now);
@@ -96,6 +99,8 @@ describe("draft timer service", () => {
     const updatedDraft = app.drafts.findById(draft.id);
     expect(updatedDraft.currentPickStep).toBe(2);
     expect(app.updateStatusCalls.length).toBeGreaterThanOrEqual(1);
+    expect(rec.calls.length).toBeGreaterThanOrEqual(1);
+    expect(rec.calls[0].path).toBe("/internal/draft/resync");
   });
 
   it("does not expire picks before deadline", async () => {
@@ -107,7 +112,9 @@ describe("draft timer service", () => {
     seedDraftCatalog(app, 80);
     app.drafts.start(draft.id);
 
-    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, wsCfg: { url: "", secret: "" } });
+    const rec = recordingTransport();
+    const broadcaster = createBroadcaster(rec.transport);
+    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, broadcaster });
     const now = new Date(Date.now() + 1000); // 1s after start, before 45s deadline
 
     await timer.tick(now);
@@ -115,6 +122,7 @@ describe("draft timer service", () => {
     const updatedDraft = app.drafts.findById(draft.id);
     expect(updatedDraft.currentPickStep).toBe(1);
     expect(app.updateStatusCalls).toEqual([]);
+    expect(rec.calls).toEqual([]);
   });
 
   it("recovers drafts on startup tick", async () => {
@@ -127,7 +135,9 @@ describe("draft timer service", () => {
     app.drafts.start(draft.id);
 
     // Simulate bot being offline by not ticking
-    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, wsCfg: { url: "", secret: "" } });
+    const rec = recordingTransport();
+    const broadcaster = createBroadcaster(rec.transport);
+    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, broadcaster });
     const now = new Date(Date.now() + 300000); // 5 minutes after start
 
     await timer.tick(now);
@@ -141,7 +151,9 @@ describe("draft timer service", () => {
     const app = setup();
     const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
 
-    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, wsCfg: { url: "", secret: "" } });
+    const rec = recordingTransport();
+    const broadcaster = createBroadcaster(rec.transport);
+    const timer = createDraftTimerService({ drafts: app.drafts, messenger: app.messenger, broadcaster });
     timer.start();
 
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000);

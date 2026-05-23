@@ -193,4 +193,37 @@ describe("TournamentDetailPage (tabbed integration)", () => {
     expect(await screen.findByText(/round 2 of 2/i)).toBeTruthy();
     expect(screen.getByText(/2\/3 matches done/i)).toBeTruthy();
   });
+
+  it("active overview shows Recent Results for completed matches", async () => {
+    renderPage(roundRobinTournament);
+    expect(await screen.findByText(/recent results/i)).toBeInTheDocument();
+    // round-robin fixture has two completed matches → at least one "def." line
+    expect(screen.getAllByText(/def\./i).length).toBeGreaterThan(0);
+  });
+
+  it("organizer can cancel an ACTIVE tournament from the Overview", async () => {
+    // tournament fixture: status active, createdByUserId 'user-1' === session user.
+    searchParams = new URLSearchParams("tab=overview");
+    vi.stubGlobal("fetch", stubFetch());
+
+    render(<TournamentDetailPage />);
+
+    expect(await screen.findByRole("button", { name: /cancel tournament/i })).toBeInTheDocument();
+  });
+
+  it("organizer can end an ACTIVE tournament from the Overview", async () => {
+    // tournament fixture: status active, createdByUserId 'user-1' === session user.
+    searchParams = new URLSearchParams("tab=overview");
+    const fetchMock = stubFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TournamentDetailPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /end tournament now/i }));
+    fireEvent.click(screen.getByRole("button", { name: /yes, end now/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tournaments/goat-cup/complete", { method: "POST" });
+    });
+  });
 });
