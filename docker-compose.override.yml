@@ -1,4 +1,14 @@
 services:
+  shared:
+    build:
+      context: .
+      target: web-dev
+    working_dir: /app
+    command: ["node_modules/.bin/tsc", "-p", "packages/shared/tsconfig.build.json", "--watch", "--preserveWatchOutput"]
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/shared/dist:/app/packages/shared/dist
+
   web:
     build:
       target: web-dev
@@ -13,7 +23,10 @@ services:
       - ./packages/web/src:/app/packages/web/src
       - ./packages/shared/src:/app/packages/shared/src
       - ./packages/shared/dist:/app/packages/shared/dist
+      - ./packages/shared/package.json:/app/packages/shared/package.json:ro
       - /app/packages/web/.next
+    depends_on:
+      - shared
 
   ws:
     ports:
