@@ -3,8 +3,7 @@ import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createTournamentService } from "@yugidraft/shared/services";
-import { announceToBot } from "@/lib/announce-bot";
-import { notifyWsTournament } from "@/lib/notify-ws-tournament";
+import { announcer, broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -172,8 +171,7 @@ export async function DELETE(
 
     db.prepare("update tournaments set status = 'cancelled', ended_at = current_timestamp where id = ?").run(tournament.id);
 
-    void notifyWsTournament(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.tournament(
       { kind: "cancelled", slug },
     );
 
@@ -315,8 +313,7 @@ export async function POST(
     const tournaments = createTournamentService(db);
     const started = tournaments.start(tournament.id);
 
-    void announceToBot(
-      { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
+    void announcer.announce(
       {
         kind: "tournament-started",
         tournamentId: started.id,
@@ -327,8 +324,7 @@ export async function POST(
       },
     );
 
-    void notifyWsTournament(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.tournament(
       { kind: "started", slug },
     );
 

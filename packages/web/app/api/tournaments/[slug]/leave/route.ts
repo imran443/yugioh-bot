@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { createTournamentService } from "@yugidraft/shared/services";
-import { notifyWsTournament } from "@/lib/notify-ws-tournament";
+import { broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -39,8 +38,7 @@ export async function POST(
     const tournaments = createTournamentService(db);
     tournaments.leave(tournament.id, player.id);
 
-    void notifyWsTournament(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
+    void broadcaster.tournament(
       { kind: "participant-left", slug, playerId: player.id },
     );
 

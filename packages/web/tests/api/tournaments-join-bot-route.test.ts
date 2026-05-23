@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.fn();
-const notifyWsTournament = vi.fn();
+const broadcaster = { draft: vi.fn(), tournament: vi.fn() };
 const tempDirs: string[] = [];
 
 vi.mock("@/lib/auth", () => ({ auth }));
-vi.mock("@/lib/notify-ws-tournament", () => ({ notifyWsTournament }));
+vi.mock("@/lib/notify", () => ({ broadcaster, announcer: { announce: vi.fn() } }));
 
 async function createPendingTournamentDb() {
   const tempDir = mkdtempSync(join(tmpdir(), "yugioh-tournament-join-bot-route-"));
@@ -44,7 +44,7 @@ describe("POST /api/tournaments/[slug]/join-bot", () => {
   beforeEach(() => {
     vi.resetModules();
     auth.mockReset();
-    notifyWsTournament.mockReset();
+    broadcaster.tournament.mockReset();
     auth.mockResolvedValue({ user: { id: "u-org", name: "Organizer" } });
     vi.stubEnv("NODE_ENV", "development");
   });
@@ -72,7 +72,7 @@ describe("POST /api/tournaments/[slug]/join-bot", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.displayName).toBe("Bot 1");
-    expect(notifyWsTournament).toHaveBeenCalledOnce();
+    expect(broadcaster.tournament).toHaveBeenCalledOnce();
   });
 
   it("adds distinct bots on repeated requests", async () => {

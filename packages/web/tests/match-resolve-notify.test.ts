@@ -7,9 +7,9 @@ import { migrate } from "@yugidraft/shared/db";
 import { createTournamentService } from "@yugidraft/shared/services";
 
 const auth = vi.fn();
-const announceToBot = vi.fn(async () => ({ ok: true as const }));
+const announcer = { announce: vi.fn(async () => ({ ok: true as const })) };
 vi.mock("@/lib/auth", () => ({ auth }));
-vi.mock("@/lib/announce-bot", () => ({ announceToBot }));
+vi.mock("@/lib/notify", () => ({ announcer, broadcaster: { draft: vi.fn(), tournament: vi.fn() } }));
 const tempDirs: string[] = [];
 
 function scenario() {
@@ -34,7 +34,7 @@ describe("approve/deny emit match-resolved", () => {
   beforeEach(() => {
     vi.resetModules();
     auth.mockReset();
-    announceToBot.mockClear();
+    announcer.announce.mockClear();
     auth.mockResolvedValue({ user: { id: "u-b", name: "B" } }); // opponent resolves
   });
   afterEach(() => {
@@ -48,8 +48,7 @@ describe("approve/deny emit match-resolved", () => {
     const { POST } = await import("../app/api/matches/[id]/approve/route");
     const res = await POST(new Request("http://localhost/x", { method: "POST" }), { params: Promise.resolve({ id: String(matchId) }) });
     expect(res.status).toBe(200);
-    expect(announceToBot).toHaveBeenCalledWith(
-      expect.any(Object),
+    expect(announcer.announce).toHaveBeenCalledWith(
       { kind: "match-resolved", matchId },
     );
   });
@@ -59,8 +58,7 @@ describe("approve/deny emit match-resolved", () => {
     const { POST } = await import("../app/api/matches/[id]/deny/route");
     const res = await POST(new Request("http://localhost/x", { method: "POST" }), { params: Promise.resolve({ id: String(matchId) }) });
     expect(res.status).toBe(200);
-    expect(announceToBot).toHaveBeenCalledWith(
-      expect.any(Object),
+    expect(announcer.announce).toHaveBeenCalledWith(
       { kind: "match-resolved", matchId },
     );
   });
