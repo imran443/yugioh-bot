@@ -61,6 +61,11 @@ export type TournamentCancelledBroadcast = {
   slug: string;
 };
 
+export type TournamentCompletedBroadcast = {
+  kind: "completed";
+  slug: string;
+};
+
 export type TournamentMatchUpdatedBroadcast = {
   kind: "match-updated";
   slug: string;
@@ -71,6 +76,7 @@ export type TournamentBroadcastPayload =
   | TournamentParticipantLeftBroadcast
   | TournamentStartedBroadcast
   | TournamentCancelledBroadcast
+  | TournamentCompletedBroadcast
   | TournamentMatchUpdatedBroadcast;
 
 export const TOURNAMENT_BROADCAST_KINDS = [
@@ -78,5 +84,6 @@ export const TOURNAMENT_BROADCAST_KINDS = [
   "participant-left",
   "started",
   "cancelled",
+  "completed",
   "match-updated",
 ] as const;
