@@ -155,6 +155,12 @@ export function createInternalHttpHandler(opts: { io: TypedServer; secret: strin
         opts.io.to(`tournament:${data.slug}`).emit("tournament:cancelled", {});
         return new Response(null, { status: 204 });
       }
+      case "/internal/tournament/completed": {
+        const data = parseTournamentSlugOnly(parsed);
+        if (!data) return new Response("Bad payload", { status: 400 });
+        opts.io.to(`tournament:${data.slug}`).emit("tournament:completed", {});
+        return new Response(null, { status: 204 });
+      }
       case "/internal/tournament/match-updated": {
         const data = parseTournamentSlugOnly(parsed);
         if (!data) return new Response("Bad payload", { status: 400 });
