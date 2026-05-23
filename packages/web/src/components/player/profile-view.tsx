@@ -11,6 +11,8 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RankBadge } from "@/components/rank/rank-badge";
+import { visualForRank } from "@/components/rank/rank-visuals";
 import { ACHIEVEMENTS } from "@yugidraft/shared/scoring";
 import type { ScoringService } from "@yugidraft/shared/services";
 
@@ -25,14 +27,6 @@ export interface ProfileViewProps {
 
 // ---------- constants ----------
 
-const RANK_COLORS: Record<string, string> = {
-  Diamond: "#a78bfa",
-  Platinum: "#7dd3fc",
-  Gold: "#f5c451",
-  Silver: "#cbd5e1",
-  Bronze: "#d6a06a",
-};
-
 const LUCIDE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   trophy: Trophy,
   flame: Flame,
@@ -43,22 +37,6 @@ const LUCIDE_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
 };
 
 // ---------- sub-components ----------
-
-function RankBadge({ rank }: { rank: string }) {
-  const color = RANK_COLORS[rank] ?? "#9aa0b8";
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
-      style={{
-        background: `${color}18`,
-        color,
-        border: `1px solid ${color}40`,
-      }}
-    >
-      {rank}
-    </span>
-  );
-}
 
 function StatCard({
   label,
@@ -153,7 +131,7 @@ export function ProfileView({ profile: initialProfile, leaderboardRank: initialR
   // Build unlocked set from profile
   const unlockedKeys = new Set(profile.achievements.map((a) => a.achievement_key));
 
-  const rankColor = RANK_COLORS[profile.rank.name] ?? "#9aa0b8";
+  const rankColor = visualForRank(profile.rank.name).color;
 
   // Avatar initials
   const initials = profile.displayName
@@ -180,7 +158,7 @@ export function ProfileView({ profile: initialProfile, leaderboardRank: initialR
         <div className="min-w-0">
           <h1 className="font-display text-2xl text-[#E6E8F0] sm:text-3xl">{profile.displayName}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <RankBadge rank={profile.rank.name} />
+            <RankBadge rank={profile.rank.name} size="lg" celebrate playerId={profile.playerId} />
             <span className="text-sm text-[#9aa0b8]">
               {profile.rank.nextAt !== null
                 ? `${profile.rank.nextAt - profile.rating} rating to next rank`
