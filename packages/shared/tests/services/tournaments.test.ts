@@ -180,3 +180,36 @@ describe("tournaments timing settings", () => {
     expect(DEFAULT_REPORT_CONFIRM_HOURS).toBe(24);
   });
 });
+
+describe("tournaments complete (manual early finish)", () => {
+  it("completes an active tournament and stamps ended_at", () => {
+    const { tournaments, db } = setup();
+    const p1 = insertPlayer(db, "g1", "u1", "Yugi");
+    const p2 = insertPlayer(db, "g1", "u2", "Kaiba");
+    const t = tournaments.create("g1", "Cup", "round_robin", "u1");
+    tournaments.join(t.id, p1);
+    tournaments.join(t.id, p2);
+    tournaments.start(t.id); // -> active
+
+    const completed = tournaments.complete(t.id);
+
+    expect(completed.status).toBe("completed");
+    const row = db
+      .prepare("select ended_at from tournaments where id = ?")
+      .get(t.id) as { ended_at: string | null };
+    expect(row.ended_at).not.toBeNull();
+  });
+
+  it("throws when the tournament is still pending (never started)", () => {
+    const { tournaments } = setup();
+    const t = tournaments.create("g1", "Cup", "round_robin", "u1");
+    expect(() => tournaments.complete(t.id)).toThrow(/cannot be completed/i);
+  });
+
+  it("throws when the tournament is already completed", () => {
+    const { tournaments, db } = setup();
+    const t = tournaments.create("g1", "Cup", "round_robin", "u1");
+    db.prepare("update tournaments set status = 'completed' where id = ?").run(t.id);
+    expect(() => tournaments.complete(t.id)).toThrow(/cannot be completed/i);
+  });
+});

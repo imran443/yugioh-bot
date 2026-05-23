@@ -701,6 +701,20 @@ export function createTournamentService(db: Database.Database) {
       return findById(tournamentId);
     },
 
+    complete(tournamentId: number): Tournament {
+      const tournament = findById(tournamentId);
+
+      if (tournament.status !== "active") {
+        throw new Error(`Tournament cannot be completed in status '${tournament.status}'`);
+      }
+
+      db.prepare(
+        "update tournaments set status = 'completed', ended_at = current_timestamp where id = ?",
+      ).run(tournamentId);
+
+      return findById(tournamentId);
+    },
+
     updateSettings(
       tournamentId: number,
       patch: { deadlineAt?: string | null; reportConfirmWindowHours?: number | null },
