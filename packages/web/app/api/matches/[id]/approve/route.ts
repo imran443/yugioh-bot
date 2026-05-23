@@ -48,10 +48,7 @@ export async function POST(
       { kind: "match-resolved", matchId },
     );
     if (approved.tournamentId && matches.claimTournamentCompletionAnnouncement(approved.tournamentId)) {
-      void announceToBot(
-        { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
-        { kind: "tournament-completed", tournamentId: approved.tournamentId },
-      );
+      void announcer.announce({ kind: "tournament-completed", tournamentId: approved.tournamentId });
     }
     if (match.tournament_slug) {
       void broadcaster.tournament(

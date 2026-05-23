@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { createTournamentService, createMatchService } from "@yugidraft/shared/services";
-import { announceToBot } from "@/lib/announce-bot";
-import { notifyWsTournament } from "@/lib/notify-ws-tournament";
+import { announcer, broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -42,16 +40,10 @@ export async function POST(
 
     const matches = createMatchService(db);
     if (matches.claimTournamentCompletionAnnouncement(completed.id)) {
-      void announceToBot(
-        { url: env.botAnnounceUrl, secret: env.botAnnounceSecret },
-        { kind: "tournament-completed", tournamentId: completed.id },
-      );
+      void announcer.announce({ kind: "tournament-completed", tournamentId: completed.id });
     }
 
-    void notifyWsTournament(
-      { url: env.wsInternalUrl, secret: env.wsInternalSecret },
-      { kind: "completed", slug },
-    );
+    void broadcaster.tournament({ kind: "completed", slug });
 
     return NextResponse.json({ id: completed.id, status: completed.status });
   } catch (error) {

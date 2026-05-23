@@ -260,10 +260,7 @@ export async function PUT(
         return NextResponse.json({ error: message }, { status: 400 });
       }
 
-      void notifyWsTournament(
-        { url: env.wsInternalUrl, secret: env.wsInternalSecret },
-        { kind: "match-updated", slug },
-      );
+      void broadcaster.tournament({ kind: "match-updated", slug });
     }
 
     const updated = db
