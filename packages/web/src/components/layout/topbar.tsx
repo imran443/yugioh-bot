@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { handleSignOut } from "@/lib/actions";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Menu, LogOut, PanelLeftClose, PanelLeft } from "lucide-react";
+import { Menu, LogOut, PanelLeftClose, PanelLeft, User } from "lucide-react";
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -17,6 +17,7 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
   const [session, setSession] = useState<{
     user?: { name?: string | null; image?: string | null };
   } | null>(null);
+  const [playerId, setPlayerId] = useState<number | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -24,6 +25,10 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
     fetch("/api/auth/session")
       .then((r) => r.json())
       .then(setSession)
+      .catch(() => {});
+    fetch("/api/player/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.playerId) setPlayerId(d.playerId); })
       .catch(() => {});
   }, []);
 
@@ -116,6 +121,16 @@ export function TopBar({ onMenuClick, onToggleSidebar, sidebarCollapsed }: TopBa
                   {session.user.name}
                 </div>
                 <div className="border-t border-border" />
+                {playerId !== null && (
+                  <Link
+                    href={`/player/${playerId}`}
+                    onClick={() => setDropdownOpen(false)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary motion-safe:transition-colors"
+                  >
+                    <User className="h-4 w-4" />
+                    My Profile
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => {
