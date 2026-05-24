@@ -13,6 +13,7 @@ import { useDraftStore } from "@/lib/stores/draft-store";
 import { useDraftWebsocket } from "@/lib/hooks/use-draft-websocket";
 import { useDraftCountdown } from "@/lib/hooks/use-draft-countdown";
 import { useDraftExpiryResync } from "@/lib/hooks/use-draft-expiry-resync";
+import { usePoolImagePrefetch } from "@/lib/hooks/use-pool-image-prefetch";
 
 const DRAFT_STATUS = {
   active: "active",
@@ -153,6 +154,7 @@ export default function DraftDetailPage() {
   });
   useDraftCountdown();
   useDraftExpiryResync(slug);
+  usePoolImagePrefetch(slug, draft?.status === "active");
 
   useEffect(() => {
     fetch("/api/auth/session")

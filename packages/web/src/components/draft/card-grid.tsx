@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import { useDraftStore, DraftCardDetail } from "@/lib/stores/draft-store";
 import { cn } from "@/lib/utils";
 
@@ -234,12 +233,12 @@ export function CardGrid({ className }: CardGridProps) {
                     <span className="text-xs">No image</span>
                   </div>
                 ) : (
-                  <Image
+                  <img
                     src={card.imageUrlSmall || card.imageUrl}
                     alt={card.name}
-                    fill
-                    className="object-contain motion-safe:transition-opacity motion-safe:duration-300 group-hover:opacity-95"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1536px) 25vw, 16vw"
+                    loading="eager"
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-contain motion-safe:transition-opacity motion-safe:duration-300 group-hover:opacity-95"
                     onError={() => handleImageError(card.id)}
                   />
                 )}

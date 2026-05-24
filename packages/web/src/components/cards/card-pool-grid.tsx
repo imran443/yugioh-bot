@@ -106,6 +106,15 @@ function CardPoolGridBase({
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const deferredSearch = useDeferredValue(searchTerm);
 
+  const filtersActive =
+    searchTerm !== "" || activeFilter !== "all" || activeSort !== "newest" || activeTribute !== "any";
+  const clearFilters = useCallback(() => {
+    setSearchTerm("");
+    setActiveFilter("all");
+    setActiveSort("newest");
+    setActiveTribute("any");
+  }, []);
+
   const handleImageError = useCallback((id: number) => setImageErrors((p) => new Set(p).add(id)), []);
   const handleEnter = useCallback((card: CardSummary, rect: DOMRect) => {
     setHoveredCard(card);
@@ -118,6 +127,15 @@ function CardPoolGridBase({
     spellCount: cards.filter((c) => isSpell(c.type)).length,
     trapCount: cards.filter((c) => isTrap(c.type)).length,
   }), [cards]);
+
+  const tributeCounts = useMemo(() => {
+    const c: Record<PoolTribute, number> = { any: cards.length, none: 0, one: 0, two: 0 };
+    for (const card of cards) {
+      const tier = tributeTierForLevel(card.level);
+      if (tier) c[tier] += 1;
+    }
+    return c;
+  }, [cards]);
 
   const visible = useMemo(() => {
     const needle = deferredSearch.trim().toLowerCase();
@@ -157,7 +175,7 @@ function CardPoolGridBase({
     if (!el) return;
     const GAP = 12; // gap-3
     // cube edit mode shows larger tiles (fewer, wider columns).
-    const TILE_MIN = cubeEditMode ? 200 : 144;
+    const TILE_MIN = cubeEditMode ? 200 : 120;
     const PAD_X = 24; // px-3 on each row, both sides
     const measure = (): void => {
       const inner = Math.max(0, el.clientWidth - PAD_X);
@@ -182,7 +200,7 @@ function CardPoolGridBase({
   const { columns, innerWidth } = layout;
   const estimatedRowHeight = useMemo(() => {
     const GAP = 12;
-    const tileW = innerWidth > 0 ? (innerWidth - (columns - 1) * GAP) / columns : 144;
+    const tileW = innerWidth > 0 ? (innerWidth - (columns - 1) * GAP) / columns : 120;
     const imageH = (tileW * 614) / 421;
     // image + img/label gap (8) + label block (~64) + button padding (16) + paddingBottom on row div (12)
     return Math.round(imageH + 8 + 64 + 16 + GAP);
@@ -238,8 +256,10 @@ function CardPoolGridBase({
       <div className="flex flex-wrap gap-1.5">
         {TRIBUTE_BUTTONS.map((tb) => (
           <Button key={tb.value} type="button" size="sm" variant={activeTribute === tb.value ? "secondary" : "ghost"}
-            onClick={() => setActiveTribute(tb.value)} aria-pressed={activeTribute === tb.value} className="rounded-full px-3 text-xs">
+            onClick={() => setActiveTribute(tb.value)} aria-pressed={activeTribute === tb.value} aria-label={tb.label}
+            className="rounded-full px-3 text-xs">
             {tb.label}
+            <span className="ml-1.5 tabular-nums text-text-muted">{tributeCounts[tb.value]}</span>
           </Button>
         ))}
       </div>
@@ -252,6 +272,12 @@ function CardPoolGridBase({
             {sb.label}
           </Button>
         ))}
+        {filtersActive && (
+          <Button type="button" size="sm" variant="ghost" onClick={clearFilters}
+            className="ml-auto rounded-full px-3 text-xs text-text-muted">
+            Clear filters
+          </Button>
+        )}
       </div>
 
       <div ref={scrollRef} className={cn("relative overflow-y-auto rounded-lg border border-border bg-surface/70", heightClassName)}>

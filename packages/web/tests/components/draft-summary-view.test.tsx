@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { DraftSummaryView } from "../../src/components/draft/draft-summary-view";
+import { installVirtualizerJsdomEnv } from "../helpers/virtualizer-jsdom";
+
+vi.mock("next/image", () => ({
+  default: ({ alt, fill: _fill, priority: _priority, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; priority?: boolean }) => (
+    <img alt={alt} {...props} />
+  ),
+}));
 
 const samplePool = [
   {
@@ -99,6 +106,7 @@ const baseDraft = {
 };
 
 describe("DraftSummaryView", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
   it("hides YDK export for completed drafts with fewer than 40 picks", () => {
     render(
       <DraftSummaryView
@@ -147,9 +155,11 @@ describe("DraftSummaryView", () => {
       />
     );
 
-    expect(screen.getByText(/Normal Monster/)).toBeTruthy();
-    expect(screen.getByText(/Spell Card/)).toBeTruthy();
-    expect(screen.getByText(/Trap Card/)).toBeTruthy();
+    // The card type appears both in the pool row and in the type-breakdown chip,
+    // so there can be more than one match.
+    expect(screen.getAllByText(/Normal Monster/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Spell Card/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Trap Card/).length).toBeGreaterThan(0);
     expect(screen.getByText("3000/2500")).toBeTruthy();
   });
 
@@ -166,7 +176,8 @@ describe("DraftSummaryView", () => {
       />
     );
 
-    expect(screen.getByText(/LIGHT/)).toBeTruthy();
+    // LIGHT appears in the pool row and the attribute-breakdown chip.
+    expect(screen.getAllByText(/LIGHT/).length).toBeGreaterThan(0);
     expect(screen.queryByText("SPELL")).toBeNull();
     expect(screen.queryByText("TRAP")).toBeNull();
   });
@@ -232,8 +243,54 @@ describe("DraftSummaryView", () => {
       />
     );
 
-    expect(screen.getByText("Quick-Play Spell Card")).toBeTruthy();
-    expect(screen.getByText("Counter Trap Card")).toBeTruthy();
-    expect(screen.getByText("Continuous Trap Card")).toBeTruthy();
+    // Each subtype appears in both the pool row and the type-breakdown chip.
+    expect(screen.getAllByText("Quick-Play Spell Card").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Counter Trap Card").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Continuous Trap Card").length).toBeGreaterThan(0);
+  });
+
+  it("renders an attribute/type breakdown of the pool", () => {
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        isCreator={false}
+        slug="test-draft"
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
+        myPool={samplePool}
+      />,
+    );
+    const attrs = screen.getByLabelText("Attributes drafted");
+    expect(attrs.textContent).toContain("LIGHT");
+    const types = screen.getByLabelText("Types drafted");
+    expect(types.textContent).toContain("Normal Monster");
+    expect(types.textContent).toContain("Spell Card");
+  });
+
+  it("lazily loads and shows the full pool when expanded", async () => {
+    const cards = [
+      { id: 1, name: "Pot of Greed", type: "Spell Card", frameType: "spell", attribute: "SPELL", effectText: "Draw 2.", imageUrl: "u1", imageUrlSmall: "s1", qty: 3 },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ cards }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <DraftSummaryView
+        draft={baseDraft as any}
+        isParticipant={true}
+        isCreator={false}
+        slug="test-draft"
+        onExportYdk={vi.fn().mockResolvedValue("#main")}
+        onDelete={vi.fn()}
+        myPool={samplePool}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /view full pool used/i }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/drafts/test-draft/pool");
+    expect(await screen.findByText("Pot of Greed")).toBeTruthy();
+
+    vi.unstubAllGlobals();
   });
 });
