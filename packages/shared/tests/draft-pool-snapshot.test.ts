@@ -16,17 +16,17 @@ function seedDb(db: Database.Database, count = 20) {
 }
 
 describe("pool snapshot", () => {
-  it("resolvePoolCardIds returns cards matching the recipe", () => {
+  it("resolveCubeCardIds returns cards matching the recipe", () => {
     const db = new Database(":memory:");
     migrate(db);
     seedDb(db);
     const drafts = createDraftService(db);
-    const ids = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
+    const ids = drafts.resolveCubeCardIds({ setNames: ["Set A"] });
     expect(ids).toHaveLength(20);
     expect(ids).toContain(1);
   });
 
-  it("resolvePoolCardIds is deterministic regardless of catalog row insertion order", () => {
+  it("resolveCubeCardIds is deterministic regardless of catalog row insertion order", () => {
     const db = new Database(":memory:");
     migrate(db);
     db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('g1', 'u1', 'Alice')").run();
@@ -39,17 +39,17 @@ describe("pool snapshot", () => {
       insertCard.run(id, `Card ${id}`, JSON.stringify([{ set_name: "Set A" }]));
     }
     const drafts = createDraftService(db);
-    const ids = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
+    const ids = drafts.resolveCubeCardIds({ setNames: ["Set A"] });
     expect(ids).toEqual([10, 20, 30, 40, 50]);
   });
 
-  it("openWave uses poolCardIds when present, ignoring catalog changes", () => {
+  it("openWave uses a legacy poolCardIds config key when present, ignoring catalog changes", () => {
     const db = new Database(":memory:");
     migrate(db);
     seedDb(db, 80);
 
     const drafts = createDraftService(db);
-    const poolCardIds = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
+    const poolCardIds = drafts.resolveCubeCardIds({ setNames: ["Set A"] });
 
     const alice = db.prepare("select id from players where discord_user_id = 'u1'").get() as { id: number };
     const bob = db.prepare("select id from players where discord_user_id = 'u2'").get() as { id: number };
@@ -81,7 +81,7 @@ describe("pool snapshot", () => {
     expect(cardIds).not.toContain(999);
   });
 
-  it("resolvePoolCardIds is a multiset: set baseline 1 + additive custom repeats", () => {
+  it("resolveCubeCardIds is a multiset: set baseline 1 + additive custom repeats", () => {
     const db = new Database(":memory:");
     migrate(db);
     seedDb(db); // cards 1..20 in "Set A"
@@ -90,7 +90,7 @@ describe("pool snapshot", () => {
     // Card 1 is in Set A (baseline 1) and pasted 3× => 4 copies.
     // Card 999 is not in any catalog row => contributes nothing.
     // Card 5 is in Set A only => 1 copy.
-    const ids = drafts.resolvePoolCardIds({
+    const ids = drafts.resolveCubeCardIds({
       setNames: ["Set A"],
       customCardIds: [1, 1, 1, 999],
     });

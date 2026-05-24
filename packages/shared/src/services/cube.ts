@@ -19,89 +19,128 @@ export function seededShuffle<T>(items: T[], seed: number): T[] {
   return result;
 }
 
-export interface CubeValidationResult {
+export interface CubeAnalysis {
   ok: boolean;
-  error?: string;
+  errors: string[];
+  warnings: string[];
 }
 
-export function validateCube(
-  poolCardIds: number[],
+export function analyzeCube(
+  cubeCardIds: number[],
+  players: number,
+  waves: number,
   packSize: number,
-  totalPacks: number,
-): CubeValidationResult {
-  const slots = packSize * totalPacks;
-
-  if (poolCardIds.length < slots) {
-    return {
-      ok: false,
-      error: `Cube too small: this draft needs ${slots} cards (${packSize} per pack × ${totalPacks} packs) but the cube only has ${poolCardIds.length}. Add ${slots - poolCardIds.length} more.`,
-    };
-  }
+): CubeAnalysis {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const cardsPerWave = players * packSize;
 
   const counts = new Map<number, number>();
-  for (const id of poolCardIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const id of cubeCardIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const distinct = counts.size;
 
-  if (counts.size < packSize) {
-    return {
-      ok: false,
-      error: `Not enough distinct cards: a pack holds ${packSize} different cards but the cube only has ${counts.size} distinct card type(s).`,
-    };
+  if (distinct < cardsPerWave) {
+    const maxPackSize = Math.floor(distinct / players);
+    errors.push(
+      `Cube needs at least ${cardsPerWave} distinct cards for ${players} players × ${packSize} per pack, but has ${distinct}. ` +
+        `Add ${cardsPerWave - distinct} more distinct cards, or reduce pack size to ${maxPackSize}.`,
+    );
   }
 
   for (const [cardId, count] of counts) {
-    if (count > totalPacks) {
-      return {
-        ok: false,
-        error: `Card ${cardId} has ${count} copies but only ${totalPacks} packs exist; a pack cannot hold duplicates. Reduce that card to at most ${totalPacks} copies.`,
-      };
+    if (count > waves) {
+      warnings.push(
+        `Card ${cardId} has ${count} copies but a draft has only ${waves} waves; it will be capped at ${waves} (one copy per wave).`,
+      );
     }
   }
 
-  return { ok: true };
+  return { ok: errors.length === 0, errors, warnings };
 }
 
-export function buildDraftPacks(
-  poolCardIds: number[],
-  packSize: number,
-  totalPacks: number,
-  draftId: number,
+export function buildDeal(
+  cubeCardIds: number[],
+  opts: { players: number; waves: number; packSize: number; draftId: number },
 ): number[][] {
-  const slots = packSize * totalPacks;
+  const { players, waves, packSize, draftId } = opts;
+  const totalPacks = players * waves;
+  const cardsPerWave = players * packSize; // C
+  const slots = totalPacks * packSize; // S
 
+  // 1. authored counts
   const counts = new Map<number, number>();
-  for (const id of poolCardIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const id of cubeCardIds) counts.set(id, (counts.get(id) ?? 0) + 1);
 
+  // deterministic order
   const distinctIds = seededShuffle([...counts.keys()], draftId);
 
-  const usage = new Map<number, number>();
-  let assigned = 0;
+  // 2. budgets: start at min(count, waves), then trim/pad to exactly `slots`
+  const budget = new Map<number, number>();
+  let total = 0;
   for (const id of distinctIds) {
-    if (assigned >= slots) break;
-    usage.set(id, 1);
-    assigned += 1;
+    const b = Math.min(counts.get(id) ?? 0, waves);
+    budget.set(id, b);
+    total += b;
   }
-  let progressed = true;
-  while (assigned < slots && progressed) {
-    progressed = false;
+  // trim: drop copies from the least-weighted cards first (singletons fall to zero)
+  while (total > slots) {
+    let pick: number | undefined;
+    let pickB = Infinity;
     for (const id of distinctIds) {
-      if (assigned >= slots) break;
-      const used = usage.get(id) ?? 0;
-      if (used < (counts.get(id) ?? 0)) {
-        usage.set(id, used + 1);
-        assigned += 1;
-        progressed = true;
+      const b = budget.get(id) ?? 0;
+      if (b > 0 && b < pickB) {
+        pickB = b;
+        pick = id;
       }
+    }
+    if (pick === undefined) break;
+    budget.set(pick, pickB - 1);
+    total -= 1;
+  }
+  // pad: round-robin +1 to cards with headroom (spreads invented copies)
+  while (total < slots) {
+    let addedThisPass = false;
+    for (const id of distinctIds) {
+      if (total >= slots) break;
+      const b = budget.get(id) ?? 0;
+      if (b < waves) {
+        budget.set(id, b + 1);
+        total += 1;
+        addedThisPass = true;
+      }
+    }
+    if (!addedThisPass) break; // unreachable when analyzeCube passed
+  }
+
+  // 3. assign each card's copies to distinct waves; balance wave fill (cap C each)
+  const waveCards: number[][] = Array.from({ length: waves }, () => []);
+  const waveRemaining = new Array<number>(waves).fill(cardsPerWave);
+  // most-constrained-first: highest budget placed first
+  const assignOrder = [...distinctIds].sort(
+    (a, b) => (budget.get(b) ?? 0) - (budget.get(a) ?? 0),
+  );
+  for (const id of assignOrder) {
+    const b = budget.get(id) ?? 0;
+    if (b === 0) continue;
+    // pick the b waves with the most remaining capacity
+    const targets = Array.from({ length: waves }, (_, w) => w)
+      .filter((w) => waveRemaining[w] > 0)
+      .sort((x, y) => waveRemaining[y] - waveRemaining[x])
+      .slice(0, b);
+    for (const w of targets) {
+      waveCards[w].push(id);
+      waveRemaining[w] -= 1;
     }
   }
 
+  // 4. within each wave, round-robin its C distinct cards into P packs of packSize
   const packs: number[][] = Array.from({ length: totalPacks }, () => []);
-  let offset = 0;
-  for (const cardId of distinctIds) {
-    const used = usage.get(cardId) ?? 0;
-    for (let c = 0; c < used; c += 1) {
-      packs[(offset + c) % totalPacks].push(cardId);
-    }
-    offset = (offset + used) % totalPacks;
+  for (let w = 0; w < waves; w += 1) {
+    const shuffled = seededShuffle(waveCards[w], draftId + w + 1);
+    shuffled.forEach((id, i) => {
+      const seat = i % players;
+      packs[w * players + seat].push(id);
+    });
   }
 
   return packs;

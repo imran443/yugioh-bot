@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { createCardCatalogService, createDraftService, createPlayerService } from "@yugidraft/shared/services";
+import { analyzeCube, createCardCatalogService, createDraftService, createPlayerService } from "@yugidraft/shared/services";
 import type { DraftConfig } from "@yugidraft/shared/types";
 import { announcer } from "@/lib/notify";
 import { toUtcIso } from "@/lib/utils";
@@ -131,14 +131,26 @@ export async function POST(request: NextRequest) {
     includeNames: config.includeNames ?? [],
     excludeNames: config.excludeNames ?? [],
   });
-  const poolCardIds = drafts.resolvePoolCardIds(config);
-  if (poolCardIds.length === 0) {
+  const cubeCardIds = drafts.resolveCubeCardIds(config);
+  if (cubeCardIds.length === 0) {
     return NextResponse.json(
       { error: "No cards matched the selected sets / passcodes" },
       { status: 400 }
     );
   }
-  const configWithPool: typeof config = { ...config, poolCardIds };
+
+  // Advisory feasibility check at create time. The draft has no opponents yet, so
+  // assume the minimum start count of 2 players. Non-blocking: the cube can grow
+  // before start, and startDraft is the authoritative gate.
+  const expectedPlayers = 2;
+  const analysis = analyzeCube(
+    cubeCardIds,
+    expectedPlayers,
+    config.packsPerPlayer ?? 5,
+    config.packSize ?? 8,
+  );
+
+  const configWithPool: typeof config = { ...config, cubeCardIds };
 
   const draft = drafts.create(
     guildId,
@@ -165,6 +177,8 @@ export async function POST(request: NextRequest) {
       name: draft.name,
       status: draft.status,
       webSlug: draft.webSlug,
+      warnings: analysis.warnings,
+      errors: analysis.errors,
     },
     { status: 201 }
   );

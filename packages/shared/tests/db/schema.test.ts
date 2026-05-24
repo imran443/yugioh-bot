@@ -27,7 +27,7 @@ describe("shared database schema", () => {
       "card_catalog",
       "card_sets",
       "draft_cards",
-      "draft_cube",
+      "draft_deal",
       "draft_packs",
       "draft_picks",
       "draft_players",
@@ -93,7 +93,7 @@ describe("shared database schema", () => {
     expect(getTableInfo(db, "draft_packs").map((column) => column.name)).toEqual([
       "id",
       "draft_id",
-      "pack_round",
+      "wave_number",
       "origin_seat_index",
       "current_holder_seat_index",
       "pass_direction",
@@ -313,6 +313,38 @@ describe("shared database schema", () => {
     expect(cols).toContain("report_confirm_window_hours");
 
     db.close();
+  });
+
+  it("migrates a legacy draft_cube table to draft_deal, preserving rows", () => {
+    const db = new Database(":memory:");
+    // minimal legacy shape
+    db.exec(`
+      create table draft_cube (draft_id integer not null, position integer not null,
+        catalog_card_id integer not null, primary key (draft_id, position));
+      insert into draft_cube (draft_id, position, catalog_card_id) values (1, 0, 1001), (1, 1, 1002);
+    `);
+    migrate(db);
+    const rows = db.prepare("select position, catalog_card_id from draft_deal where draft_id = 1 order by position").all();
+    expect(rows).toEqual([
+      { position: 0, catalog_card_id: 1001 },
+      { position: 1, catalog_card_id: 1002 },
+    ]);
+    const oldGone = db.prepare("select 1 from sqlite_master where type='table' and name='draft_cube'").get();
+    expect(oldGone).toBeUndefined();
+  });
+
+  it("renames legacy draft_packs.pack_round to wave_number, preserving rows", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      create table draft_packs (id integer primary key autoincrement, draft_id integer not null,
+        pack_round integer not null, origin_seat_index integer not null,
+        current_holder_seat_index integer not null, pass_direction integer not null);
+      insert into draft_packs (draft_id, pack_round, origin_seat_index, current_holder_seat_index, pass_direction)
+        values (1, 2, 0, 0, 1);
+    `);
+    migrate(db);
+    const row = db.prepare("select wave_number from draft_packs where draft_id = 1").get();
+    expect(row).toEqual({ wave_number: 2 });
   });
 
   it("backfills web_slug for tournaments that pre-date the column", () => {

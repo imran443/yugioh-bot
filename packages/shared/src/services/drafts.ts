@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
 import { generateWebSlug } from "../util/web-slug.js";
-import { validateCube, buildDraftPacks } from "./cube.js";
+import { analyzeCube, buildDeal } from "./cube.js";
 
 export type DraftStatus = "pending" | "active" | "cancelled" | "completed";
 export type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
@@ -370,7 +370,7 @@ export function createDraftService(db: Database.Database) {
       `
         insert into draft_packs (
           draft_id,
-          pack_round,
+          wave_number,
           origin_seat_index,
           current_holder_seat_index,
           pass_direction
@@ -384,11 +384,11 @@ export function createDraftService(db: Database.Database) {
       `,
     );
 
-    const hasCube = db.prepare("select 1 from draft_cube where draft_id = ? limit 1").get(draftId);
+    const hasCube = db.prepare("select 1 from draft_deal where draft_id = ? limit 1").get(draftId);
 
     if (hasCube) {
       const selectSlice = db.prepare(
-        "select catalog_card_id from draft_cube where draft_id = ? and position >= ? and position < ? order by position",
+        "select catalog_card_id from draft_deal where draft_id = ? and position >= ? and position < ? order by position",
       );
       for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
         const globalPack = (waveNumber - 1) * playerCount + playerIndex;
@@ -408,11 +408,13 @@ export function createDraftService(db: Database.Database) {
     }
 
     // Legacy path: drafts already active before the cube model deployed have
-    // no draft_cube rows and finish all remaining waves on the old generator.
+    // no draft_deal rows and finish all remaining waves on the old generator.
     const catalogCardIds =
-      config.poolCardIds && config.poolCardIds.length > 0
-        ? config.poolCardIds
-        : catalogCardIdsForDraft(config);
+      config.cubeCardIds && config.cubeCardIds.length > 0
+        ? config.cubeCardIds
+        : config.poolCardIds && config.poolCardIds.length > 0
+          ? config.poolCardIds
+          : catalogCardIdsForDraft(config);
 
     if (catalogCardIds.length === 0) {
       throw new Error("Draft pool is empty");
@@ -466,21 +468,24 @@ export function createDraftService(db: Database.Database) {
 
     const packSize = draft.config.packSize ?? defaultDraftConfig.packSize;
     const packsPerPlayer = draft.config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer;
-    const totalPacks = playerIds.length * packsPerPlayer;
 
-    const poolCardIds =
-      draft.config.poolCardIds && draft.config.poolCardIds.length > 0
-        ? draft.config.poolCardIds
-        : catalogCardIdsForDraft(draft.config);
+    const cubeCardIds =
+      draft.config.cubeCardIds && draft.config.cubeCardIds.length > 0
+        ? draft.config.cubeCardIds
+        : draft.config.poolCardIds && draft.config.poolCardIds.length > 0
+          ? draft.config.poolCardIds
+          : catalogCardIdsForDraft(draft.config);
 
-    const validation = validateCube(poolCardIds, packSize, totalPacks);
-    if (!validation.ok) {
-      throw new Error(validation.error);
+    const players = playerIds.length;
+    const waves = packsPerPlayer;
+    const analysis = analyzeCube(cubeCardIds, players, waves, packSize);
+    if (!analysis.ok) {
+      throw new Error(analysis.errors.join(" "));
     }
 
-    const packs = buildDraftPacks(poolCardIds, packSize, totalPacks, draftId);
+    const packs = buildDeal(cubeCardIds, { players, waves, packSize, draftId });
     const insertCube = db.prepare(
-      "insert into draft_cube (draft_id, position, catalog_card_id) values (?, ?, ?)",
+      "insert into draft_deal (draft_id, position, catalog_card_id) values (?, ?, ?)",
     );
     let position = 0;
     for (const pack of packs) {
@@ -543,7 +548,7 @@ export function createDraftService(db: Database.Database) {
       .prepare(
         `
           select id, pass_direction from draft_packs
-          where draft_id = ? and pack_round = ? and current_holder_seat_index = ?
+          where draft_id = ? and wave_number = ? and current_holder_seat_index = ?
           limit 1
         `,
       )
@@ -653,7 +658,7 @@ export function createDraftService(db: Database.Database) {
               `
                 select id, current_holder_seat_index, pass_direction
                 from draft_packs
-                where draft_id = ? and pack_round = ?
+                where draft_id = ? and wave_number = ?
                 order by id asc
               `,
             )
@@ -771,7 +776,7 @@ export function createDraftService(db: Database.Database) {
       .prepare(
         `
           select id from draft_packs
-          where draft_id = ? and pack_round = ? and current_holder_seat_index = ?
+          where draft_id = ? and wave_number = ? and current_holder_seat_index = ?
           limit 1
         `,
       )
@@ -1005,8 +1010,21 @@ export function createDraftService(db: Database.Database) {
       return findById(draftId);
     },
 
+    resolveCubeCardIds(config: DraftConfig): number[] {
+      return config.cubeCardIds && config.cubeCardIds.length > 0
+        ? config.cubeCardIds
+        : config.poolCardIds && config.poolCardIds.length > 0
+          ? config.poolCardIds
+          : catalogCardIdsForDraft(config);
+    },
+
+    /** @deprecated use resolveCubeCardIds; retained for callers not yet migrated */
     resolvePoolCardIds(config: DraftConfig): number[] {
-      return catalogCardIdsForDraft(config);
+      return config.cubeCardIds && config.cubeCardIds.length > 0
+        ? config.cubeCardIds
+        : config.poolCardIds && config.poolCardIds.length > 0
+          ? config.poolCardIds
+          : catalogCardIdsForDraft(config);
     },
 
     autocomplete(input: {

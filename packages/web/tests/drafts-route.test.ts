@@ -263,6 +263,74 @@ describe("GET /api/drafts/[slug]", () => {
     verifyDb.close();
   }, testTimeoutMs);
 
+  it("create returns analyzeCube warnings when a card exceeds the wave count", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-route-"));
+    const dbPath = join(tempDir, "draft-route.sqlite");
+    const guildId = "196382772699332609";
+    const creatorUserId = "196382527131222016";
+
+    tempDirs.push(tempDir);
+    process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = guildId;
+    process.env.DISCORD_DEFAULT_CHANNEL_ID = "channel-1";
+
+    // card 1 has 5 copies > 3 waves; plus cards 2..19 for 19 distinct total.
+    const range = (start: number, end: number) =>
+      Array.from({ length: end - start }, (_, i) => start + i);
+    const customCardIds = [1, 1, 1, 1, 1, ...range(2, 20)];
+    const distinctIds = [...new Set(customCardIds)];
+
+    const Database = (await import("better-sqlite3")).default;
+    const { migrate } = await import("@yugidraft/shared/db");
+    const db = new Database(dbPath);
+    migrate(db);
+    const ins = db.prepare(
+      `insert into card_catalog (ygoprodeck_id, name, type, frame_type, image_url, image_url_small, card_sets_json, cached_at)
+       values (?, ?, 'Spellcaster / Normal Monster', 'normal', '', '', '[]', '2026-01-01T00:00:00Z')`,
+    );
+    for (const id of distinctIds) ins.run(id, `Card ${id}`);
+    db.close();
+
+    // syncDraftPool is called by the route; the cards already exist so the fetch
+    // (if any) returns the same data.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        async json() {
+          return {
+            data: distinctIds.map((id) => ({
+              id,
+              name: `Card ${id}`,
+              type: "Spellcaster / Normal Monster",
+              frameType: "normal",
+              desc: "x",
+              card_images: [{ image_url: "u", image_url_small: "s" }],
+              card_sets: [],
+            })),
+          };
+        },
+      })),
+    );
+
+    const { POST } = await import("../app/api/drafts/route");
+    const res = await POST(
+      new Request("http://localhost/api/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "warns draft",
+          channelId: "channel-1",
+          config: { customCardIds, packSize: 4, packsPerPlayer: 3 },
+        }),
+      }) as any,
+    );
+
+    const body = await res.json();
+    expect(res.status).toBe(201);
+    expect(body.warnings.join(" ")).toMatch(/card 1/i);
+  }, testTimeoutMs);
+
   it("syncs custom card ids before starting a custom pool draft from the web route", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-draft-route-"));
     const dbPath = join(tempDir, "draft-route.sqlite");
@@ -282,11 +350,12 @@ describe("GET /api/drafts/[slug]", () => {
     const creator = players.findOrCreate(guildId, creatorUserId, "imran443");
     const opponent = players.findOrCreate(guildId, "opponent-user", "Kaiba");
     const drafts = createDraftService(db);
+    // 2 players × packSize 1 => 2 distinct cards required to start.
     const draft = drafts.create(
       guildId,
       "channel-1",
       "uncached custom draft",
-      { customCardIds: [70781052, 70781052], packSize: 1, packsPerPlayer: 1 },
+      { customCardIds: [70781052, 89631139], packSize: 1, packsPerPlayer: 1 },
       creatorUserId,
       creator.id,
     );
@@ -297,28 +366,36 @@ describe("GET /api/drafts/[slug]", () => {
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         const url = new URL(String(input));
-        expect(url.searchParams.get("id")).toBe("70781052");
+        const requestedId = url.searchParams.get("id");
+        expect(["70781052", "89631139"]).toContain(requestedId);
+        const cards: Record<string, any> = {
+          "70781052": {
+            id: 70781052,
+            name: "Summoned Skull",
+            type: "Fiend / Normal Monster",
+            frameType: "normal",
+            desc: "A fiend with dark powers for confusing the enemy.",
+            card_images: [
+              { image_url: "https://img/full/summoned-skull", image_url_small: "https://img/small/summoned-skull" },
+            ],
+            card_sets: [{ set_name: "Metal Raiders" }],
+          },
+          "89631139": {
+            id: 89631139,
+            name: "Blue-Eyes White Dragon",
+            type: "Dragon / Normal Monster",
+            frameType: "normal",
+            desc: "The ultimate Dragon warrior.",
+            card_images: [
+              { image_url: "https://img/full/bewd", image_url_small: "https://img/small/bewd" },
+            ],
+            card_sets: [{ set_name: "Metal Raiders" }],
+          },
+        };
         return {
           ok: true,
           async json() {
-            return {
-              data: [
-                {
-                  id: 70781052,
-                  name: "Summoned Skull",
-                  type: "Fiend / Normal Monster",
-                  frameType: "normal",
-                  desc: "A fiend with dark powers for confusing the enemy.",
-                  card_images: [
-                    {
-                      image_url: "https://img/full/summoned-skull",
-                      image_url_small: "https://img/small/summoned-skull",
-                    },
-                  ],
-                  card_sets: [{ set_name: "Metal Raiders" }],
-                },
-              ],
-            };
+            return { data: requestedId && cards[requestedId] ? [cards[requestedId]] : [] };
           },
         };
       }),
@@ -332,7 +409,7 @@ describe("GET /api/drafts/[slug]", () => {
     expect(response.status).toBe(200);
 
     const verifyDb = new Database(dbPath);
-    expect(verifyDb.prepare("select count(*) as count from card_catalog").get()).toEqual({ count: 1 });
+    expect(verifyDb.prepare("select count(*) as count from card_catalog").get()).toEqual({ count: 2 });
     expect(verifyDb.prepare("select count(*) as count from draft_cards where draft_id = ?").get(draft.id)).toEqual({ count: 2 });
     verifyDb.close();
   }, testTimeoutMs);

@@ -20,9 +20,9 @@ function completeDraft(db: Database.Database) {
   const drafts = createDraftService(db);
   const alice = db.prepare("select id from players where discord_user_id = 'u1'").get() as { id: number };
   const bob = db.prepare("select id from players where discord_user_id = 'u2'").get() as { id: number };
-  const poolCardIds = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
+  const cubeCardIds = drafts.resolveCubeCardIds({ setNames: ["Set A"] });
   const draft = drafts.create("g1", "ch1", "Test Draft", {
-    setNames: ["Set A"], poolCardIds, packsPerPlayer: 5, packSize: 8, pickSeconds: 45,
+    setNames: ["Set A"], cubeCardIds, packsPerPlayer: 5, packSize: 8, pickSeconds: 45,
   }, "u1", alice.id);
   drafts.join(draft.id, bob.id);
   db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
@@ -78,9 +78,9 @@ describe("createTournamentFromDraft", () => {
     seedDb(db);
     const drafts = createDraftService(db);
     const alice = db.prepare("select id from players where discord_user_id = 'u1'").get() as { id: number };
-    const poolCardIds = drafts.resolvePoolCardIds({ setNames: ["Set A"] });
+    const cubeCardIds = drafts.resolveCubeCardIds({ setNames: ["Set A"] });
     const draft = drafts.create("g1", "ch1", "Pending", {
-      setNames: ["Set A"], poolCardIds, packsPerPlayer: 5, packSize: 8, pickSeconds: 45,
+      setNames: ["Set A"], cubeCardIds, packsPerPlayer: 5, packSize: 8, pickSeconds: 45,
     }, "u1", alice.id);
 
     const service = createDraftTournamentService(db);

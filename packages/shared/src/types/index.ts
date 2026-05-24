@@ -9,6 +9,8 @@ export interface DraftConfig {
   pickSeconds?: number;
   alternatePassDirection?: boolean;
   randomizeSeats?: boolean;
+  cubeCardIds?: number[];
+  /** @deprecated legacy key, still read for drafts created before the rename */
   poolCardIds?: number[];
 }
 
