@@ -16,9 +16,9 @@ export default async function TournamentsPage() {
               t.web_slug, count(tp.player_id) as participant_count
        from tournaments t
        left join tournament_participants tp on tp.tournament_id = t.id
-       where t.status in ('pending', 'active')
+       where t.status in ('pending', 'active', 'completed')
        group by t.id
-       order by case t.status when 'active' then 0 else 1 end, t.created_at desc`
+       order by case t.status when 'active' then 0 when 'pending' then 1 else 2 end, t.created_at desc`
     )
     .all()
     .map((row: any) => ({
@@ -34,6 +34,7 @@ export default async function TournamentsPage() {
 
   const active = tournaments.filter((t) => t.status === "active");
   const pending = tournaments.filter((t) => t.status === "pending");
+  const completed = tournaments.filter((t) => t.status === "completed");
 
   return (
     <div>
@@ -71,6 +72,16 @@ export default async function TournamentsPage() {
               <h2 className="mb-4 font-body text-lg font-semibold text-text-secondary">Pending</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 {pending.map((t) => (
+                  <TournamentCard key={t.id} tournament={t} />
+                ))}
+              </div>
+            </section>
+          )}
+          {completed.length > 0 && (
+            <section>
+              <h2 className="mb-4 font-body text-lg font-semibold text-text-muted">Completed</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {completed.map((t) => (
                   <TournamentCard key={t.id} tournament={t} />
                 ))}
               </div>

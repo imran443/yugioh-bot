@@ -140,10 +140,14 @@ export function createScoringService(db: Database.Database) {
       upsertRating(db, guildId, winnerId, { elo: nextRating(winnerElo, loserElo, 1), addWinnings: points });
       upsertRating(db, guildId, loserId, { elo: nextRating(loserElo, winnerElo, 0) });
 
+      const tm = db
+        .prepare("select tournament_id from tournament_matches where match_id = ?")
+        .get(matchId) as { tournament_id: number } | undefined;
+
       db.prepare(
-        `insert into point_awards (guild_id, season_id, player_id, kind, match_id, points, opponent_elo)
-         values (?, ?, ?, 'match_win', ?, ?, ?)`,
-      ).run(guildId, season.id, winnerId, matchId, points, loserElo);
+        `insert into point_awards (guild_id, season_id, player_id, kind, match_id, tournament_id, points, opponent_elo)
+         values (?, ?, ?, 'match_win', ?, ?, ?, ?)`,
+      ).run(guildId, season.id, winnerId, matchId, tm?.tournament_id ?? null, points, loserElo);
 
       bumpStanding(db, guildId, season.id, winnerId, { addWinnings: points, win: true });
       bumpStanding(db, guildId, season.id, loserId, { loss: true });

@@ -61,4 +61,37 @@ describe("scoring.recordMatchResult", () => {
     expect(loser.current_streak).toBe(0);
     expect(loser.winnings).toBe(10); // unchanged by the loss
   });
+
+  it("tags a tournament match win with its tournament_id", () => {
+    const { db, scoring, p1, p2 } = setup();
+    const tournamentId = Number(
+      db
+        .prepare(
+          "insert into tournaments (guild_id, name, format, status, created_by_user_id) values ('g1','Cup','round_robin','active','host')",
+        )
+        .run().lastInsertRowid,
+    );
+    const matchId = approvedMatch(db, p1, p2, p1);
+    db.prepare(
+      `insert into tournament_matches (tournament_id, match_id, player_one_id, player_two_id, round_number, status)
+       values (?, ?, ?, ?, 1, 'completed')`,
+    ).run(tournamentId, matchId, p1, p2);
+
+    scoring.recordMatchResult(matchId);
+
+    const award = db
+      .prepare("select tournament_id from point_awards where match_id = ? and kind = 'match_win'")
+      .get(matchId) as { tournament_id: number | null };
+    expect(award.tournament_id).toBe(tournamentId);
+  });
+
+  it("leaves tournament_id null for a casual match win", () => {
+    const { db, scoring, p1, p2 } = setup();
+    const matchId = approvedMatch(db, p1, p2, p1);
+    scoring.recordMatchResult(matchId);
+    const award = db
+      .prepare("select tournament_id from point_awards where match_id = ? and kind = 'match_win'")
+      .get(matchId) as { tournament_id: number | null };
+    expect(award.tournament_id).toBeNull();
+  });
 });

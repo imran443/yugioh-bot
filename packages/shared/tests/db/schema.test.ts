@@ -375,3 +375,46 @@ describe("shared database schema", () => {
     expect(row.web_slug).toMatch(/^[a-z0-9]{8}$/);
   });
 });
+
+describe("migrate backfills match-win tournament_id", () => {
+  it("sets tournament_id on legacy match_win awards that belong to a tournament match", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const guild = "g1";
+    const seasonId = Number(
+      db.prepare("insert into seasons (guild_id, number, status) values (?, 1, 'active')").run(guild).lastInsertRowid,
+    );
+    const p1 = Number(
+      db.prepare("insert into players (guild_id, discord_user_id, display_name) values (?, 'u1', 'A')").run(guild).lastInsertRowid,
+    );
+    const p2 = Number(
+      db.prepare("insert into players (guild_id, discord_user_id, display_name) values (?, 'u2', 'B')").run(guild).lastInsertRowid,
+    );
+    const matchId = Number(
+      db
+        .prepare(
+          "insert into matches (guild_id, player_one_id, player_two_id, winner_id, reporter_id, status, source) values (?, ?, ?, ?, ?, 'approved', 'tournament')",
+        )
+        .run(guild, p1, p2, p1, p1).lastInsertRowid,
+    );
+    const tournamentId = Number(
+      db
+        .prepare("insert into tournaments (guild_id, name, format, status, created_by_user_id) values (?, 'Cup', 'round_robin', 'completed', 'host')")
+        .run(guild).lastInsertRowid,
+    );
+    db.prepare(
+      "insert into tournament_matches (tournament_id, match_id, player_one_id, player_two_id, round_number, status) values (?, ?, ?, ?, 1, 'completed')",
+    ).run(tournamentId, matchId, p1, p2);
+    // Legacy award written before tournament_id was stamped.
+    db.prepare(
+      "insert into point_awards (guild_id, season_id, player_id, kind, match_id, points) values (?, ?, ?, 'match_win', ?, 5)",
+    ).run(guild, seasonId, p1, matchId);
+
+    migrate(db); // re-run: the idempotent backfill runs every startup
+
+    const award = db.prepare("select tournament_id from point_awards where match_id = ?").get(matchId) as {
+      tournament_id: number | null;
+    };
+    expect(award.tournament_id).toBe(tournamentId);
+  });
+});

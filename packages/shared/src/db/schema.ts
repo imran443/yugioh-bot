@@ -394,4 +394,18 @@ export function migrate(db: Database.Database) {
       primary key (guild_id, player_id, achievement_key)
     );
   `);
+
+  // Backfill tournament_id on match-win awards whose match belongs to a
+  // tournament. Idempotent: the `tournament_id is null` guard means already
+  // stamped rows are skipped, so this is safe to run on every startup.
+  db.exec(`
+    update point_awards
+    set tournament_id = (
+      select tm.tournament_id from tournament_matches tm where tm.match_id = point_awards.match_id
+    )
+    where kind = 'match_win'
+      and tournament_id is null
+      and match_id is not null
+      and exists (select 1 from tournament_matches tm where tm.match_id = point_awards.match_id);
+  `);
 }
