@@ -182,6 +182,14 @@ describe("DraftDetailPage — completion transition", () => {
           json: () => Promise.resolve({ user: { id: "user-1" } }),
         } as Response);
       }
+      // Pool image-prefetch endpoint (fires while active) — not the draft-detail
+      // call this test counts.
+      if (url === "/api/drafts/test-draft/pool") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ cards: [] }),
+        } as Response);
+      }
       // Draft API
       draftApiCallCount += 1;
       if (draftApiCallCount === 1) {

@@ -22,7 +22,7 @@ describe("shared database package", () => {
         "card_catalog",
         "card_sets",
         "draft_cards",
-        "draft_cube",
+        "draft_deal",
         "draft_packs",
         "draft_picks",
         "draft_players",

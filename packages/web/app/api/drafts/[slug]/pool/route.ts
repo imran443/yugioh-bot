@@ -28,9 +28,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     const drafts = createDraftService(db);
     const catalog = createCardCatalogService(db);
 
-    const ids = config.poolCardIds && config.poolCardIds.length > 0
-      ? config.poolCardIds
-      : drafts.resolvePoolCardIds(config);
+    const ids = config.cubeCardIds?.length
+      ? config.cubeCardIds
+      : config.poolCardIds?.length
+        ? config.poolCardIds
+        : drafts.resolveCubeCardIds(config);
 
     const qtyCounts = new Map<number, number>();
     for (const id of ids) qtyCounts.set(id, (qtyCounts.get(id) ?? 0) + 1);

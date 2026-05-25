@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mulberry32, seededShuffle, validateCube, buildDraftPacks } from "../../src/services/cube.js";
+import { mulberry32, seededShuffle, analyzeCube, buildDeal } from "../../src/services/cube.js";
 
 describe("cube engine", () => {
   it("mulberry32 is deterministic for a seed", () => {
@@ -21,69 +21,106 @@ describe("cube engine", () => {
     expect(input).toEqual([1, 2, 3, 4, 5, 6, 7, 8]); // input not mutated
   });
 
-  it("validateCube rejects a cube with too few total cards", () => {
-    // packSize 8, totalPacks 10 => slots 80
-    const result = validateCube([1, 2, 3], 8, 10);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/needs 80/);
+  it("analyzeCube errors when distinct < players × packSize", () => {
+    // 3 players × 8 packSize => need 24 distinct; provide 10
+    const cube = Array.from({ length: 10 }, (_, i) => i + 1);
+    const r = analyzeCube(cube, 3, 5, 8);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/at least 24 distinct/);
   });
 
-  it("validateCube rejects too few distinct card types", () => {
-    // 8 distinct needed; only 2 distinct (lots of copies)
-    const pool = Array.from({ length: 80 }, (_, i) => (i % 2 === 0 ? 1 : 2));
-    const result = validateCube(pool, 8, 10);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/distinct/i);
+  it("analyzeCube accepts when distinct == players × packSize (boundary)", () => {
+    const cube = Array.from({ length: 24 }, (_, i) => i + 1);
+    const r = analyzeCube(cube, 3, 5, 8);
+    expect(r.ok).toBe(true);
+    expect(r.errors).toEqual([]);
   });
 
-  it("validateCube rejects a card with more copies than packs", () => {
-    // totalPacks 4; card 1 has 5 copies (> 4); pad distinct + total
-    const pool = [1, 1, 1, 1, 1, ...Array.from({ length: 27 }, (_, i) => i + 2)]; // 32 total, packSize 8 x 4 packs = 32
-    const result = validateCube(pool, 8, 4);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/only 4 packs/);
+  it("analyzeCube warns (not errors) when a card has more copies than waves", () => {
+    // 2 players × 4 packSize => 8 distinct needed; card 1 has 6 copies, waves = 3
+    const cube = [1, 1, 1, 1, 1, 1, ...Array.from({ length: 7 }, (_, i) => i + 2)];
+    const r = analyzeCube(cube, 2, 3, 4);
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toMatch(/card 1/i);
+    expect(r.warnings.join(" ")).toMatch(/capped at 3/);
   });
 
-  it("validateCube accepts a sufficient cube", () => {
-    const pool = Array.from({ length: 80 }, (_, i) => i + 1);
-    expect(validateCube(pool, 8, 10)).toEqual({ ok: true });
-  });
+  // pack at flat index i is in wave floor(i / players)
+  function wavesOf(packs: number[][], players: number): number[][] {
+    const waves: number[][] = [];
+    packs.forEach((pack, i) => {
+      const w = Math.floor(i / players);
+      (waves[w] ??= []).push(...pack);
+    });
+    return waves;
+  }
 
-  it("buildDraftPacks produces totalPacks packs of packSize distinct cards", () => {
-    const pool = Array.from({ length: 80 }, (_, i) => i + 1);
-    const packs = buildDraftPacks(pool, 8, 10, 12345);
-    expect(packs).toHaveLength(10);
+  it("buildDeal: every pack has packSize distinct cards, total = S", () => {
+    const cube = Array.from({ length: 80 }, (_, i) => i + 1);
+    const packs = buildDeal(cube, { players: 2, waves: 5, packSize: 8, draftId: 12345 });
+    expect(packs).toHaveLength(10); // P*W
     for (const pack of packs) {
       expect(pack).toHaveLength(8);
-      expect(new Set(pack).size).toBe(8); // distinct within pack
+      expect(new Set(pack).size).toBe(8);
     }
-    expect(packs.flat()).toHaveLength(80);
+    expect(packs.flat()).toHaveLength(80); // S = 2*5*8
   });
 
-  it("buildDraftPacks spreads a heavily skewed cube without duplicates in a pack", () => {
-    // 4 packs of 4 = 16 slots. Card 1 has 4 copies (== totalPacks, the max).
-    // Remaining 12 distinct singles fill the rest.
-    const pool = [1, 1, 1, 1, ...Array.from({ length: 12 }, (_, i) => i + 2)];
-    const packs = buildDraftPacks(pool, 4, 4, 777);
-    expect(packs).toHaveLength(4);
-    for (const pack of packs) {
-      expect(pack).toHaveLength(4);
-      expect(new Set(pack).size).toBe(4);
+  it("buildDeal: no card appears more than once within a wave", () => {
+    const cube = Array.from({ length: 80 }, (_, i) => i + 1);
+    const packs = buildDeal(cube, { players: 2, waves: 5, packSize: 8, draftId: 999 });
+    for (const wave of wavesOf(packs, 2)) {
+      expect(new Set(wave).size).toBe(wave.length);
     }
-    // Card 1's 4 copies land in 4 different packs (one each).
-    const packsWithCard1 = packs.filter((p) => p.includes(1)).length;
-    expect(packsWithCard1).toBe(4);
   });
 
-  it("buildDraftPacks is deterministic for a given draft id", () => {
-    const pool = Array.from({ length: 80 }, (_, i) => i + 1);
-    expect(buildDraftPacks(pool, 8, 10, 555)).toEqual(buildDraftPacks(pool, 8, 10, 555));
+  it("buildDeal: draft-34 regression — 7×4×13 has zero within-wave duplicates", () => {
+    const cube = Array.from({ length: 239 }, (_, i) => i + 1); // 239 distinct, 1 copy each
+    const packs = buildDeal(cube, { players: 7, waves: 4, packSize: 13, draftId: 34 });
+    expect(packs).toHaveLength(28);
+    expect(packs.flat()).toHaveLength(364); // S
+    for (const wave of wavesOf(packs, 7)) {
+      expect(wave).toHaveLength(91); // C = 7*13
+      expect(new Set(wave).size).toBe(91); // all distinct in the wave
+    }
   });
 
-  it("buildDraftPacks only deals `slots` cards when the cube has extra", () => {
-    // 100 distinct in the cube, but only 80 slots — 20 left unused.
-    const pool = Array.from({ length: 100 }, (_, i) => i + 1);
-    const packs = buildDraftPacks(pool, 8, 10, 1);
-    expect(packs.flat()).toHaveLength(80);
+  it("buildDeal: a card's copies land in distinct waves, capped at waves", () => {
+    // card 1 authored 10x but only 3 waves => at most 3 copies, in 3 distinct waves
+    const cube = [...Array(10).fill(1), ...Array.from({ length: 30 }, (_, i) => i + 2)];
+    const packs = buildDeal(cube, { players: 2, waves: 3, packSize: 4, draftId: 5 });
+    const waves = wavesOf(packs, 2);
+    const wavesWithCard1 = waves.filter((w) => w.includes(1)).length;
+    const copiesOfCard1 = packs.flat().filter((c) => c === 1).length;
+    expect(copiesOfCard1).toBeLessThanOrEqual(3);
+    expect(copiesOfCard1).toBe(wavesWithCard1); // one per wave it appears in
+  });
+
+  it("buildDeal: pads a too-small cube by reusing cards across waves", () => {
+    // 24 distinct, S = 2*3*4 = 24 ... make it smaller: 12 distinct, S = 24 => must pad
+    const cube = Array.from({ length: 12 }, (_, i) => i + 1);
+    const packs = buildDeal(cube, { players: 2, waves: 3, packSize: 4, draftId: 7 });
+    expect(packs.flat()).toHaveLength(24);
+    for (const wave of wavesOf(packs, 2)) {
+      expect(new Set(wave).size).toBe(8); // C = 8, still all distinct in-wave
+    }
+  });
+
+  it("buildDeal: weight-proportional — heavier authored card gets >= copies", () => {
+    // card 1 authored 3x, others 1x; cube larger than S so trimming happens
+    const cube = [1, 1, 1, ...Array.from({ length: 40 }, (_, i) => i + 2)];
+    const packs = buildDeal(cube, { players: 2, waves: 3, packSize: 4, draftId: 11 });
+    const flat = packs.flat();
+    const c1 = flat.filter((c) => c === 1).length;
+    // a singleton that survived, for comparison
+    const survivor = [...new Set(flat)].find((id) => id !== 1)!;
+    const cs = flat.filter((c) => c === survivor).length;
+    expect(c1).toBeGreaterThanOrEqual(cs);
+  });
+
+  it("buildDeal is deterministic for a given draftId", () => {
+    const cube = Array.from({ length: 80 }, (_, i) => i + 1);
+    expect(buildDeal(cube, { players: 2, waves: 5, packSize: 8, draftId: 555 }))
+      .toEqual(buildDeal(cube, { players: 2, waves: 5, packSize: 8, draftId: 555 }));
   });
 });

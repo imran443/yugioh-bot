@@ -85,4 +85,32 @@ describe("POST /api/drafts/[slug]/join-bot", () => {
       { kind: "seats", slug: draft.webSlug },
     );
   });
+
+  it("adds multiple distinct bots to the same draft", async () => {
+    const draft = await createPendingDraftDb();
+    const { POST } = await import("../app/api/drafts/[slug]/join-bot/route");
+
+    const makeRequest = () =>
+      POST(new Request(`http://localhost/api/drafts/${draft.webSlug}/join-bot`, { method: "POST" }), {
+        params: Promise.resolve({ slug: draft.webSlug ?? "" }),
+      });
+
+    const first = await makeRequest();
+    const second = await makeRequest();
+    const third = await makeRequest();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(200);
+
+    const firstBody = await first.json();
+    const secondBody = await second.json();
+    const thirdBody = await third.json();
+
+    const playerIds = [firstBody.playerId, secondBody.playerId, thirdBody.playerId];
+    expect(new Set(playerIds).size).toBe(3);
+
+    const names = [firstBody.displayName, secondBody.displayName, thirdBody.displayName];
+    expect(new Set(names).size).toBe(3);
+  });
 });

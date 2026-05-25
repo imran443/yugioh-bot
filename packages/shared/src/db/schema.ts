@@ -89,12 +89,12 @@ export function migrate(db: Database.Database) {
     create table if not exists draft_packs (
       id integer primary key autoincrement,
       draft_id integer not null references drafts(id),
-      pack_round integer not null,
+      wave_number integer not null,
       origin_seat_index integer not null,
       current_holder_seat_index integer not null,
       pass_direction integer not null,
       created_at text not null default current_timestamp,
-      unique (draft_id, pack_round, origin_seat_index)
+      unique (draft_id, wave_number, origin_seat_index)
     );
 
     create table if not exists draft_cards (
@@ -111,7 +111,7 @@ export function migrate(db: Database.Database) {
       unique (id, draft_id, wave_number)
     );
 
-    create table if not exists draft_cube (
+    create table if not exists draft_deal (
       draft_id integer not null references drafts(id),
       position integer not null,
       catalog_card_id integer not null references card_catalog(ygoprodeck_id),
@@ -257,6 +257,32 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "tournaments", "deadline_at", "text");
   addColumnIfMissing(db, "tournaments", "report_confirm_window_hours", "integer");
 
+  // Rename: draft_cube -> draft_deal (copy rows then drop; idempotent)
+  const hasLegacyCube = db
+    .prepare("select 1 from sqlite_master where type='table' and name='draft_cube'")
+    .get();
+  if (hasLegacyCube) {
+    const foreignKeys = db.pragma("foreign_keys", { simple: true }) as number;
+    try {
+      db.pragma("foreign_keys = off");
+      db.exec(`
+        insert into draft_deal (draft_id, position, catalog_card_id)
+          select draft_id, position, catalog_card_id from draft_cube;
+        drop table draft_cube;
+      `);
+    } finally {
+      db.pragma(`foreign_keys = ${foreignKeys ? "on" : "off"}`);
+    }
+  }
+
+  // Rename: draft_packs.pack_round -> wave_number (idempotent)
+  const packCols = db.prepare("pragma table_info(draft_packs)").all() as Array<{ name: string }>;
+  const hasPackRound = packCols.some((c) => c.name === "pack_round");
+  const hasWaveNumber = packCols.some((c) => c.name === "wave_number");
+  if (hasPackRound && !hasWaveNumber) {
+    db.exec("alter table draft_packs rename column pack_round to wave_number");
+  }
+
   db.exec(`
     create unique index if not exists tournaments_current_name_unique
     on tournaments (guild_id, name)
@@ -285,7 +311,7 @@ export function migrate(db: Database.Database) {
     where picked_by_player_id is null;
 
     create index if not exists draft_packs_holder_idx
-    on draft_packs (draft_id, pack_round, current_holder_seat_index);
+    on draft_packs (draft_id, wave_number, current_holder_seat_index);
 
     create index if not exists draft_cards_pack_idx
     on draft_cards (draft_pack_id, picked_by_player_id, position);
@@ -367,5 +393,19 @@ export function migrate(db: Database.Database) {
       unlocked_at text not null default current_timestamp,
       primary key (guild_id, player_id, achievement_key)
     );
+  `);
+
+  // Backfill tournament_id on match-win awards whose match belongs to a
+  // tournament. Idempotent: the `tournament_id is null` guard means already
+  // stamped rows are skipped, so this is safe to run on every startup.
+  db.exec(`
+    update point_awards
+    set tournament_id = (
+      select tm.tournament_id from tournament_matches tm where tm.match_id = point_awards.match_id
+    )
+    where kind = 'match_win'
+      and tournament_id is null
+      and match_id is not null
+      and exists (select 1 from tournament_matches tm where tm.match_id = point_awards.match_id);
   `);
 }

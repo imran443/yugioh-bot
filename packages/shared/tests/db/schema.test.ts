@@ -27,7 +27,7 @@ describe("shared database schema", () => {
       "card_catalog",
       "card_sets",
       "draft_cards",
-      "draft_cube",
+      "draft_deal",
       "draft_packs",
       "draft_picks",
       "draft_players",
@@ -93,7 +93,7 @@ describe("shared database schema", () => {
     expect(getTableInfo(db, "draft_packs").map((column) => column.name)).toEqual([
       "id",
       "draft_id",
-      "pack_round",
+      "wave_number",
       "origin_seat_index",
       "current_holder_seat_index",
       "pass_direction",
@@ -315,6 +315,38 @@ describe("shared database schema", () => {
     db.close();
   });
 
+  it("migrates a legacy draft_cube table to draft_deal, preserving rows", () => {
+    const db = new Database(":memory:");
+    // minimal legacy shape
+    db.exec(`
+      create table draft_cube (draft_id integer not null, position integer not null,
+        catalog_card_id integer not null, primary key (draft_id, position));
+      insert into draft_cube (draft_id, position, catalog_card_id) values (1, 0, 1001), (1, 1, 1002);
+    `);
+    migrate(db);
+    const rows = db.prepare("select position, catalog_card_id from draft_deal where draft_id = 1 order by position").all();
+    expect(rows).toEqual([
+      { position: 0, catalog_card_id: 1001 },
+      { position: 1, catalog_card_id: 1002 },
+    ]);
+    const oldGone = db.prepare("select 1 from sqlite_master where type='table' and name='draft_cube'").get();
+    expect(oldGone).toBeUndefined();
+  });
+
+  it("renames legacy draft_packs.pack_round to wave_number, preserving rows", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      create table draft_packs (id integer primary key autoincrement, draft_id integer not null,
+        pack_round integer not null, origin_seat_index integer not null,
+        current_holder_seat_index integer not null, pass_direction integer not null);
+      insert into draft_packs (draft_id, pack_round, origin_seat_index, current_holder_seat_index, pass_direction)
+        values (1, 2, 0, 0, 1);
+    `);
+    migrate(db);
+    const row = db.prepare("select wave_number from draft_packs where draft_id = 1").get();
+    expect(row).toEqual({ wave_number: 2 });
+  });
+
   it("backfills web_slug for tournaments that pre-date the column", () => {
     const db = new Database(":memory:");
     // Simulate legacy schema without web_slug
@@ -341,5 +373,48 @@ describe("shared database schema", () => {
       .prepare("select web_slug from tournaments where name = ?")
       .get("old-event") as { web_slug: string | null };
     expect(row.web_slug).toMatch(/^[a-z0-9]{8}$/);
+  });
+});
+
+describe("migrate backfills match-win tournament_id", () => {
+  it("sets tournament_id on legacy match_win awards that belong to a tournament match", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const guild = "g1";
+    const seasonId = Number(
+      db.prepare("insert into seasons (guild_id, number, status) values (?, 1, 'active')").run(guild).lastInsertRowid,
+    );
+    const p1 = Number(
+      db.prepare("insert into players (guild_id, discord_user_id, display_name) values (?, 'u1', 'A')").run(guild).lastInsertRowid,
+    );
+    const p2 = Number(
+      db.prepare("insert into players (guild_id, discord_user_id, display_name) values (?, 'u2', 'B')").run(guild).lastInsertRowid,
+    );
+    const matchId = Number(
+      db
+        .prepare(
+          "insert into matches (guild_id, player_one_id, player_two_id, winner_id, reporter_id, status, source) values (?, ?, ?, ?, ?, 'approved', 'tournament')",
+        )
+        .run(guild, p1, p2, p1, p1).lastInsertRowid,
+    );
+    const tournamentId = Number(
+      db
+        .prepare("insert into tournaments (guild_id, name, format, status, created_by_user_id) values (?, 'Cup', 'round_robin', 'completed', 'host')")
+        .run(guild).lastInsertRowid,
+    );
+    db.prepare(
+      "insert into tournament_matches (tournament_id, match_id, player_one_id, player_two_id, round_number, status) values (?, ?, ?, ?, 1, 'completed')",
+    ).run(tournamentId, matchId, p1, p2);
+    // Legacy award written before tournament_id was stamped.
+    db.prepare(
+      "insert into point_awards (guild_id, season_id, player_id, kind, match_id, points) values (?, ?, ?, 'match_win', ?, 5)",
+    ).run(guild, seasonId, p1, matchId);
+
+    migrate(db); // re-run: the idempotent backfill runs every startup
+
+    const award = db.prepare("select tournament_id from point_awards where match_id = ?").get(matchId) as {
+      tournament_id: number | null;
+    };
+    expect(award.tournament_id).toBe(tournamentId);
   });
 });

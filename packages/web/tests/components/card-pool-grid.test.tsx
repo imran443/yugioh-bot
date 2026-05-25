@@ -155,6 +155,29 @@ describe("CardPoolGrid", () => {
     expect(screen.getByRole("img", { name: "Bujingi Crane" })).toHaveAttribute("src", "u1");
   });
 
+  it("shows a per-tier count beside each tribute filter", () => {
+    render(<CardPoolGrid cards={leveledCards} />);
+    // none = 1 (lvl4), one = 1 (lvl6), two = 1 (lvl8); spell is not counted in any tier.
+    expect(screen.getByRole("button", { name: /^no trib$/i }).textContent).toMatch(/1/);
+    expect(screen.getByRole("button", { name: /^1 trib$/i }).textContent).toMatch(/1/);
+    expect(screen.getByRole("button", { name: /^2 trib$/i }).textContent).toMatch(/1/);
+    // Any counts every card.
+    expect(screen.getByRole("button", { name: /^any$/i }).textContent).toMatch(/4/);
+  });
+
+  it("clears all filters when Clear is clicked, and hides the button at defaults", () => {
+    render(<CardPoolGrid cards={cards} />);
+    // No clear button at defaults.
+    expect(screen.queryByRole("button", { name: /clear filters/i })).toBeNull();
+    // Apply a filter that hides a card.
+    fireEvent.click(screen.getByRole("button", { name: /^traps$/i }));
+    expect(screen.queryByRole("button", { name: /preview monster reborn/i })).toBeNull();
+    // Clear restores everything and the button disappears again.
+    fireEvent.click(screen.getByRole("button", { name: /clear filters/i }));
+    expect(screen.getByRole("button", { name: /preview monster reborn/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /clear filters/i })).toBeNull();
+  });
+
   it("windows the grid: renders only a subset of a large pool", () => {
     const many: CardSummary[] = Array.from({ length: 400 }, (_, i) => ({
       id: i + 1,
@@ -169,9 +192,9 @@ describe("CardPoolGrid", () => {
     const rendered = screen.getAllByRole("button", { name: /^preview card/i });
     expect(rendered.length).toBeGreaterThan(0);
     expect(rendered.length).toBeLessThan(120); // far fewer than 400 → windowed
-    // windowed rows are full rows: at 900px the grid is 5 columns, so the
-    // rendered tile count is an exact multiple of 5 (no partial top/bottom row).
-    expect(rendered.length % 5).toBe(0);
+    // windowed rows are full rows: at 900px the grid is 6 columns, so the
+    // rendered tile count is an exact multiple of 6 (no partial top/bottom row).
+    expect(rendered.length % 6).toBe(0);
   });
 });
 
@@ -195,11 +218,11 @@ function firstRowColumns(): number {
 }
 
 // columns = max(1, floor((clientWidth - PAD_X + GAP) / (TILE_MIN + GAP)))
-// PAD_X=24, GAP=12, TILE_MIN=144 (default) / 200 (cube edit).
+// PAD_X=24, GAP=12, TILE_MIN=120 (default) / 200 (cube edit).
 describe.each([
-  { width: 480, columns: 3 }, // floor((480-24+12)/156) = floor(3.0)
-  { width: 900, columns: 5 }, // floor((900-24+12)/156) = floor(5.69)
-  { width: 1600, columns: 10 }, // floor((1600-24+12)/156) = floor(10.18)
+  { width: 480, columns: 3 }, // floor((480-12)/132) = floor(3.54)
+  { width: 900, columns: 6 }, // floor((900-12)/132) = floor(6.72)
+  { width: 1600, columns: 12 }, // floor((1600-12)/132) = floor(12.03)
 ])("CardPoolGrid column math at $width px", ({ width, columns }) => {
   beforeEach(() => installVirtualizerJsdomEnv({ width, height: 600 }));
 

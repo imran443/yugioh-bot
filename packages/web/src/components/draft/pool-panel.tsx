@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { CardPoolPanel } from "@/components/cards/card-pool-panel";
+import { PoolBreakdown } from "@/components/draft/pool-breakdown";
 import { Layers, ChevronUp, Download } from "lucide-react";
 
 interface PoolPanelProps {
@@ -36,6 +37,7 @@ export function PoolPanel({ className }: PoolPanelProps) {
         <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-text-muted">Drafted so far</span>
         <span className="font-display text-lg text-text-secondary tabular-nums">{myPool.length}</span>
       </div>
+      <PoolBreakdown cards={myPool} />
       <Button
         variant="secondary"
         size="sm"

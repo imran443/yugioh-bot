@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { CardHoverPopup } from "@/components/draft/card-hover-popup";
+import { PoolBreakdown } from "@/components/draft/pool-breakdown";
+import { CardPoolPanel } from "@/components/cards/card-pool-panel";
+import type { CardSummary } from "@/lib/card-types";
 import type { DraftCardDetail } from "@/lib/stores/draft-store";
 
 interface DraftSummaryViewProps {
@@ -74,6 +77,26 @@ export function DraftSummaryView({
   const [creatingTournament, setCreatingTournament] = React.useState(false);
   const [tournamentError, setTournamentError] = React.useState<string | null>(null);
   const [linkedTournament, setLinkedTournament] = React.useState<{ id: number; name: string; webSlug: string | null } | null>(null);
+  const [poolOpen, setPoolOpen] = React.useState(false);
+  const [fullPool, setFullPool] = React.useState<CardSummary[] | null>(null);
+  const [poolLoading, setPoolLoading] = React.useState(false);
+
+  const toggleFullPool = React.useCallback(async () => {
+    const next = !poolOpen;
+    setPoolOpen(next);
+    if (next && fullPool === null) {
+      setPoolLoading(true);
+      try {
+        const res = await fetch(`/api/drafts/${slug}/pool`);
+        if (res.ok) {
+          const data = (await res.json()) as { cards: CardSummary[] };
+          setFullPool(data.cards ?? []);
+        }
+      } finally {
+        setPoolLoading(false);
+      }
+    }
+  }, [poolOpen, fullPool, slug]);
 
   const handleCardHover = React.useCallback((card: DraftCardDetail, rect: DOMRect) => {
     const POPUP_WIDTH = 288;
@@ -265,6 +288,7 @@ export function DraftSummaryView({
             <Package className="mr-2 inline h-5 w-5 text-accent-primary" />
             Your Pool ({myPool.length} cards)
           </h2>
+          <PoolBreakdown cards={myPool} />
           <ul className="flex flex-col gap-0.5" role="list">
             {myPool.map((card) => {
               const isMonster = card.type.toLowerCase().includes("monster");
@@ -342,6 +366,33 @@ export function DraftSummaryView({
           )}
         </div>
       )}
+
+      <div className="rounded-xl border border-border bg-surface p-6">
+        <button
+          type="button"
+          onClick={toggleFullPool}
+          aria-expanded={poolOpen}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <span className="flex items-center gap-2 font-display text-lg text-text-primary">
+            <Layers className="h-5 w-5 text-accent-primary" aria-hidden="true" />
+            View full pool used{fullPool ? ` (${fullPool.length})` : ""}
+          </span>
+          <span className="text-sm text-text-muted">{poolOpen ? "Hide" : "Show"}</span>
+        </button>
+        {poolOpen && (
+          <div className="mt-4">
+            <CardPoolPanel
+              title="Full pool"
+              cards={fullPool ?? []}
+              loading={poolLoading}
+              countMode="copies"
+              showSummary
+              emptyMessage="No pool data."
+            />
+          </div>
+        )}
+      </div>
 
       {isCompleted && isCreator && !linkedTournament && !draft.tournamentId && (
         <div className="rounded-xl border border-border bg-surface p-6">

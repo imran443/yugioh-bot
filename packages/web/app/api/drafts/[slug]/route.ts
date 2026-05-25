@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
+import { analyzeCube, createCardCatalogService, createDraftService } from "@yugidraft/shared/services";
 import { buildDraftResponse } from "./helpers";
 import { announcer, broadcaster } from "@/lib/notify";
 
@@ -72,6 +72,7 @@ export async function DELETE(
         db.prepare("delete from draft_picks where draft_id = ?").run(draft.id);
         db.prepare("delete from draft_cards where draft_id = ?").run(draft.id);
         db.prepare("delete from draft_packs where draft_id = ?").run(draft.id);
+        db.prepare("delete from draft_deal where draft_id = ?").run(draft.id);
         db.prepare("delete from draft_players where draft_id = ?").run(draft.id);
         db.prepare("delete from drafts where id = ?").run(draft.id);
       })();
@@ -151,6 +152,8 @@ export async function PUT(
       db.prepare("update drafts set name = ? where id = ?").run(name, draft.id);
     }
 
+    let analysisWarnings: ReturnType<typeof analyzeCube> | undefined;
+
     if (config !== undefined) {
       const drafts = createDraftService(db);
       const existing = drafts.findById(draft.id);
@@ -177,14 +180,24 @@ export async function PUT(
         includeNames: (mergedConfig as any).includeNames ?? [],
         excludeNames: (mergedConfig as any).excludeNames ?? [],
       });
-      const poolCardIds = drafts.resolvePoolCardIds(mergedConfig as any);
-      if (poolCardIds.length === 0) {
+      const cubeCardIds = drafts.resolveCubeCardIds(mergedConfig as any);
+      if (cubeCardIds.length === 0) {
         return NextResponse.json(
           { error: "No cards matched the selected sets / passcodes" },
           { status: 400 }
         );
       }
-      (mergedConfig as any).poolCardIds = poolCardIds;
+
+      // Advisory feasibility check at edit time (min start count = 2 players).
+      // Non-blocking: startDraft is the authoritative gate.
+      analysisWarnings = analyzeCube(
+        cubeCardIds,
+        2,
+        (mergedConfig as any).packsPerPlayer ?? 5,
+        (mergedConfig as any).packSize ?? 8,
+      );
+
+      (mergedConfig as any).cubeCardIds = cubeCardIds;
 
       db.prepare("update drafts set config_json = ? where id = ?").run(
         JSON.stringify(mergedConfig),
@@ -200,6 +213,8 @@ export async function PUT(
       status: updated.status,
       webSlug: updated.web_slug,
       config: JSON.parse(updated.config_json),
+      warnings: analysisWarnings?.warnings ?? [],
+      errors: analysisWarnings?.errors ?? [],
     });
   } catch (error) {
     console.error("[api/drafts/[slug] PUT] error:", error);
@@ -240,7 +255,7 @@ export async function POST(
     const draftModel = drafts.findById(draft.id);
     const cards = createCardCatalogService(db);
 
-    if (!draftModel.config.poolCardIds || draftModel.config.poolCardIds.length === 0) {
+    if (!draftModel.config.cubeCardIds?.length && !draftModel.config.poolCardIds?.length) {
       await cards.syncDraftPool({
         setNames: draftModel.config.setNames ?? [],
         customCardIds: draftModel.config.customCardIds ?? [],

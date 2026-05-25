@@ -11,6 +11,7 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { recentActivityLabel } from "@/lib/recent-activity";
 import { RankBadge } from "@/components/rank/rank-badge";
 import { visualForRank } from "@/components/rank/rank-visuals";
 import { ACHIEVEMENTS } from "@yugidraft/shared/scoring";
@@ -267,10 +268,7 @@ export function ProfileView({ profile: initialProfile, leaderboardRank: initialR
               tournament_id: number | null;
               tournament_name: string | null;
             }>).map((entry, i) => {
-              const label =
-                entry.kind === "placement"
-                  ? entry.tournament_name ?? "Tournament placement"
-                  : "Match win";
+              const label = recentActivityLabel(entry);
               return (
                 <div
                   key={i}

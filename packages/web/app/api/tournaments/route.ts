@@ -25,10 +25,10 @@ export async function GET() {
           count(tp.player_id) as participant_count
         from tournaments t
         left join tournament_participants tp on tp.tournament_id = t.id
-        where t.status in ('pending', 'active')
+        where t.status in ('pending', 'active', 'completed')
         group by t.id
         order by
-          case t.status when 'active' then 0 else 1 end,
+          case t.status when 'active' then 0 when 'pending' then 1 else 2 end,
           t.created_at desc
       `
       )

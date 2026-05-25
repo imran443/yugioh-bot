@@ -7,8 +7,32 @@ import { broadcaster } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
-const BOT_DISCORD_ID = "bot_player_dev_1";
-const BOT_DISPLAY_NAME = "Bot (Dev)";
+const BOT_DISCORD_PREFIX = "bot_player_dev_";
+
+function nextBotSlot(
+  db: ReturnType<typeof getDb>,
+  draftId: number,
+): { discordId: string; displayName: string } {
+  const rows = db
+    .prepare(
+      `select p.discord_user_id as discordId
+         from draft_players dp
+         join players p on p.id = dp.player_id
+        where dp.draft_id = ? and p.discord_user_id like ?`,
+    )
+    .all(draftId, `${BOT_DISCORD_PREFIX}%`) as { discordId: string }[];
+
+  const taken = new Set(rows.map((r) => r.discordId));
+  let index = 1;
+  while (taken.has(`${BOT_DISCORD_PREFIX}${index}`)) {
+    index += 1;
+  }
+
+  return {
+    discordId: `${BOT_DISCORD_PREFIX}${index}`,
+    displayName: `Bot ${index}`,
+  };
+}
 
 export async function POST(
   _request: Request,
@@ -40,8 +64,9 @@ export async function POST(
       return NextResponse.json({ error: "Draft is no longer accepting players" }, { status: 400 });
     }
 
+    const slot = nextBotSlot(db, draft.id);
     const players = createPlayerService(db);
-    const bot = players.findOrCreate(guildId, BOT_DISCORD_ID, BOT_DISPLAY_NAME);
+    const bot = players.findOrCreate(guildId, slot.discordId, slot.displayName);
 
     const drafts = createDraftService(db);
     drafts.join(draft.id, bot.id);

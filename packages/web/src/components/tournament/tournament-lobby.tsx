@@ -304,7 +304,35 @@ export function TournamentLobby({
         )}
       </section>
 
-      {/* Primary action — Start (organizer pending) or Join (non-participant pending) */}
+      {/* Join — non-participant on a pending tournament */}
+      {!isParticipant && (
+        <div className="mb-6 flex flex-col items-center gap-2">
+          <Button
+            variant="primary"
+            size="lg"
+            loading={actionLoading === "join"}
+            onClick={handleJoin}
+            className="min-w-[240px]"
+          >
+            <UserPlus className="h-5 w-5" />
+            Join Tournament
+          </Button>
+        </div>
+      )}
+
+      {/* Timing settings — organizer only */}
+      {isCreator && (
+        <section className="mb-6">
+          <TournamentSettingsForm
+            tournamentSlug={tournamentSlug}
+            initialDeadlineAt={tournament.deadlineAt}
+            initialReportConfirmWindowHours={tournament.reportConfirmWindowHours}
+            onSaved={onChanged}
+          />
+        </section>
+      )}
+
+      {/* Primary action — Start / Add Bot (organizer pending), pinned below settings */}
       {isCreator && (
         <div className="mb-6 flex flex-col items-center gap-2">
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -339,33 +367,6 @@ export function TournamentLobby({
             </p>
           )}
         </div>
-      )}
-
-      {!isParticipant && (
-        <div className="mb-6 flex flex-col items-center gap-2">
-          <Button
-            variant="primary"
-            size="lg"
-            loading={actionLoading === "join"}
-            onClick={handleJoin}
-            className="min-w-[240px]"
-          >
-            <UserPlus className="h-5 w-5" />
-            Join Tournament
-          </Button>
-        </div>
-      )}
-
-      {/* Timing settings — organizer only */}
-      {isCreator && (
-        <section className="mb-6">
-          <TournamentSettingsForm
-            tournamentSlug={tournamentSlug}
-            initialDeadlineAt={tournament.deadlineAt}
-            initialReportConfirmWindowHours={tournament.reportConfirmWindowHours}
-            onSaved={onChanged}
-          />
-        </section>
       )}
 
       {/* Cancel — quiet destructive footer link, organizer only */}

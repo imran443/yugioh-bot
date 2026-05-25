@@ -65,7 +65,7 @@ function insertDraftCard(
 function insertDraftPack(
   db: Database.Database,
   draftId: number,
-  packRound: number,
+  waveNumber: number,
   originSeatIndex: number,
   currentHolderSeatIndex: number,
   passDirection = 1,
@@ -75,13 +75,13 @@ function insertDraftPack(
       `
         insert into draft_packs (
           draft_id,
-          pack_round,
+          wave_number,
           origin_seat_index,
           current_holder_seat_index,
           pass_direction
         ) values (?, ?, ?, ?, ?)
       `,
-    ).run(draftId, packRound, originSeatIndex, currentHolderSeatIndex, passDirection).lastInsertRowid,
+    ).run(draftId, waveNumber, originSeatIndex, currentHolderSeatIndex, passDirection).lastInsertRowid,
   );
 }
 
@@ -538,7 +538,7 @@ describe("draft service", () => {
     expect(app.drafts.findById(draft.id)).toMatchObject({ currentPackRound: 2, currentPickStep: 1 });
     expect(
       app.db
-        .prepare("select distinct pass_direction from draft_packs where draft_id = ? and pack_round = 2 order by pass_direction asc")
+        .prepare("select distinct pass_direction from draft_packs where draft_id = ? and wave_number = 2 order by pass_direction asc")
         .all(draft.id),
     ).toEqual([{ pass_direction: -1 }]);
   });
@@ -662,7 +662,7 @@ describe("draft service", () => {
         `
           select id, current_holder_seat_index
           from draft_packs
-          where draft_id = ? and pack_round = 1
+          where draft_id = ? and wave_number = 1
           order by current_holder_seat_index asc
         `,
       )

@@ -57,7 +57,7 @@ describe("GET /api/drafts/[slug]/pool", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns cards from poolCardIds", async () => {
+  it("returns cards from a legacy poolCardIds config key", async () => {
     await setup(JSON.stringify({ poolCardIds: [46986414] }));
     const { GET } = await import("../app/api/drafts/[slug]/pool/route");
     const res = await GET(req(), params());
@@ -67,7 +67,16 @@ describe("GET /api/drafts/[slug]/pool", () => {
     expect(json.cards[0]).toMatchObject({ name: "Dark Magician", imageUrl: "u1" });
   });
 
-  it("falls back to resolvePoolCardIds when poolCardIds absent", async () => {
+  it("returns cards from cubeCardIds", async () => {
+    await setup(JSON.stringify({ cubeCardIds: [46986414] }));
+    const { GET } = await import("../app/api/drafts/[slug]/pool/route");
+    const res = await GET(req(), params());
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.cards.map((c: { id: number }) => c.id)).toEqual([46986414]);
+  });
+
+  it("falls back to resolveCubeCardIds when cubeCardIds/poolCardIds absent", async () => {
     await setup(JSON.stringify({ setNames: ["Metal Raiders"] }));
     const { GET } = await import("../app/api/drafts/[slug]/pool/route");
     const json = await (await GET(req(), params())).json();
