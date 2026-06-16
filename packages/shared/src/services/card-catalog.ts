@@ -85,7 +85,7 @@ export function createCardCatalogService(
 ) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  const fetchCards = async (searchParam: "cardset" | "id" | "name", value: string) => {
+  const fetchCards = async (searchParam: "cardset" | "id" | "name" | "fname", value: string) => {
     const url = new URL(YGOPRODECK_API_URL);
     url.searchParams.set(searchParam, value);
 
@@ -203,6 +203,23 @@ export function createCardCatalogService(
       upsertCards(cardsToCache);
 
       return findByIds(cardsToCache.map((card) => card.id));
+    },
+
+    async syncCardByName(name: string) {
+      const [card] = await fetchCards("name", name);
+      if (!card || isExtraDeckCard(card)) {
+        return undefined;
+      }
+
+      upsertCards([card]);
+      return findByIds([card.id])[0];
+    },
+
+    async syncCardsByFuzzyName(name: string) {
+      const cards = await fetchCards("fname", name);
+      const nonExtra = cards.filter((card) => !isExtraDeckCard(card));
+      upsertCards(nonExtra);
+      return findByIds(nonExtra.map((card) => card.id));
     },
 
     listSets(query?: string): Array<{ setName: string; setCode: string; cardCount: number }> {
