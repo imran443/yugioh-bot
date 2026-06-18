@@ -89,8 +89,8 @@ describe("POST /api/cards/resolve", () => {
     const dm = json.cards.find((c: { id: number }) => c.id === 46986414);
     expect(dm).toMatchObject({ name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", imageUrl: "u1", imageUrlSmall: "s1" });
     expect(syncDraftPool).toHaveBeenCalledWith({
-      setNames: ["Metal Raiders"],
-      customCardIds: [83764718, 46986414, 99999999],
+      setNames: [],
+      customCardIds: [99999999],
       includeNames: [],
       excludeNames: [],
     });
