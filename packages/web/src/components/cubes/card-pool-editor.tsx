@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CardPoolGrid } from "@/components/cards/card-pool-grid";
+import { CardHoverPopup } from "@/components/draft/card-hover-popup";
 import type { CardSummary } from "@/lib/card-types";
 import { parseCustomCardIds } from "@/lib/custom-card-pool";
 import { getCached, putCards } from "@/lib/cards-cache";
@@ -31,6 +32,19 @@ function idsToText(ids: number[]): string {
   return ids.join("\n");
 }
 
+const SEARCH_POPUP_WIDTH = 288;
+const SEARCH_POPUP_HEIGHT = 560;
+const SEARCH_POPUP_MARGIN = 16;
+
+function getSearchPopupPosition(rect: DOMRect): { left: number; top: number } {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const leftOfItem = rect.left - SEARCH_POPUP_WIDTH - SEARCH_POPUP_MARGIN;
+  const left = Math.min(vw - SEARCH_POPUP_WIDTH - SEARCH_POPUP_MARGIN, Math.max(SEARCH_POPUP_MARGIN, leftOfItem));
+  const top = Math.min(vh - SEARCH_POPUP_HEIGHT - SEARCH_POPUP_MARGIN, Math.max(SEARCH_POPUP_MARGIN, rect.top + rect.height / 2 - SEARCH_POPUP_HEIGHT / 2));
+  return { left, top };
+}
+
 function withQuantities(cards: CardSummary[]): CardSummary[] {
   const byId = new Map<number, CardSummary>();
   const qty = new Map<number, number>();
@@ -50,6 +64,10 @@ export function CardPoolEditor(props: CardPoolEditorProps) {
   const [setNames, setSetNames] = React.useState<string[]>([]);
   const [customCardText, setCustomCardText] = React.useState("");
   const [importText, setImportText] = React.useState("");
+  const [cardSearchQuery, setCardSearchQuery] = React.useState("");
+  const [searchResults, setSearchResults] = React.useState<CardSummary[]>([]);
+  const [searching, setSearching] = React.useState(false);
+  const [searchFocused, setSearchFocused] = React.useState(false);
   const [cards, setCards] = React.useState<CardSummary[]>([]);
   const [unknownIds, setUnknownIds] = React.useState<number[]>([]);
   const [loading, setLoading] = React.useState(!isCreate);
@@ -57,7 +75,11 @@ export function CardPoolEditor(props: CardPoolEditorProps) {
   const [saving, setSaving] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [hoveredSearchCard, setHoveredSearchCard] = React.useState<CardSummary | null>(null);
+  const [searchPopupPosition, setSearchPopupPosition] = React.useState<{ left: number; top: number } | null>(null);
+  const [searchImageErrors, setSearchImageErrors] = React.useState<Set<number>>(new Set());
   const reqId = React.useRef(0);
+  const searchReqId = React.useRef(0);
 
   const parsed = React.useMemo(() => parseCustomCardIds(customCardText), [customCardText]);
   const importParsed = React.useMemo(() => parseCustomCardIds(importText), [importText]);
@@ -189,6 +211,47 @@ export function CardPoolEditor(props: CardPoolEditorProps) {
     reader.readAsText(file);
   };
 
+  const addCardToPool = (card: CardSummary) => {
+    putCards([card]);
+    const nextIds = setNames.length > 0
+      ? cards.flatMap((resolved) => Array(resolved.qty ?? 1).fill(resolved.id))
+      : [...parsed.cardIds];
+    nextIds.push(card.id);
+    setSetNames([]);
+    setCustomCardText(idsToText(nextIds));
+  };
+
+  React.useEffect(() => {
+    const trimmedQuery = cardSearchQuery.trim();
+    if (trimmedQuery.length === 0) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    const myReq = ++searchReqId.current;
+    const timeout = setTimeout(() => {
+      setSearching(true);
+      fetch("/api/cards/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fuzzyName: trimmedQuery }),
+      })
+        .then((res) => (res.ok ? res.json() : Promise.reject(new Error("search failed"))))
+        .then((data: { cards: CardSummary[] }) => {
+          if (myReq !== searchReqId.current) return;
+          putCards(data.cards);
+          setSearchResults(data.cards.slice(0, 8));
+        })
+        .catch(() => {
+          if (myReq === searchReqId.current) setSearchResults([]);
+        })
+        .finally(() => {
+          if (myReq === searchReqId.current) setSearching(false);
+        });
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [cardSearchQuery]);
+
   const removeOneCopy = (card: CardSummary) => {
     const ids = [...parsed.cardIds];
     const index = ids.indexOf(card.id);
@@ -205,7 +268,6 @@ export function CardPoolEditor(props: CardPoolEditorProps) {
     } else {
       return;
     }
-    setStatus(`Removed one copy of ${card.name}. Save changes to persist.`);
   };
 
   const save = async () => {
@@ -304,6 +366,73 @@ export function CardPoolEditor(props: CardPoolEditorProps) {
 
       {error && <p className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-3 text-sm text-accent-cta">{error}</p>}
       {status && <p className="rounded-lg border border-accent-primary/40 bg-accent-primary/10 px-4 py-3 text-sm text-accent-primary">{status}</p>}
+
+      <section className="rounded-xl border border-border bg-surface p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Upload className="h-4 w-4 text-accent-primary" />
+          <h2 className="font-display text-lg text-text-primary">Add single card</h2>
+        </div>
+        <div className="relative">
+          <label htmlFor="cube-card-search" className="mb-1 block text-sm font-medium text-text-primary">Search card name</label>
+          <input
+            id="cube-card-search"
+            aria-label="Search card name"
+            value={cardSearchQuery}
+            onChange={(event) => setCardSearchQuery(event.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+            placeholder="blue-eyes, dark magician, ..."
+            autoComplete="off"
+            className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
+          />
+          {searchFocused && (searching || searchResults.length > 0) && (
+            <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-border bg-bg-surface shadow-card">
+              {searching && searchResults.length === 0 && (
+                <div className="px-3 py-2 text-sm text-text-secondary">Searching...</div>
+              )}
+              {searchResults.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  data-testid="card-search-result"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => addCardToPool(card)}
+                  onMouseEnter={(event) => {
+                    setHoveredSearchCard(card);
+                    setSearchPopupPosition(getSearchPopupPosition(event.currentTarget.getBoundingClientRect()));
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredSearchCard(null);
+                    setSearchPopupPosition(null);
+                  }}
+                  onFocus={(event) => {
+                    setHoveredSearchCard(card);
+                    setSearchPopupPosition(getSearchPopupPosition(event.currentTarget.getBoundingClientRect()));
+                  }}
+                  onBlur={() => {
+                    setHoveredSearchCard(null);
+                    setSearchPopupPosition(null);
+                  }}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-elevated focus:bg-bg-elevated focus:outline-none"
+                >
+                  <img src={card.imageUrlSmall} alt="" className="h-10 w-8 rounded object-contain" />
+                  <span className="flex-1">{card.name}</span>
+                  <span className="text-xs text-text-secondary">{card.type}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {hoveredSearchCard && searchPopupPosition && (
+            <CardHoverPopup
+              card={hoveredSearchCard}
+              position={searchPopupPosition}
+              imageError={searchImageErrors.has(hoveredSearchCard.id)}
+              onImageError={() => setSearchImageErrors((prev) => new Set(prev).add(hoveredSearchCard.id))}
+            />
+          )}
+        </div>
+        <p className="mt-2 text-xs text-text-secondary">Type to search, then click a card in the dropdown to add one copy. Click the same card again for another copy. Added cards are local until you save changes.</p>
+      </section>
 
       <section className="rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center gap-2">

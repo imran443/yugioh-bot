@@ -113,7 +113,6 @@ export function CardPoolGrid({
 
   const showSkeleton = loading && cards.length === 0;
   const previewEnabled = !cubeEditMode && !onCardClick;
-  const hoverEnabled = !cubeEditMode;
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
@@ -200,10 +199,10 @@ export function CardPoolGrid({
                   setTapped(card);
                   setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect()));
                 }}
-                onMouseEnter={hoverEnabled ? (e) => handleEnter(card, e.currentTarget.getBoundingClientRect()) : undefined}
-                onMouseLeave={hoverEnabled ? handleLeave : undefined}
-                onFocus={hoverEnabled ? (e) => handleEnter(card, e.currentTarget.getBoundingClientRect()) : undefined}
-                onBlur={hoverEnabled ? handleLeave : undefined}
+                onMouseEnter={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
+                onMouseLeave={handleLeave}
+                onFocus={(e) => handleEnter(card, e.currentTarget.getBoundingClientRect())}
+                onBlur={handleLeave}
               >
                 <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
                   {imageErrors.has(card.id) ? (
@@ -245,7 +244,7 @@ export function CardPoolGrid({
         )}
       </div>
 
-      {previewEnabled && hoveredCard && popupPosition && !tapped && (
+      {hoveredCard && popupPosition && !tapped && (
         <CardHoverPopup
           card={hoveredCard}
           position={popupPosition}
