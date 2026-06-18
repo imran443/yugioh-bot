@@ -133,12 +133,12 @@ describe("CardPoolGrid", () => {
     expect(screen.getAllByText("Mirror Force")).toHaveLength(1);
   });
 
-  it("does not open preview on hover in cube edit mode", () => {
+  it("opens preview on hover in cube edit mode", () => {
     render(<CardPoolGrid cards={cards} cubeEditMode />);
 
     fireEvent.mouseEnter(screen.getByRole("button", { name: /preview mirror force/i }));
 
-    expect(screen.getAllByText("Mirror Force")).toHaveLength(1);
+    expect(screen.getAllByText("Mirror Force").length).toBeGreaterThanOrEqual(2);
   });
 
   it("does not open preview on click in cube edit mode", () => {

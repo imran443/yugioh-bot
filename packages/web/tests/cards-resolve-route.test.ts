@@ -9,6 +9,8 @@ const tempDirs: string[] = [];
 vi.mock("@/lib/auth", () => ({ auth }));
 
 const syncDraftPool = vi.fn();
+const syncCardByName = vi.fn();
+const syncCardsByFuzzyName = vi.fn();
 
 vi.mock("@yugidraft/shared/services", async (importOriginal) => {
   const original = await importOriginal<typeof import("@yugidraft/shared/services")>();
@@ -17,6 +19,8 @@ vi.mock("@yugidraft/shared/services", async (importOriginal) => {
     createCardCatalogService: (db: any) => ({
       ...original.createCardCatalogService(db),
       syncDraftPool,
+      syncCardByName,
+      syncCardsByFuzzyName,
     }),
   };
 });
@@ -57,6 +61,10 @@ describe("POST /api/cards/resolve", () => {
     auth.mockResolvedValue({ user: { id: "u", name: "Yugi" } });
     syncDraftPool.mockReset();
     syncDraftPool.mockResolvedValue([]);
+    syncCardByName.mockReset();
+    syncCardByName.mockResolvedValue(undefined);
+    syncCardsByFuzzyName.mockReset();
+    syncCardsByFuzzyName.mockResolvedValue([]);
   });
   afterEach(() => {
     delete process.env.DATABASE_PATH;
@@ -135,5 +143,87 @@ describe("POST /api/cards/resolve", () => {
     // …but the multiplicity is preserved as qty: 101 listed 3×, 102 once.
     expect(body.cards.find((c) => c.id === 101)?.qty).toBe(3);
     expect(body.cards.find((c) => c.id === 102)?.qty).toBe(1);
+  });
+
+  it("resolves one exact card name", async () => {
+    await setupDb();
+    syncCardByName.mockResolvedValue({
+      ygoprodeckId: 83764718,
+      name: "Monster Reborn",
+      type: "Spell Card",
+      frameType: "spell",
+      effectText: "Target 1 monster...",
+      atk: undefined,
+      def: undefined,
+      attribute: undefined,
+      level: undefined,
+      imageUrl: "u2",
+      imageUrlSmall: "s2",
+    });
+    const { POST } = await import("../app/api/cards/resolve/route");
+
+    const res = await POST(new Request("http://localhost/api/cards/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cardName: "  Monster Reborn  " }),
+    }));
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      cards: [expect.objectContaining({ id: 83764718, name: "Monster Reborn", imageUrl: "u2", imageUrlSmall: "s2" })],
+      unknownIds: [],
+    });
+    expect(syncCardByName).toHaveBeenCalledWith("Monster Reborn");
+    expect(syncDraftPool).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when exact card name is not found", async () => {
+    await setupDb();
+    const { POST } = await import("../app/api/cards/resolve/route");
+
+    const res = await POST(new Request("http://localhost/api/cards/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cardName: "Pot of Greeddd" }),
+    }));
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "No card found for \"Pot of Greeddd\"." });
+    expect(syncCardByName).toHaveBeenCalledWith("Pot of Greeddd");
+  });
+
+  it("resolves fuzzy name search", async () => {
+    await setupDb();
+    syncCardsByFuzzyName.mockResolvedValue([
+      {
+        ygoprodeckId: 89631139,
+        name: "Blue-Eyes White Dragon",
+        type: "Dragon / Normal Monster",
+        frameType: "normal",
+        effectText: "",
+        atk: 3000,
+        def: 2500,
+        attribute: "LIGHT",
+        level: 8,
+        imageUrl: "u3",
+        imageUrlSmall: "s3",
+      },
+    ]);
+    const { POST } = await import("../app/api/cards/resolve/route");
+
+    const res = await POST(new Request("http://localhost/api/cards/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fuzzyName: "  blue-eyes  " }),
+    }));
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      cards: [expect.objectContaining({ id: 89631139, name: "Blue-Eyes White Dragon" })],
+      unknownIds: [],
+    });
+    expect(syncCardsByFuzzyName).toHaveBeenCalledWith("blue-eyes");
+    expect(syncDraftPool).not.toHaveBeenCalled();
+    expect(syncCardByName).not.toHaveBeenCalled();
   });
 });

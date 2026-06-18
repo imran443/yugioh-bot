@@ -162,8 +162,6 @@ function CardPoolGridBase({
 
   const showSkeleton = loading && cards.length === 0;
   const previewEnabled = !cubeEditMode && !onCardClick;
-  const hoverEnabled = !cubeEditMode;
-
   const scrollRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<{ columns: number; innerWidth: number }>({
     columns: 1,
@@ -345,10 +343,10 @@ function CardPoolGridBase({
                           setTapped(entry.card);
                           setPopupPosition(getPopupPosition(e.currentTarget.getBoundingClientRect()));
                         }}
-                        onMouseEnter={hoverEnabled ? (e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect()) : undefined}
-                        onMouseLeave={hoverEnabled ? handleLeave : undefined}
-                        onFocus={hoverEnabled ? (e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect()) : undefined}
-                        onBlur={hoverEnabled ? handleLeave : undefined}
+                        onMouseEnter={(e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect())}
+                        onMouseLeave={handleLeave}
+                        onFocus={(e) => handleEnter(entry.card, e.currentTarget.getBoundingClientRect())}
+                        onBlur={handleLeave}
                       >
                         <div className="relative aspect-[421/614] w-full overflow-hidden rounded-md bg-bg-elevated">
                           {imageErrors.has(entry.card.id) ? (
@@ -413,7 +411,7 @@ function CardPoolGridBase({
         )}
       </div>
 
-      {previewEnabled && hoveredCard && popupPosition && !tapped && (
+      {hoveredCard && popupPosition && !tapped && (
         <CardHoverPopup
           card={hoveredCard}
           position={popupPosition}
