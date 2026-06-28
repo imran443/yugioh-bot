@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { Theme, ThemeAnalysis, ThemeCard, ThemePool, ThemePools } from "../types/index.js";
+import type { Card, Theme, ThemeAnalysis, ThemeCard, ThemePool, ThemePools } from "../types/index.js";
 import { isExtraDeckFrame, type CardCatalogService } from "./card-catalog.js";
 
 export interface AnalyzeThemeConfig {
@@ -193,7 +193,7 @@ export function createThemesService(db: Database.Database, catalog: CardCatalogS
       const unknown: number[] = [];
       let added = 0;
       for (const [id, count] of counts) {
-        let card = catalog.findByIds([id])[0];
+        let card: Card | undefined = catalog.findByIds([id])[0];
         if (!card) {
           card = await catalog.syncCardById(id);
         }
