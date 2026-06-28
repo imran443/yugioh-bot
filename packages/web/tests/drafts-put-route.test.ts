@@ -98,6 +98,25 @@ describe("PUT /api/drafts/[slug]", () => {
     expect(data.config.packSize).toBe(14); // ceil(40/3)
   });
 
+  it("recomputes the pool from the new selection instead of reusing the stale snapshot", async () => {
+    await setupDraftWithCustomPool(); // seeded with poolCardIds = [1..30]
+    const { PUT } = await import("../app/api/drafts/[slug]/route");
+    const reduced = Array.from({ length: 20 }, (_, i) => i + 1);
+    const request = new Request("http://localhost/api/drafts/test-slug", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: { setNames: [], customCardIds: reduced } }),
+    }) as NextRequest;
+
+    const response = await PUT(request, { params: Promise.resolve({ slug: "test-slug" }) });
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.config.customCardIds).toEqual(reduced);
+    // Materialized cube reflects the reduced selection, not the stale 30-card snapshot.
+    expect(data.config.cubeCardIds).toEqual(reduced);
+    expect(data.config.poolCardIds).toBeUndefined();
+  });
+
   it("allows editing when 0 sets but customCardIds are present", async () => {
     await setupDraftWithCustomPool();
     const { PUT } = await import("../app/api/drafts/[slug]/route");

@@ -152,6 +152,25 @@ describe("shared card catalog service", () => {
     ]);
   });
 
+  it("skips re-fetching custom card ids already in the catalog", async () => {
+    const summonedSkull = {
+      id: 70781052,
+      name: "Summoned Skull",
+      type: "Fiend / Normal Monster",
+      frameType: "normal",
+      card_images: [{ image_url: "https://img/full/summoned-skull", image_url_small: "https://img/small/summoned-skull" }],
+      card_sets: [{ set_name: "Metal Raiders" }],
+    } satisfies YgoprodeckCard;
+    const app = setup({}, {}, { "70781052": [summonedSkull] });
+
+    // First sync fetches and caches the card.
+    await app.catalog.syncDraftPool({ setNames: [], customCardIds: [70781052], includeNames: [], excludeNames: [] });
+    // Second sync (and duplicate ids in the same call) must not hit the network again.
+    await app.catalog.syncDraftPool({ setNames: [], customCardIds: [70781052, 70781052], includeNames: [], excludeNames: [] });
+
+    expect(app.fetchCalls).toEqual(["https://db.ygoprodeck.com/api/v7/cardinfo.php?id=70781052"]);
+  });
+
   it("syncs one card by exact name into the local catalog", async () => {
     const monsterReborn = {
       id: 83764718,

@@ -117,3 +117,44 @@ describe("DraftManageView — card pool section", () => {
     await waitFor(() => expect(screen.getByText(/couldn't load the pool/i)).toBeTruthy());
   });
 });
+
+describe("DraftManageView — editing config syncs the card pool pane", () => {
+  beforeEach(() => installVirtualizerJsdomEnv());
+
+  const dm = { id: 46986414, name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", effectText: "", imageUrl: "u", imageUrlSmall: "s" };
+  const bewd = { id: 89631139, name: "Blue-Eyes White Dragon", type: "Dragon / Normal Monster", frameType: "normal", effectText: "", imageUrl: "u2", imageUrlSmall: "s2" };
+
+  it("hides the inline pool preview and removes a card from the single synced pane", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/drafts/my-slug/pool") return Response.json({ cards: [] });
+      if (url === "/api/cards/resolve") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { setNames?: string[] };
+        // Before removal sets are active (qty 2 + 1 = 3 copies); after removal
+        // the sets collapse to passcodes and one copy is gone (2 copies).
+        const cards = body.setNames && body.setNames.length > 0
+          ? [{ ...dm, qty: 2 } as CardSummary, { ...bewd, qty: 1 } as CardSummary]
+          : [{ ...dm, qty: 1 } as CardSummary, { ...bewd, qty: 1 } as CardSummary];
+        return Response.json({ cards, unknownIds: [] });
+      }
+      return Response.json({}, { status: 404 });
+    }));
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    render(<DraftManageView draft={baseDraft} slug="my-slug" isCreator isParticipant={false} onStart={noop} onCancel={noop} onUpdate={onUpdate} onJoin={noop} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /edit configuration/i }));
+
+    // The synced pane resolves the in-progress pool and exposes remove actions.
+    await waitFor(() => expect(screen.getByRole("button", { name: /remove dark magician from pool/i })).toBeTruthy());
+    // The duplicate inline "Pool preview" grid is gone — only the left pane remains.
+    expect(screen.queryByText(/pool preview/i)).toBeNull();
+    // 3 copies before removal.
+    await waitFor(() => expect(screen.getByText(/3 copies/i)).toBeTruthy());
+
+    await userEvent.click(screen.getByRole("button", { name: /remove dark magician from pool/i }));
+
+    // Removal is local (no save) and the synced pane updates to 2 copies.
+    await waitFor(() => expect(screen.queryByText(/3 copies/i)).toBeNull());
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+});
