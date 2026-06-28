@@ -159,6 +159,13 @@ export async function PUT(
       const existing = drafts.findById(draft.id);
       const mergedConfig = { ...existing.config, ...(config as object) };
 
+      // The submitted config redefines the pool (sets + custom passcodes), so
+      // any previously materialized ids are stale. Drop them before resolving —
+      // otherwise resolveCubeCardIds returns the old snapshot and edits like
+      // removing a card never take effect in the saved pool.
+      delete (mergedConfig as { cubeCardIds?: number[] }).cubeCardIds;
+      delete (mergedConfig as { poolCardIds?: number[] }).poolCardIds;
+
       const clampedPacks = Math.min(10, Math.max(1, Number((mergedConfig as any).packsPerPlayer) || 5));
       (mergedConfig as any).packsPerPlayer = clampedPacks;
       (mergedConfig as any).packSize = Math.ceil(40 / clampedPacks);
