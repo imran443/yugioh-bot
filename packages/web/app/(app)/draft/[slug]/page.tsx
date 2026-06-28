@@ -9,6 +9,7 @@ import { DraftCardPreview } from "@/components/draft/draft-card-preview";
 import { TimerBar } from "@/components/draft/timer-bar";
 import { SeatList } from "@/components/draft/seat-list";
 import { PoolPanel } from "@/components/draft/pool-panel";
+import { ThemeLobbyPanel } from "@/components/themes/theme-lobby-panel";
 import { useDraftStore } from "@/lib/stores/draft-store";
 import { useDraftWebsocket } from "@/lib/hooks/use-draft-websocket";
 import { useDraftCountdown } from "@/lib/hooks/use-draft-countdown";
@@ -46,7 +47,21 @@ interface DraftData {
     pickSeconds?: number;
     setNames?: string[];
     customCardIds?: number[];
+    mode?: "booster" | "theme";
+    themeSelection?: "host_assigned" | "random" | "player_pick";
+    uniqueThemes?: boolean;
+    extraDeckEnabled?: boolean;
   };
+  phase?: "main" | "extra";
+  themeProgress?: { main: number; mainTotal: number; extra: number; extraTotal: number };
+  allowedThemes?: Array<{
+    id: number;
+    name: string;
+    archetype: string | null;
+    mainCount: number;
+    extraCount: number;
+    sampleImages: string[];
+  }>;
   players: DraftPlayer[];
   playerCount: number;
   participantPickCount?: number;
@@ -268,9 +283,21 @@ export default function DraftDetailPage() {
     await fetchDraft();
   };
 
+  const isThemeDraft = draft.config.mode === "theme";
+
   if (draft.status === "pending") {
     return (
       <div>
+        {isThemeDraft && draft.allowedThemes && (
+          <div className="mx-auto max-w-[1800px] px-4 pt-4 sm:px-6 lg:px-8">
+            <ThemeLobbyPanel
+              slug={slug}
+              allowedThemes={draft.allowedThemes}
+              themeSelection={draft.config.themeSelection ?? "player_pick"}
+              onClaimed={() => void fetchDraft()}
+            />
+          </div>
+        )}
         <DraftManageView
           draft={draft}
           slug={slug}
@@ -293,6 +320,19 @@ export default function DraftDetailPage() {
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
         <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
           <div className="mx-auto max-w-[1800px]">
+            {isThemeDraft && draft.themeProgress && (
+              <div className="mb-2 flex items-center gap-2 text-sm">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${draft.phase === "extra" ? "bg-accent-gold/15 text-accent-gold" : "bg-accent-primary/15 text-accent-primary"}`}>
+                  {draft.phase === "extra" ? "Extra Deck" : "Main Deck"}
+                </span>
+                <span className="text-text-secondary">
+                  Main {draft.themeProgress.main}/{draft.themeProgress.mainTotal}
+                  {draft.themeProgress.extraTotal > 0 && (
+                    <> · Extra {draft.themeProgress.extra}/{draft.themeProgress.extraTotal}</>
+                  )}
+                </span>
+              </div>
+            )}
             <TimerBar className="rounded-none border-0 bg-transparent p-0" totalDraftCards={totalDraftCards} />
           </div>
         </div>
