@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { parseCustomCardIds } from "@/lib/custom-card-pool";
-import { putCards } from "@/lib/cards-cache";
+import { parseCustomCardIds, toCardCounts } from "@/lib/custom-card-pool";
+import { getCached, putCards } from "@/lib/cards-cache";
 import type { CardSummary } from "@/lib/card-types";
 import { SetPicker } from "@/components/draft/set-picker";
 import { CardPoolPanel } from "@/components/cards/card-pool-panel";
@@ -46,6 +46,27 @@ export function PoolBuilder({
     const customCardIds = parsed.cardIds;
     if (setNames.length === 0 && customCardIds.length === 0) {
       setCards([]);
+      setUnknownIds([]);
+      setLoading(false);
+      return;
+    }
+    // Instant path: with no sets, qty is just the multiset count, so if every
+    // id is already cached we resolve locally — no debounce, no network. This
+    // makes edits like click-to-remove update the pool immediately.
+    const { hits, missing } = getCached(customCardIds);
+    if (setNames.length === 0 && missing.length === 0) {
+      const counts = toCardCounts(customCardIds);
+      const byId = new Map(hits.map((c) => [c.id, c]));
+      const seen = new Set<number>();
+      const local: CardSummary[] = [];
+      for (const id of customCardIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const card = byId.get(id);
+        if (card) local.push({ ...card, qty: counts.get(id) ?? 1 });
+      }
+      reqId.current++; // invalidate any in-flight network resolve
+      setCards(local);
       setUnknownIds([]);
       setLoading(false);
       return;

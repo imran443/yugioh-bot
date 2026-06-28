@@ -11,7 +11,8 @@ vi.mock("@/lib/cards-cache", () => ({
   clearCardsCache: vi.fn(),
 }));
 
-import { putCards } from "../../src/lib/cards-cache";
+import { getCached, putCards } from "../../src/lib/cards-cache";
+import type { CardSummary } from "../../src/lib/card-types";
 
 vi.mock("next/image", () => ({
   default: ({ alt, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
@@ -47,6 +48,8 @@ describe("PoolBuilder", () => {
     installVirtualizerJsdomEnv();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(putCards).mockReset();
+    // Default: nothing cached, so the network path runs (overridden per-test).
+    vi.mocked(getCached).mockImplementation((ids: number[]) => ({ hits: [], missing: ids }));
   });
   afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
@@ -88,6 +91,26 @@ describe("PoolBuilder", () => {
     // badge sourced from the route's authoritative qty (full multiset sent).
     expect(screen.getAllByRole("button", { name: /preview dark magician/i }).length).toBe(1);
     expect(screen.getByText("×3")).toBeTruthy();
+  });
+
+  it("resolves instantly from cache (no debounce, no network) when every id is cached", async () => {
+    const fetchMock = stubFetch();
+    vi.mocked(getCached).mockImplementation((ids: number[]) => ({
+      hits: [...new Set(ids)]
+        .filter((id) => id === 46986414)
+        .map((id) => ({ id, name: "Dark Magician", type: "Spellcaster / Normal Monster", frameType: "normal", effectText: "", imageUrl: "u", imageUrlSmall: "s" }) as CardSummary),
+      missing: [...new Set(ids)].filter((id) => id !== 46986414),
+    }));
+
+    render(<PoolBuilder value={{ setNames: [], customCardText: "46986414\n46986414" }} onChange={vi.fn()} />);
+
+    // No timer advance: the cached path must render without waiting for debounce.
+    await waitFor(() => expect(screen.getByRole("button", { name: /preview dark magician/i })).toBeTruthy());
+    expect(screen.getByText("×2")).toBeTruthy();
+    const resolveCalled = fetchMock.mock.calls.some(
+      ([u, i]) => String(u) === "/api/cards/resolve" && (i as RequestInit)?.method === "POST",
+    );
+    expect(resolveCalled).toBe(false);
   });
 
   it("shows an error when the API returns non-ok", async () => {
