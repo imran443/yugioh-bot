@@ -109,3 +109,32 @@ export interface Card {
   cachedAt: string;
   archetype?: string;
 }
+
+export type ThemePool = "main" | "extra";
+
+export interface ThemeCard {
+  catalogCardId: number;
+  pool: ThemePool;
+  maxCopies: number;
+  source?: string;
+}
+
+export interface ThemePools {
+  main: ThemeCard[];
+  extra: ThemeCard[];
+}
+
+export interface Theme {
+  id: number;
+  guildId: string;
+  name: string;
+  archetype: string | null;
+  banlist: string | null;
+  createdByUserId: string;
+}
+
+export interface ThemeAnalysis {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+}
