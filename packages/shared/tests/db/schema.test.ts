@@ -24,12 +24,14 @@ describe("shared database schema", () => {
       .map((row: any) => row.name);
 
     expect(tables).toEqual([
+      "archetypes",
       "card_catalog",
       "card_sets",
       "draft_cards",
       "draft_deal",
       "draft_packs",
       "draft_picks",
+      "draft_player_theme",
       "draft_players",
       "draft_templates",
       "drafts",
@@ -41,6 +43,8 @@ describe("shared database schema", () => {
       "point_awards",
       "season_standings",
       "seasons",
+      "theme_cards",
+      "themes",
       "tournament_matches",
       "tournament_participants",
       "tournaments",
@@ -132,6 +136,36 @@ describe("shared database schema", () => {
     migrate(db);
     const cols = getTableInfo(db, "card_catalog").map((column) => column.name);
     expect(cols).toContain("archetype");
+  });
+
+  it("creates theme tables", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const tables = (
+      db.prepare("select name from sqlite_master where type='table'").all() as Array<{ name: string }>
+    ).map((r) => r.name);
+    expect(tables).toEqual(
+      expect.arrayContaining(["themes", "theme_cards", "draft_player_theme", "archetypes"]),
+    );
+  });
+
+  it("enforces the theme_cards primary key and pool", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    db.prepare(
+      "insert into themes (guild_id, name, created_by_user_id, created_at, updated_at) values ('g','Blue-Eyes','u','t','t')",
+    ).run();
+    db.prepare(
+      "insert into card_catalog (ygoprodeck_id,name,type,frame_type,image_url,image_url_small,card_sets_json,cached_at) values (1,'a','t','normal','i','i','[]','t')",
+    ).run();
+    db.prepare(
+      "insert into theme_cards (theme_id, catalog_card_id, pool, max_copies) values (1,1,'main',3)",
+    ).run();
+    expect(() =>
+      db
+        .prepare("insert into theme_cards (theme_id, catalog_card_id, pool, max_copies) values (1,1,'main',3)")
+        .run(),
+    ).toThrow();
   });
 
   it("adds the card_sets table when migrating an older database", () => {

@@ -59,6 +59,39 @@ export function migrate(db: Database.Database) {
       cached_at text not null
     );
 
+    create table if not exists themes (
+      id integer primary key autoincrement,
+      guild_id text not null,
+      name text not null,
+      archetype text,
+      banlist text,
+      created_by_user_id text not null,
+      created_at text not null,
+      updated_at text not null,
+      unique (guild_id, name)
+    );
+
+    create table if not exists theme_cards (
+      theme_id integer not null references themes(id) on delete cascade,
+      catalog_card_id integer not null references card_catalog(ygoprodeck_id),
+      pool text not null,
+      max_copies integer not null default 3,
+      source text,
+      primary key (theme_id, catalog_card_id)
+    );
+
+    create table if not exists draft_player_theme (
+      draft_id integer not null references drafts(id),
+      player_id integer not null references players(id),
+      theme_id integer not null references themes(id),
+      primary key (draft_id, player_id)
+    );
+
+    create table if not exists archetypes (
+      name text primary key,
+      synced_at text not null
+    );
+
     create table if not exists drafts (
       id integer primary key autoincrement,
       guild_id text not null,
