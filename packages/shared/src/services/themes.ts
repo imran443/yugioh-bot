@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Theme, ThemeCard, ThemePool, ThemePools } from "../types/index.js";
-import type { CardCatalogService } from "./card-catalog.js";
+import { isExtraDeckFrame, type CardCatalogService } from "./card-catalog.js";
 
 function mapTheme(row: any): Theme {
   return {
@@ -166,6 +166,63 @@ export function createThemesService(db: Database.Database, catalog: CardCatalogS
         catalogCardId,
       );
       bump(themeId);
+    },
+
+    async importPasscodes(
+      themeId: number,
+      codes: number[],
+      opts: { pool?: ThemePool } = {},
+    ): Promise<{ added: number; unknown: number[] }> {
+      const counts = new Map<number, number>();
+      for (const id of codes) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+
+      const unknown: number[] = [];
+      let added = 0;
+      for (const [id, count] of counts) {
+        let card = catalog.findByIds([id])[0];
+        if (!card) {
+          card = await catalog.syncCardById(id);
+        }
+        if (!card) {
+          unknown.push(id);
+          continue;
+        }
+        const pool: ThemePool = opts.pool ?? (isExtraDeckFrame(card) ? "extra" : "main");
+        upsertCard.run(themeId, id, pool, Math.min(count, 3), null);
+        added += 1;
+      }
+
+      bump(themeId);
+      return { added, unknown };
+    },
+
+    async seedArchetypeInto(
+      themeId: number,
+      archetype: string,
+      opts: { banlist?: string; maxCopies?: number } = {},
+    ): Promise<{ added: number }> {
+      const { main, extra } = await catalog.syncByArchetype(archetype, { banlist: opts.banlist });
+      const present = existingCardIds(themeId);
+      const maxCopies = opts.maxCopies ?? 3;
+      let added = 0;
+      for (const card of main) {
+        if (!present.has(card.ygoprodeckId)) {
+          upsertCard.run(themeId, card.ygoprodeckId, "main", maxCopies, null);
+          present.add(card.ygoprodeckId);
+          added += 1;
+        }
+      }
+      for (const card of extra) {
+        if (!present.has(card.ygoprodeckId)) {
+          upsertCard.run(themeId, card.ygoprodeckId, "extra", maxCopies, null);
+          present.add(card.ygoprodeckId);
+          added += 1;
+        }
+      }
+      bump(themeId);
+      return { added };
     },
 
     getThemePools,

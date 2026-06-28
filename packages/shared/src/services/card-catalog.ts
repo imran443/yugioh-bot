@@ -52,7 +52,7 @@ function normalizeName(name: string) {
   return name.trim().toLowerCase();
 }
 
-function isExtraDeckCard(card: YgoprodeckCard) {
+export function isExtraDeckFrame(card: { frameType: string; type: string }) {
   return (
     EXTRA_DECK_FRAME_TYPES.has(card.frameType) ||
     card.type.includes("Fusion Monster") ||
@@ -61,6 +61,10 @@ function isExtraDeckCard(card: YgoprodeckCard) {
     card.type.includes("Xyz Monster") ||
     card.type.includes("Link Monster")
   );
+}
+
+function isExtraDeckCard(card: YgoprodeckCard) {
+  return isExtraDeckFrame(card);
 }
 
 function mapCard(row: any): CardCatalogCard {
@@ -279,6 +283,16 @@ export function createCardCatalogService(
 
       // findByIds preserves the requested id order, keeping XYZ (first type) first.
       return findByIds(orderedIds);
+    },
+
+    async syncCardById(id: number): Promise<CardCatalogCard | undefined> {
+      const [card] = await fetchCards("id", String(id));
+      if (!card) {
+        return undefined;
+      }
+      // Keep Extra Deck cards — themes need them for the extra pool.
+      upsertCards([card]);
+      return findByIds([card.id])[0];
     },
 
     async syncCardByName(name: string) {

@@ -86,4 +86,49 @@ describe("themes service core", () => {
     expect(pools.extra.find((c) => c.catalogCardId === 12)?.source).toBe("generic-extra");
     expect(theme.archetype).toBe("Blue-Eyes");
   });
+
+  it("imports passcodes, routing extra-deck cards to the extra pool", async () => {
+    const { db, themes } = setup(); // id 1 = normal, id 2 = xyz already in catalog
+    const theme = themes.createBlank("g", "Custom", "u");
+    const res = await themes.importPasscodes(theme.id, [1, 2]);
+    expect(res.added).toBe(2);
+    expect(res.unknown).toEqual([]);
+    const pools = themes.getThemePools(theme.id);
+    expect(pools.main.map((c) => c.catalogCardId)).toEqual([1]);
+    expect(pools.extra.map((c) => c.catalogCardId)).toEqual([2]);
+    void db;
+  });
+
+  it("collapses repeated passcodes into max_copies (capped at 3)", async () => {
+    const { themes } = setup();
+    const theme = themes.createBlank("g", "Custom", "u");
+    await themes.importPasscodes(theme.id, [1, 1, 1, 1]);
+    expect(themes.getThemePools(theme.id).main[0].maxCopies).toBe(3);
+  });
+
+  it("reports unknown passcodes that cannot be synced", async () => {
+    const { themes } = setup(); // empty catalog: fetch returns []
+    const theme = themes.createBlank("g", "Custom", "u");
+    const res = await themes.importPasscodes(theme.id, [1, 9999999]);
+    expect(res.added).toBe(1);
+    expect(res.unknown).toEqual([9999999]);
+  });
+
+  it("seedArchetypeInto additively pulls an archetype into an existing theme", async () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const archMain = { id: 10, name: "BEWD", type: "Normal Monster", frameType: "normal", archetype: "Blue-Eyes", card_images: [{ image_url: "i", image_url_small: "i" }] };
+    const catalog = createCardCatalogService(db, {
+      fetch: async (input) => {
+        const u = new URL(String(input));
+        const data = u.searchParams.get("archetype") === "Blue-Eyes" ? [archMain] : [];
+        return { ok: true, async json() { return { data }; } } as Response;
+      },
+    });
+    const themes = createThemesService(db, catalog);
+    const theme = themes.createBlank("g", "Mixed", "u");
+    const res = await themes.seedArchetypeInto(theme.id, "Blue-Eyes");
+    expect(res.added).toBe(1);
+    expect(themes.getThemePools(theme.id).main.map((c) => c.catalogCardId)).toEqual([10]);
+  });
 });
