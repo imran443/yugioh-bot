@@ -102,13 +102,6 @@ export async function POST(request: NextRequest) {
     config: DraftConfig;
   };
 
-  if (!name || (!config?.setNames?.length && !config?.customCardIds?.length)) {
-    return NextResponse.json(
-      { error: "name and a draft pool are required" },
-      { status: 400 }
-    );
-  }
-
   const guildId = env.discordGuildId;
   const resolvedChannelId = channelId || env.discordDefaultChannelId;
 
@@ -116,6 +109,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Server not configured for draft creation" },
       { status: 500 }
+    );
+  }
+
+  // Theme mode: no card-pool sync — the pool lives in the assigned themes.
+  if (config?.mode === "theme") {
+    if (!name || !config.allowedThemeIds?.length) {
+      return NextResponse.json({ error: "name and at least one allowed theme are required" }, { status: 400 });
+    }
+    const db = getDb();
+    const players = createPlayerService(db);
+    const player = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
+    const drafts = createDraftService(db);
+    const draft = drafts.create(guildId, resolvedChannelId, name, config, session.user.id, player.id);
+
+    void announcer.announce({
+      kind: "draft-created",
+      draftId: draft.id,
+      channelId: draft.channelId,
+      name: draft.name,
+      webSlug: draft.webSlug ?? "",
+    });
+
+    return NextResponse.json(
+      { id: draft.id, name: draft.name, status: draft.status, webSlug: draft.webSlug, warnings: [], errors: [] },
+      { status: 201 },
+    );
+  }
+
+  if (!name || (!config?.setNames?.length && !config?.customCardIds?.length)) {
+    return NextResponse.json(
+      { error: "name and a draft pool are required" },
+      { status: 400 }
     );
   }
 
