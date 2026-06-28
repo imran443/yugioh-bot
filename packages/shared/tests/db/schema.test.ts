@@ -123,7 +123,15 @@ describe("shared database schema", () => {
       "image_url_small",
       "card_sets_json",
       "cached_at",
+      "archetype",
     ]);
+  });
+
+  it("adds an archetype column to card_catalog", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const cols = getTableInfo(db, "card_catalog").map((column) => column.name);
+    expect(cols).toContain("archetype");
   });
 
   it("adds the card_sets table when migrating an older database", () => {
@@ -290,6 +298,7 @@ describe("shared database schema", () => {
       "def",
       "attribute",
       "level",
+      "archetype",
     ]);
   });
 

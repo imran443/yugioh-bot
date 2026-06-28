@@ -247,6 +247,7 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "card_catalog", "def", "integer");
   addColumnIfMissing(db, "card_catalog", "attribute", "text");
   addColumnIfMissing(db, "card_catalog", "level", "integer");
+  addColumnIfMissing(db, "card_catalog", "archetype", "text");
   addColumnIfMissing(db, "card_sets", "card_count", "integer");
   addColumnIfMissing(db, "card_sets", "set_code", "text");
   addColumnIfMissing(db, "drafts", "tournament_id", "integer references tournaments(id)");
