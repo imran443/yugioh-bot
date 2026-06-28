@@ -17,6 +17,11 @@ interface CardPoolPanelProps {
   /** "distinct" (default) shows just N cards; "copies" also shows total copies when any qty > 1. */
   countMode?: "distinct" | "copies";
   className?: string;
+  // Forwarded to the grid so callers can turn the preview into a card picker
+  // (e.g. click a card to remove one copy while editing a pool).
+  onCardClick?: (card: CardSummary) => void;
+  cardActionLabel?: (card: CardSummary) => string;
+  cubeEditMode?: boolean;
 }
 
 function CardPoolPanelBase({
@@ -30,6 +35,9 @@ function CardPoolPanelBase({
   showSummary = false,
   countMode = "distinct",
   className,
+  onCardClick,
+  cardActionLabel,
+  cubeEditMode,
 }: CardPoolPanelProps) {
   const distinct = cards.length;
   const totalCopies = useMemo(
@@ -62,6 +70,9 @@ function CardPoolPanelBase({
         emptyMessage={emptyMessage}
         heightClassName={heightClassName}
         showSummary={showSummary}
+        onCardClick={onCardClick}
+        cardActionLabel={cardActionLabel}
+        cubeEditMode={cubeEditMode}
       />
     </div>
   );
