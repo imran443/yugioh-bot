@@ -12,6 +12,26 @@ export interface DraftConfig {
   cubeCardIds?: number[];
   /** @deprecated legacy key, still read for drafts created before the rename */
   poolCardIds?: number[];
+
+  // ----- theme mode -----
+  /** Draft mode. Absent or "booster" => existing behavior. */
+  mode?: "booster" | "theme";
+  /** Theme ids the host allows for this draft (the "X" pool). */
+  allowedThemeIds?: number[];
+  /** How each player's theme is chosen. Default "player_pick". */
+  themeSelection?: "host_assigned" | "random" | "player_pick";
+  /** Optional explicit player -> theme map for host_assigned. */
+  themeAssignments?: Record<string, number>;
+  /** If true (default), every player gets a distinct theme, capping players at allowedThemeIds.length. */
+  uniqueThemes?: boolean;
+  /** Number of choices shown per pick. Admin-set; default 3, any X >= 2. */
+  themePackSize?: number;
+  /** Whether to run the Extra Deck draft phase at all. Default true. */
+  extraDeckEnabled?: boolean;
+  /** Extra Deck cards to draft in phase 2 (ignored when extraDeckEnabled is false). Default 15. */
+  extraDeckSize?: number;
+  /** If true, the (themePackSize - 1) unpicked cards are discarded each round; if false (default) they return. */
+  burnUnpicked?: boolean;
 }
 
 export interface Draft {

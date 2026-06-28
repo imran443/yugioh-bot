@@ -91,7 +91,7 @@ const defaultDraftConfig = {
 } satisfies Required<Pick<DraftConfig, "packSize" | "packsPerPlayer" | "cardsPerPlayer" | "pickSeconds" | "alternatePassDirection" | "randomizeSeats">>;
 
 function normalizeDraftConfig(config: DraftConfig): DraftConfig {
-  return {
+  const base = {
     ...config,
     packSize: config.packSize ?? defaultDraftConfig.packSize,
     packsPerPlayer: config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer,
@@ -100,6 +100,26 @@ function normalizeDraftConfig(config: DraftConfig): DraftConfig {
     alternatePassDirection: config.alternatePassDirection ?? defaultDraftConfig.alternatePassDirection,
     randomizeSeats: config.randomizeSeats ?? defaultDraftConfig.randomizeSeats,
   };
+  if (config.mode !== "theme") {
+    return base;
+  }
+  return {
+    ...base,
+    mode: "theme",
+    themePackSize: config.themePackSize ?? 3,
+    extraDeckEnabled: config.extraDeckEnabled ?? true,
+    extraDeckSize: config.extraDeckSize ?? 15,
+    burnUnpicked: config.burnUnpicked ?? false,
+    themeSelection: config.themeSelection ?? "player_pick",
+    uniqueThemes: config.uniqueThemes ?? true,
+  };
+}
+
+/** Per-player total rounds for a theme draft: main rounds + optional extra rounds. */
+export function totalThemeRounds(config: DraftConfig): number {
+  const main = config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer;
+  const extra = (config.extraDeckEnabled ?? true) ? (config.extraDeckSize ?? 15) : 0;
+  return main + extra;
 }
 
 const extraDeckFrameTypes = new Set(["fusion", "synchro", "xyz", "link"]);
