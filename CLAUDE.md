@@ -70,6 +70,10 @@ The bot wraps all discord.js interactions into framework-agnostic `*Like` types 
 
 Drafts are started from either Discord or the web dashboard. The bot's draft timer (`packages/bot/src/services/draft-timer.ts`) polls active drafts every second and expires pick steps past their deadline, then notifies the ws server. The ws server broadcasts to all browser clients in the draft's Socket.IO room.
 
+### Theme draft mode
+
+A second draft mode (`DraftConfig.mode === "theme"`) sits alongside the booster/cube draft. Instead of passing shared packs, each player drafts privately from their own archetype/theme-restricted pool. Themes are reusable, persisted in `themes` / `theme_cards` (split `main`/`extra` pools with per-card `max_copies`), seeded from YGOPRODeck archetypes or built from passcodes via the theme editor (`/themes`, reuses the cube-editor primitives). The engine branches in `drafts.ts`: `openThemeRound` deals each player a private `themePackSize` pack each round; `startThemeDraft` assigns seats + themes (host/random/player-pick) and pre-flights main-pool sufficiency; `pickThemeCard` advances the global round (`current_wave_number` = `1..totalRounds`, phase derived: `main` then optional `extra`) once every player dealt a pack has picked. The web flow: **+ New Draft** → chooser (`/drafts/new`) → `/drafts/new/theme`; lobby theme claim/preview + start preflight; in-draft phase indicator. Booster mode is untouched. Card catalog gains `syncByArchetype`/`syncStaples`/`syncGenericExtra`/`listArchetypes` and a `card_catalog.archetype` column.
+
 ### Card catalog
 
 Card data is fetched from ygoprodeck.com and cached in the `card_catalog` SQLite table. The bot syncs sets daily (cron, configurable via `SETS_SYNC_CRON`). Card images are cached to disk at `CARD_IMAGE_CACHE_DIR` (default `./data/card-images`), evicted by oldest-first when the cache exceeds `CARD_IMAGE_CACHE_MAX_BYTES` (default 15 GB).

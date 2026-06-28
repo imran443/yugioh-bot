@@ -4,6 +4,7 @@ import { migrate } from "../../src/db/index.js";
 import { createDraftService } from "../../src/services/drafts.js";
 import { createThemesService } from "../../src/services/themes.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
+import { createDraftTournamentService } from "../../src/services/draft-tournament.js";
 import type { DraftConfig } from "../../src/types/index.js";
 
 function emptyCatalog(db: Database.Database) {
@@ -218,6 +219,24 @@ describe("theme draft — full draft completion", () => {
     drafts.start(draftId);
     runToCompletion(drafts, draftId, playerIds);
     expect(drafts.findById(draftId).status).toBe("completed");
+  });
+});
+
+describe("theme draft — tournament hand-off", () => {
+  it("creates a tournament from a completed theme draft", () => {
+    const { db, drafts, draftId, playerIds } = makeThemeDraft({
+      config: { extraDeckEnabled: false, cardsPerPlayer: 40, themePackSize: 3, themeSelection: "random" },
+      themes: [{ main: 60, extra: 0 }, { main: 60, extra: 0 }],
+    });
+    drafts.start(draftId);
+    runToCompletion(drafts, draftId, playerIds);
+    expect(drafts.findById(draftId).status).toBe("completed");
+
+    const tourneys = createDraftTournamentService(db);
+    const result = tourneys.createTournamentFromDraft({ draftId, format: "round_robin", createdByUserId: "host" });
+    expect(result).toBeTruthy();
+    const row = db.prepare("select count(*) as n from tournaments where guild_id = 'g'").get() as { n: number };
+    expect(row.n).toBe(1);
   });
 });
 
