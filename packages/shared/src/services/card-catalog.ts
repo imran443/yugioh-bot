@@ -45,6 +45,7 @@ export type SyncDraftPoolInput = {
 
 const YGOPRODECK_API_URL = "https://db.ygoprodeck.com/api/v7/cardinfo.php";
 const YGOPRODECK_CARDSETS_URL = "https://db.ygoprodeck.com/api/v7/cardsets.php";
+const YGOPRODECK_ARCHETYPES_URL = "https://db.ygoprodeck.com/api/v7/archetypes.php";
 const EXTRA_DECK_FRAME_TYPES = new Set(["fusion", "synchro", "xyz", "link"]);
 
 function normalizeName(name: string) {
@@ -334,6 +335,38 @@ export function createCardCatalogService(
       })();
 
       return payload.map((s) => s.set_name);
+    },
+
+    async listArchetypes(query?: string): Promise<string[]> {
+      const cachedCount = (
+        db.prepare("select count(*) as n from archetypes").get() as { n: number }
+      ).n;
+
+      if (cachedCount === 0) {
+        const response = await fetchImpl(YGOPRODECK_ARCHETYPES_URL);
+        if (!response.ok) {
+          throw new Error("YGOPRODeck archetypes request failed");
+        }
+        const payload = (await response.json()) as Array<{ archetype_name: string }>;
+        const syncedAt = new Date().toISOString();
+        const insert = db.prepare(
+          "insert or replace into archetypes (name, synced_at) values (?, ?)",
+        );
+        db.transaction(() => {
+          for (const { archetype_name } of payload) {
+            insert.run(archetype_name, syncedAt);
+          }
+        })();
+      }
+
+      const hasQuery = query && query.trim().length > 0;
+      const rows = hasQuery
+        ? db
+            .prepare("select name from archetypes where lower(name) like lower(?) order by name")
+            .all(`%${query.trim()}%`)
+        : db.prepare("select name from archetypes order by name").all();
+
+      return (rows as Array<{ name: string }>).map((row) => row.name);
     },
 
     findByIds,

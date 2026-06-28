@@ -112,4 +112,27 @@ describe("card-catalog archetype support", () => {
     expect(generic.map((c) => c.ygoprodeckId)).toContain(84013237);
     expect(generic[0].ygoprodeckId).toBe(84013237); // XYZ ordered first
   });
+
+  it("lists archetypes from the API and caches them", async () => {
+    let calls = 0;
+    const db = new Database(":memory:");
+    migrate(db);
+    const catalog = createCardCatalogService(db, {
+      fetch: async (input) => {
+        const u = String(input);
+        if (u.includes("archetypes.php")) {
+          calls++;
+          return {
+            ok: true,
+            async json() { return [{ archetype_name: "Blue-Eyes" }, { archetype_name: "Dark Magician" }]; },
+          } as Response;
+        }
+        return { ok: true, async json() { return { data: [] }; } } as Response;
+      },
+    });
+    expect(await catalog.listArchetypes()).toEqual(["Blue-Eyes", "Dark Magician"]);
+    const filtered = await catalog.listArchetypes("blue");
+    expect(filtered).toEqual(["Blue-Eyes"]);
+    expect(calls).toBe(1); // second call served from cache
+  });
 });
