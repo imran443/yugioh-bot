@@ -21,6 +21,7 @@ type YgoprodeckCard = {
   def?: number;
   attribute?: string;
   level?: number;
+  archetype?: string;
   card_images: Array<{
     image_url: string;
     image_url_small: string;
@@ -76,6 +77,7 @@ function mapCard(row: any): CardCatalogCard {
     imageUrlSmall: row.image_url_small,
     cardSets: JSON.parse(row.card_sets_json),
     cachedAt: row.cached_at,
+    archetype: row.archetype ?? undefined,
   };
 }
 
@@ -85,19 +87,24 @@ export function createCardCatalogService(
 ) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  const fetchCards = async (searchParam: "cardset" | "id" | "name" | "fname", value: string) => {
+  const fetchCardsWith = async (params: Record<string, string>) => {
     const url = new URL(YGOPRODECK_API_URL);
-    url.searchParams.set(searchParam, value);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
 
     const response = await fetchImpl(url);
 
     if (!response.ok) {
-      throw new Error(`YGOPRODeck request failed for ${searchParam}=${value}`);
+      throw new Error(`YGOPRODeck request failed for ${new URLSearchParams(params).toString()}`);
     }
 
     const payload = (await response.json()) as { data?: YgoprodeckCard[] };
     return payload.data ?? [];
   };
+
+  const fetchCards = (searchParam: "cardset" | "id" | "name" | "fname", value: string) =>
+    fetchCardsWith({ [searchParam]: value });
 
   const upsertCard = db.prepare(
     `
@@ -114,8 +121,9 @@ export function createCardCatalogService(
         image_url,
         image_url_small,
         card_sets_json,
-        cached_at
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cached_at,
+        archetype
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       on conflict(ygoprodeck_id) do update set
         name = excluded.name,
         type = excluded.type,
@@ -128,7 +136,8 @@ export function createCardCatalogService(
         image_url = excluded.image_url,
         image_url_small = excluded.image_url_small,
         card_sets_json = excluded.card_sets_json,
-        cached_at = excluded.cached_at
+        cached_at = excluded.cached_at,
+        archetype = excluded.archetype
     `,
   );
 
@@ -156,6 +165,7 @@ export function createCardCatalogService(
         image.image_url_small,
         JSON.stringify(card.card_sets ?? []),
         cachedAt,
+        card.archetype ?? null,
       );
     }
   });
@@ -203,6 +213,27 @@ export function createCardCatalogService(
       upsertCards(cardsToCache);
 
       return findByIds(cardsToCache.map((card) => card.id));
+    },
+
+    async syncByArchetype(
+      archetype: string,
+      opts: { banlist?: string } = {},
+    ): Promise<{ main: CardCatalogCard[]; extra: CardCatalogCard[] }> {
+      const params: Record<string, string> = { archetype };
+      if (opts.banlist) {
+        params.banlist = opts.banlist;
+      }
+
+      const cards = await fetchCardsWith(params);
+      upsertCards(cards);
+
+      const cached = findByIds(cards.map((card) => card.id));
+      const extraIds = new Set(cards.filter(isExtraDeckCard).map((card) => card.id));
+
+      return {
+        main: cached.filter((card) => !extraIds.has(card.ygoprodeckId)),
+        extra: cached.filter((card) => extraIds.has(card.ygoprodeckId)),
+      };
     },
 
     async syncCardByName(name: string) {

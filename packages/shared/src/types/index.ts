@@ -107,4 +107,5 @@ export interface Card {
   imageUrlSmall: string;
   cardSets: Array<{ set_name: string }>;
   cachedAt: string;
+  archetype?: string;
 }
