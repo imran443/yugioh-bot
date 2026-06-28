@@ -2,20 +2,16 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import type { DraftConfig } from "@yugidraft/shared/types";
 import { Button } from "@/components/ui/button";
 
 type Channel = { id: string; name: string };
-type ThemeSummary = { id: number; name: string; archetype: string | null; mainCount: number; extraCount: number };
 
 export function CreateThemeDraftForm() {
   const router = useRouter();
   const [name, setName] = React.useState("");
   const [channelId, setChannelId] = React.useState("");
   const [channels, setChannels] = React.useState<Channel[]>([]);
-  const [themes, setThemes] = React.useState<ThemeSummary[]>([]);
-  const [allowedThemeIds, setAllowedThemeIds] = React.useState<number[]>([]);
   const [themePackSize, setThemePackSize] = React.useState(3);
   const [cardsPerPlayer, setCardsPerPlayer] = React.useState(40);
   const [extraDeckEnabled, setExtraDeckEnabled] = React.useState(true);
@@ -32,15 +28,7 @@ export function CreateThemeDraftForm() {
       .then((res) => res.json())
       .then((data) => setChannels(data.channels ?? []))
       .catch(() => {});
-    fetch("/api/themes")
-      .then((res) => (res.ok ? res.json() : { themes: [] }))
-      .then((data) => setThemes(data.themes ?? []))
-      .catch(() => {});
   }, []);
-
-  const toggleTheme = (id: number) => {
-    setAllowedThemeIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,13 +37,9 @@ export function CreateThemeDraftForm() {
       setError("Draft name is required");
       return;
     }
-    if (allowedThemeIds.length === 0) {
-      setError("Select at least one theme");
-      return;
-    }
     const config: DraftConfig = {
       mode: "theme",
-      allowedThemeIds,
+      allowedThemeIds: [],
       themePackSize,
       cardsPerPlayer,
       extraDeckEnabled,
@@ -77,6 +61,7 @@ export function CreateThemeDraftForm() {
         throw new Error(data.error ?? "Failed to create theme draft");
       }
       const draft = await res.json();
+      // Land in the draft, where you build its theme cubes.
       router.push(draft.webSlug ? `/draft/${draft.webSlug}` : "/drafts");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -94,6 +79,10 @@ export function CreateThemeDraftForm() {
         <div className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-2 text-sm text-accent-cta">{error}</div>
       )}
 
+      <p className="rounded-lg border border-border bg-surface/60 px-4 py-3 text-sm text-text-secondary">
+        Set up the draft here, then add your theme cubes (one per archetype) inside the draft on the next screen.
+      </p>
+
       <div>
         <label htmlFor="theme-draft-name" className="mb-1 block text-sm font-medium text-text-primary">Draft Name</label>
         <input id="theme-draft-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Friday Theme Night" className={inputCls} required />
@@ -105,36 +94,6 @@ export function CreateThemeDraftForm() {
           <option value="">Default Channel</option>
           {channels.map((ch) => <option key={ch.id} value={ch.id}>#{ch.name}</option>)}
         </select>
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface/60 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-text-primary">Allowed Themes</h2>
-          <span className="text-xs text-text-secondary">{allowedThemeIds.length} selected</span>
-        </div>
-        {themes.length === 0 ? (
-          <p className="text-sm text-text-secondary">
-            No themes yet. <Link href="/themes" className="text-accent-primary hover:underline">Create one</Link> first.
-          </p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {themes.map((theme) => {
-              const selected = allowedThemeIds.includes(theme.id);
-              return (
-                <button
-                  type="button"
-                  key={theme.id}
-                  onClick={() => toggleTheme(theme.id)}
-                  className={`rounded-lg border p-3 text-left transition ${selected ? "border-accent-primary bg-accent-primary/10" : "border-border bg-surface hover:border-accent-primary/50"}`}
-                >
-                  <p className="font-display text-text-primary">{theme.name}</p>
-                  <p className="mt-1 text-xs text-text-secondary">{theme.mainCount} main · {theme.extraCount} extra</p>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {uniqueThemes && <p className="mt-2 text-xs text-text-secondary">Max players = number of selected themes (unique themes on).</p>}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

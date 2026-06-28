@@ -10,6 +10,7 @@ import { TimerBar } from "@/components/draft/timer-bar";
 import { SeatList } from "@/components/draft/seat-list";
 import { PoolPanel } from "@/components/draft/pool-panel";
 import { ThemeLobbyPanel } from "@/components/themes/theme-lobby-panel";
+import { ThemeDraftBuilder } from "@/components/themes/theme-draft-builder";
 import { useDraftStore } from "@/lib/stores/draft-store";
 import { useDraftWebsocket } from "@/lib/hooks/use-draft-websocket";
 import { useDraftCountdown } from "@/lib/hooks/use-draft-countdown";
@@ -288,14 +289,25 @@ export default function DraftDetailPage() {
   if (draft.status === "pending") {
     return (
       <div>
-        {isThemeDraft && draft.allowedThemes && (
+        {isThemeDraft && (
           <div className="mx-auto max-w-[1800px] px-4 pt-4 sm:px-6 lg:px-8">
-            <ThemeLobbyPanel
-              slug={slug}
-              allowedThemes={draft.allowedThemes}
-              themeSelection={draft.config.themeSelection ?? "player_pick"}
-              onClaimed={() => void fetchDraft()}
-            />
+            {isCreator ? (
+              <ThemeDraftBuilder
+                slug={slug}
+                allowedThemes={draft.allowedThemes ?? []}
+                uniqueThemes={draft.config.uniqueThemes ?? true}
+                onChanged={() => void fetchDraft()}
+              />
+            ) : (
+              draft.allowedThemes && (
+                <ThemeLobbyPanel
+                  slug={slug}
+                  allowedThemes={draft.allowedThemes}
+                  themeSelection={draft.config.themeSelection ?? "player_pick"}
+                  onClaimed={() => void fetchDraft()}
+                />
+              )
+            )}
           </div>
         )}
         <DraftManageView

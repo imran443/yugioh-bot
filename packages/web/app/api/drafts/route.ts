@@ -112,16 +112,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Theme mode: no card-pool sync — the pool lives in the assigned themes.
+  // Theme mode: no card-pool sync — the pool lives in the theme cubes, which the
+  // host adds inside the draft after creation. So a theme draft starts blank.
   if (config?.mode === "theme") {
-    if (!name || !config.allowedThemeIds?.length) {
-      return NextResponse.json({ error: "name and at least one allowed theme are required" }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
     const db = getDb();
     const players = createPlayerService(db);
     const player = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
     const drafts = createDraftService(db);
-    const draft = drafts.create(guildId, resolvedChannelId, name, config, session.user.id, player.id);
+    const draft = drafts.create(
+      guildId,
+      resolvedChannelId,
+      name,
+      { ...config, allowedThemeIds: config.allowedThemeIds ?? [] },
+      session.user.id,
+      player.id,
+    );
 
     void announcer.announce({
       kind: "draft-created",

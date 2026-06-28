@@ -179,9 +179,9 @@ export async function buildDraftResponse(slug: string, userId: string) {
   let themeProgress: { main: number; mainTotal: number; extra: number; extraTotal: number } | undefined;
   if (isTheme) {
     const ids = draftModel.config.allowedThemeIds ?? [];
-    // For random selection, hide theme identities until the draft is active (revealed).
-    const reveal = draft.status === "active" || draftModel.config.themeSelection !== "random";
-    if (reveal && ids.length > 0) {
+    // The pool of theme cubes is always shown (the host builds it openly here);
+    // only per-player random *assignment* is hidden until reveal, handled client-side.
+    if (ids.length > 0) {
       const placeholders = ids.map(() => "?").join(",");
       const rows = db
         .prepare(`select id, name, archetype from themes where id in (${placeholders})`)

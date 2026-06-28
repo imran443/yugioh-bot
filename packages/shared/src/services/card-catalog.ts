@@ -92,13 +92,28 @@ export function createCardCatalogService(
 ) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
+  // Fail fast on an unreachable API instead of hanging the request for minutes.
+  const REQUEST_TIMEOUT_MS = 12000;
+  const withTimeout = (input: string | URL) => {
+    const init = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+      ? { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
+      : undefined;
+    return fetchImpl(input, init);
+  };
+
   const fetchCardsWith = async (params: Record<string, string>) => {
     const url = new URL(YGOPRODECK_API_URL);
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
     }
 
-    const response = await fetchImpl(url);
+    let response;
+    try {
+      response = await withTimeout(url);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Could not reach the card database (${reason}). Check connectivity and try again.`);
+    }
 
     if (!response.ok) {
       throw new Error(`YGOPRODeck request failed for ${new URLSearchParams(params).toString()}`);
@@ -357,7 +372,7 @@ export function createCardCatalogService(
       ).n;
 
       if (cachedCount === 0) {
-        const response = await fetchImpl(YGOPRODECK_ARCHETYPES_URL);
+        const response = await withTimeout(YGOPRODECK_ARCHETYPES_URL);
         if (!response.ok) {
           throw new Error("YGOPRODeck archetypes request failed");
         }
