@@ -131,4 +131,73 @@ describe("themes service core", () => {
     expect(res.added).toBe(1);
     expect(themes.getThemePools(theme.id).main.map((c) => c.catalogCardId)).toEqual([10]);
   });
+
+  it("flags a main-short theme as an error (burn off)", () => {
+    const { themes } = setup();
+    const t = themes.createBlank("g", "Tiny", "u");
+    themes.addCard(t.id, 1, "main", 3); // 3 main copies, far short of 42
+    const a = themes.analyzeTheme(t.id, {
+      themePackSize: 3,
+      cardsPerPlayer: 40,
+      extraDeckSize: 15,
+      burnUnpicked: false,
+      extraDeckEnabled: false,
+    });
+    expect(a.ok).toBe(false);
+    expect(a.errors[0]).toMatch(/main/i);
+  });
+
+  it("passes a main-sufficient theme and skips extra when extra disabled", () => {
+    const { db, themes } = setup();
+    const t = themes.createBlank("g", "Big", "u");
+    for (let i = 100; i < 142; i++) {
+      seedCard(db, i, `C${i}`, "Normal Monster", "normal");
+      themes.addCard(t.id, i, "main", 1);
+    }
+    const a = themes.analyzeTheme(t.id, {
+      themePackSize: 3,
+      cardsPerPlayer: 40,
+      extraDeckSize: 15,
+      burnUnpicked: false,
+      extraDeckEnabled: false,
+    });
+    expect(a.ok).toBe(true);
+    expect(a.warnings).toEqual([]);
+  });
+
+  it("warns (not errors) on a thin extra pool when extra enabled", () => {
+    const { db, themes } = setup();
+    const t = themes.createBlank("g", "Big", "u");
+    for (let i = 100; i < 142; i++) {
+      seedCard(db, i, `C${i}`, "Normal Monster", "normal");
+      themes.addCard(t.id, i, "main", 1);
+    }
+    const a = themes.analyzeTheme(t.id, {
+      themePackSize: 3,
+      cardsPerPlayer: 40,
+      extraDeckSize: 15,
+      burnUnpicked: false,
+      extraDeckEnabled: true,
+    });
+    expect(a.ok).toBe(true); // warnings don't fail ok
+    expect(a.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("requires more cards under burnUnpicked (multiplied requirement)", () => {
+    const { db, themes } = setup();
+    const t = themes.createBlank("g", "Big", "u");
+    // 42 main copies is enough for burn-off (needs 42) but NOT burn-on (needs 120)
+    for (let i = 100; i < 142; i++) {
+      seedCard(db, i, `C${i}`, "Normal Monster", "normal");
+      themes.addCard(t.id, i, "main", 1);
+    }
+    const burnOn = themes.analyzeTheme(t.id, {
+      themePackSize: 3,
+      cardsPerPlayer: 40,
+      extraDeckSize: 15,
+      burnUnpicked: true,
+      extraDeckEnabled: false,
+    });
+    expect(burnOn.ok).toBe(false);
+  });
 });

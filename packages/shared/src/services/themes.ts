@@ -1,6 +1,18 @@
 import type Database from "better-sqlite3";
-import type { Theme, ThemeCard, ThemePool, ThemePools } from "../types/index.js";
+import type { Theme, ThemeAnalysis, ThemeCard, ThemePool, ThemePools } from "../types/index.js";
 import { isExtraDeckFrame, type CardCatalogService } from "./card-catalog.js";
+
+export interface AnalyzeThemeConfig {
+  themePackSize: number;
+  cardsPerPlayer: number;
+  extraDeckSize: number;
+  burnUnpicked: boolean;
+  extraDeckEnabled: boolean;
+}
+
+function requiredPoolSize(rounds: number, themePackSize: number, burnUnpicked: boolean): number {
+  return burnUnpicked ? rounds * themePackSize : rounds + (themePackSize - 1);
+}
 
 function mapTheme(row: any): Theme {
   return {
@@ -223,6 +235,32 @@ export function createThemesService(db: Database.Database, catalog: CardCatalogS
       }
       bump(themeId);
       return { added };
+    },
+
+    analyzeTheme(themeId: number, config: AnalyzeThemeConfig): ThemeAnalysis {
+      const pools = getThemePools(themeId);
+      const errors: string[] = [];
+      const warnings: string[] = [];
+
+      const mainSize = pools.main.reduce((sum, c) => sum + c.maxCopies, 0);
+      const mainNeeded = requiredPoolSize(config.cardsPerPlayer, config.themePackSize, config.burnUnpicked);
+      if (mainSize < mainNeeded) {
+        errors.push(
+          `Main pool has ${mainSize} cards but needs at least ${mainNeeded} for a ${config.cardsPerPlayer}-card main deck (${config.themePackSize} choices/pick${config.burnUnpicked ? ", burn on" : ""}).`,
+        );
+      }
+
+      if (config.extraDeckEnabled) {
+        const extraSize = pools.extra.reduce((sum, c) => sum + c.maxCopies, 0);
+        const extraNeeded = requiredPoolSize(config.extraDeckSize, config.themePackSize, config.burnUnpicked);
+        if (extraSize < extraNeeded) {
+          warnings.push(
+            `Extra pool has ${extraSize} cards but needs ${extraNeeded} for a full ${config.extraDeckSize}-card Extra Deck; players may end with fewer Extra cards.`,
+          );
+        }
+      }
+
+      return { ok: errors.length === 0, errors, warnings };
     },
 
     getThemePools,
