@@ -62,4 +62,28 @@ describe("themes service core", () => {
     themes.createBlank("g", "Blue-Eyes", "u");
     expect(themes.listThemes("g").map((t) => t.name).sort()).toEqual(["Blue-Eyes", "Stun"]);
   });
+
+  it("seeds a theme from an archetype and tops up thin extra with generics", async () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const archMain = { id: 10, name: "BEWD", type: "Normal Monster", frameType: "normal", archetype: "Blue-Eyes", card_images: [{ image_url: "i", image_url_small: "i" }] };
+    const archExtra = { id: 11, name: "BE Twin", type: "Fusion Monster", frameType: "fusion", archetype: "Blue-Eyes", card_images: [{ image_url: "i", image_url_small: "i" }] };
+    const genXyz = { id: 12, name: "Utopia", type: "XYZ Monster", frameType: "xyz", card_images: [{ image_url: "i", image_url_small: "i" }] };
+    const catalog = createCardCatalogService(db, {
+      fetch: async (input) => {
+        const u = new URL(String(input));
+        const a = u.searchParams.get("archetype");
+        const ty = u.searchParams.get("type");
+        const data = a === "Blue-Eyes" ? [archMain, archExtra] : ty === "XYZ Monster" ? [genXyz] : [];
+        return { ok: true, async json() { return { data }; } } as Response;
+      },
+    });
+    const themes = createThemesService(db, catalog);
+    const theme = await themes.createFromArchetype("g", "Blue-Eyes", "u", { extraTarget: 2, topUpExtraWithGenerics: true });
+    const pools = themes.getThemePools(theme.id);
+    expect(pools.main.map((c) => c.catalogCardId)).toContain(10);
+    expect(pools.extra.map((c) => c.catalogCardId)).toEqual(expect.arrayContaining([11, 12]));
+    expect(pools.extra.find((c) => c.catalogCardId === 12)?.source).toBe("generic-extra");
+    expect(theme.archetype).toBe("Blue-Eyes");
+  });
 });

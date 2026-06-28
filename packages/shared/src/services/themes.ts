@@ -22,7 +22,7 @@ function mapThemeCard(row: any): ThemeCard {
   };
 }
 
-export function createThemesService(db: Database.Database, _catalog: CardCatalogService) {
+export function createThemesService(db: Database.Database, catalog: CardCatalogService) {
   const touch = db.prepare("update themes set updated_at = ? where id = ?");
   const bump = (themeId: number) => touch.run(new Date().toISOString(), themeId);
 
@@ -32,6 +32,23 @@ export function createThemesService(db: Database.Database, _catalog: CardCatalog
       throw new Error(`Theme ${themeId} not found`);
     }
     return mapTheme(row);
+  };
+
+  const insertThemeRow = (
+    guildId: string,
+    name: string,
+    createdByUserId: string,
+    archetype: string | null,
+    banlist: string | null,
+  ): number => {
+    const now = new Date().toISOString();
+    const result = db
+      .prepare(
+        `insert into themes (guild_id, name, archetype, banlist, created_by_user_id, created_at, updated_at)
+         values (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(guildId, name, archetype, banlist, createdByUserId, now, now);
+    return Number(result.lastInsertRowid);
   };
 
   const upsertCard = db.prepare(
@@ -44,6 +61,13 @@ export function createThemesService(db: Database.Database, _catalog: CardCatalog
         source = excluded.source
     `,
   );
+
+  const existingCardIds = (themeId: number): Set<number> =>
+    new Set(
+      (db.prepare("select catalog_card_id from theme_cards where theme_id = ?").all(themeId) as Array<{
+        catalog_card_id: number;
+      }>).map((r) => r.catalog_card_id),
+    );
 
   const getThemePools = (themeId: number): ThemePools => {
     const rows = db
@@ -60,14 +84,69 @@ export function createThemesService(db: Database.Database, _catalog: CardCatalog
 
   return {
     createBlank(guildId: string, name: string, createdByUserId: string): Theme {
-      const now = new Date().toISOString();
-      const result = db
-        .prepare(
-          `insert into themes (guild_id, name, archetype, banlist, created_by_user_id, created_at, updated_at)
-           values (?, ?, null, null, ?, ?, ?)`,
-        )
-        .run(guildId, name, createdByUserId, now, now);
-      return findTheme(Number(result.lastInsertRowid));
+      return findTheme(insertThemeRow(guildId, name, createdByUserId, null, null));
+    },
+
+    async createFromArchetype(
+      guildId: string,
+      archetype: string,
+      createdByUserId: string,
+      opts: {
+        name?: string;
+        banlist?: string;
+        includeStaples?: boolean;
+        topUpExtraWithGenerics?: boolean;
+        extraTarget?: number;
+        maxCopies?: number;
+      } = {},
+    ): Promise<Theme> {
+      const {
+        name = archetype,
+        banlist,
+        includeStaples = false,
+        topUpExtraWithGenerics = true,
+        extraTarget = 15,
+        maxCopies = 3,
+      } = opts;
+
+      const { main, extra } = await catalog.syncByArchetype(archetype, { banlist });
+      const themeId = insertThemeRow(guildId, name, createdByUserId, archetype, banlist ?? null);
+
+      for (const card of main) {
+        upsertCard.run(themeId, card.ygoprodeckId, "main", maxCopies, null);
+      }
+      for (const card of extra) {
+        upsertCard.run(themeId, card.ygoprodeckId, "extra", maxCopies, null);
+      }
+
+      if (includeStaples) {
+        const staples = await catalog.syncStaples({ banlist });
+        const present = existingCardIds(themeId);
+        for (const card of staples) {
+          if (!present.has(card.ygoprodeckId)) {
+            upsertCard.run(themeId, card.ygoprodeckId, "main", maxCopies, "staple");
+          }
+        }
+      }
+
+      if (topUpExtraWithGenerics && extra.length < extraTarget) {
+        const generics = await catalog.syncGenericExtra({ banlist });
+        const present = existingCardIds(themeId);
+        let added = extra.length;
+        for (const card of generics) {
+          if (added >= extraTarget) {
+            break;
+          }
+          if (!present.has(card.ygoprodeckId)) {
+            upsertCard.run(themeId, card.ygoprodeckId, "extra", maxCopies, "generic-extra");
+            present.add(card.ygoprodeckId);
+            added += 1;
+          }
+        }
+      }
+
+      bump(themeId);
+      return findTheme(themeId);
     },
 
     addCard(themeId: number, catalogCardId: number, pool: ThemePool, maxCopies = 3, source: string | null = null): void {
