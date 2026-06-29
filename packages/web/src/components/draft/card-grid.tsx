@@ -37,6 +37,18 @@ export function CardGrid({ className }: CardGridProps) {
   const [hoveredCard, setHoveredCard] = React.useState<DraftCardDetail | null>(null);
   const [imageErrors, setImageErrors] = React.useState<Set<number>>(new Set());
   const [picking, setPicking] = React.useState(false);
+  // How many skeleton tiles to show while the pick request is in flight, so the
+  // whole pack hides at once (no flash of the remaining options) and the next
+  // pack fades in cleanly.
+  const [pickingCount, setPickingCount] = React.useState(3);
+
+  const gridColsClassName = cn(
+    "grid gap-3 sm:gap-4",
+    "grid-cols-[repeat(2,minmax(140px,1fr))]",
+    "sm:grid-cols-[repeat(3,minmax(140px,1fr))]",
+    "lg:grid-cols-[repeat(4,minmax(130px,1fr))]",
+    "2xl:grid-cols-[repeat(6,minmax(120px,1fr))]"
+  );
 
   const handleImageError = (cardId: number) => {
     setImageErrors((prev) => new Set(prev).add(cardId));
@@ -109,8 +121,10 @@ export function CardGrid({ className }: CardGridProps) {
         return;
       }
 
+      setPickingCount(state.currentPack.length || 3);
+      clearHoveredCard();
       setPicking(true);
-      pickCard(cardId); // optimistic local update
+      pickCard(cardId); // optimistic local update (pool count, etc.)
       fetchPick(cardId); // persist to server
     },
     [clearHoveredCard, picking, pickCard, fetchPick]
@@ -162,6 +176,26 @@ export function CardGrid({ className }: CardGridProps) {
     handleConfirmPick(card.id);
   };
 
+  // While a pick is being persisted, hide the whole pack and show shape-matched
+  // skeletons so there is no flash of the remaining options before the next pack.
+  if (picking) {
+    return (
+      <div className={cn("relative", className)}>
+        <div className={gridColsClassName} aria-hidden>
+          {Array.from({ length: pickingCount }).map((_, i) => (
+            <div
+              key={i}
+              className="flex flex-col items-center rounded-xl border border-border bg-bg-surface p-2 sm:p-2.5"
+            >
+              <div className="mb-3 aspect-[421/614] w-full animate-pulse rounded-lg bg-bg-elevated" />
+              <div className="h-4 w-3/4 animate-pulse self-start rounded bg-bg-elevated" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (currentPack.length === 0) {
     return (
       <div className={cn("relative flex min-h-[24rem] flex-col items-center justify-center", className)}>
@@ -188,13 +222,7 @@ export function CardGrid({ className }: CardGridProps) {
     <div className={cn("relative", className)}>
       <div
         key={packKey}
-        className={cn(
-          "pack-fade-in grid gap-3 sm:gap-4",
-          "grid-cols-[repeat(2,minmax(140px,1fr))]",
-          "sm:grid-cols-[repeat(3,minmax(140px,1fr))]",
-          "lg:grid-cols-[repeat(4,minmax(130px,1fr))]",
-          "2xl:grid-cols-[repeat(6,minmax(120px,1fr))]"
-        )}
+        className={cn("pack-fade-in", gridColsClassName)}
         role="listbox"
         aria-label="Current pack cards"
       >
