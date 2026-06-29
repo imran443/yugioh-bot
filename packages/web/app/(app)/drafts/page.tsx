@@ -31,7 +31,7 @@ export default async function DraftsPage() {
 
     const drafts = db
       .prepare(
-        `select d.id, d.guild_id, d.name, d.status, d.web_slug,
+        `select d.id, d.guild_id, d.name, d.status, d.web_slug, d.config_json,
                 d.current_wave_number, d.current_pick_step,
                 d.created_at, d.ended_at,
                 count(dp.player_id) as player_count
@@ -50,18 +50,29 @@ export default async function DraftsPage() {
            d.created_at desc`
       )
       .all(...playerIds)
-      .map((row: any) => ({
-        id: row.id,
-        guildId: row.guild_id,
-        name: row.name,
-        status: row.status,
-        webSlug: row.web_slug ?? undefined,
-        currentPackRound: row.current_wave_number ?? 0,
-        currentPickStep: row.current_pick_step ?? 0,
-        playerCount: row.player_count,
-        createdAt: row.created_at,
-        endedAt: row.ended_at ?? undefined,
-      }));
+      .map((row: any) => {
+        let mode: "booster" | "theme" = "booster";
+        try {
+          if ((JSON.parse(row.config_json ?? "{}") as { mode?: string }).mode === "theme") {
+            mode = "theme";
+          }
+        } catch {
+          // malformed config_json — default to booster
+        }
+        return {
+          id: row.id,
+          guildId: row.guild_id,
+          name: row.name,
+          status: row.status,
+          mode,
+          webSlug: row.web_slug ?? undefined,
+          currentPackRound: row.current_wave_number ?? 0,
+          currentPickStep: row.current_pick_step ?? 0,
+          playerCount: row.player_count,
+          createdAt: row.created_at,
+          endedAt: row.ended_at ?? undefined,
+        };
+      });
 
     data = {
       active: drafts.filter((d: any) => d.status === "active"),
