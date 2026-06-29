@@ -268,6 +268,7 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
       {error && <p className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-3 text-sm text-accent-cta">{error}</p>}
       {status && <p className="rounded-lg border border-accent-primary/40 bg-accent-primary/10 px-4 py-3 text-sm text-accent-primary">{status}</p>}
 
+      <div className="grid items-start gap-4 lg:grid-cols-2">
       <section className="rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-accent-gold" />
@@ -285,7 +286,14 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
               autoComplete="off"
               className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
             />
-            <Button type="button" variant="primary" size="sm" disabled={busy || archetypeQuery.trim().length === 0} onClick={() => void seedArchetype(archetypeQuery)}>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              className="shrink-0 whitespace-nowrap"
+              disabled={busy || archetypeQuery.trim().length === 0}
+              onClick={() => void seedArchetype(archetypeQuery)}
+            >
               <Plus className="h-4 w-4" /> Add all
             </Button>
           </div>
@@ -362,6 +370,7 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
           Click a result to add one copy. Extra-Deck cards are routed to the Extra pool automatically.
         </p>
       </section>
+      </div>
 
       <section className="rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center gap-2">
@@ -402,9 +411,10 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
             unknownIds={mainGrid.unknownIds}
             loading={false}
             emptyMessage="Import passcodes or add cards to build the main pool."
-            heightClassName="h-[36rem]"
+            heightClassName="h-[40rem]"
             gridClassName={gridClassName}
             cubeEditMode
+            tileMinPx={150}
             onCardClick={removeCard}
             cardActionLabel={(card) => `Remove ${card.name} from theme`}
           />
@@ -416,9 +426,10 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
             unknownIds={extraGrid.unknownIds}
             loading={false}
             emptyMessage="Extra-Deck cards land here automatically."
-            heightClassName="h-[36rem]"
+            heightClassName="h-[40rem]"
             gridClassName={gridClassName}
             cubeEditMode
+            tileMinPx={150}
             onCardClick={removeCard}
             cardActionLabel={(card) => `Remove ${card.name} from theme`}
           />

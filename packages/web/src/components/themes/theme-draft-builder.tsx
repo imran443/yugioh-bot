@@ -131,7 +131,7 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
             autoComplete="off"
             className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
           />
-          <Button type="button" variant="primary" size="sm" disabled={busy || query.trim().length === 0} onClick={() => addArchetype(query)}>
+          <Button type="button" variant="primary" size="sm" className="shrink-0 whitespace-nowrap" disabled={busy || query.trim().length === 0} onClick={() => addArchetype(query)}>
             <Plus className="h-4 w-4" /> Add
           </Button>
         </div>

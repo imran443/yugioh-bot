@@ -5,7 +5,7 @@ export default async function ThemeEditorPage({ params }: { params: Promise<{ id
   const themeId = Number.parseInt(id, 10);
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-[1800px] px-2 sm:px-4">
       <ThemeEditor themeId={themeId} />
     </div>
   );

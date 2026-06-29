@@ -58,6 +58,9 @@ interface CardPoolGridProps {
   onCardClick?: (card: CardSummary) => void;
   cardActionLabel?: (card: CardSummary) => string;
   cubeEditMode?: boolean;
+  // Minimum tile width in px; overrides the cubeEditMode/default sizing so callers
+  // can pack more, smaller cards per row (e.g. side-by-side theme pools).
+  tileMinPx?: number;
   // Accepted for API compatibility with my-cubes callers. The grid is
   // virtualized (columns derived from measured width), so a fixed grid class
   // is no longer applied — cubeEditMode widens the tiles instead.
@@ -95,6 +98,7 @@ function CardPoolGridBase({
   onCardClick,
   cardActionLabel,
   cubeEditMode = false,
+  tileMinPx,
 }: CardPoolGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<PoolFilter>("all");
@@ -173,7 +177,7 @@ function CardPoolGridBase({
     if (!el) return;
     const GAP = 12; // gap-3
     // cube edit mode shows larger tiles (fewer, wider columns).
-    const TILE_MIN = cubeEditMode ? 200 : 120;
+    const TILE_MIN = tileMinPx ?? (cubeEditMode ? 200 : 120);
     const PAD_X = 24; // px-3 on each row, both sides
     const measure = (): void => {
       const inner = Math.max(0, el.clientWidth - PAD_X);
@@ -185,7 +189,7 @@ function CardPoolGridBase({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [cubeEditMode]);
+  }, [cubeEditMode, tileMinPx]);
 
   const entries = useMemo<GridEntry[]>(
     () => [
