@@ -37,9 +37,6 @@ export function CardArt({
         fill
         sizes={sizes}
         priority={priority}
-        // Browser-load the card art instead of server-side optimizing it: the
-        // web container has no guaranteed egress to the card CDN, the browser does.
-        unoptimized
         className={cn(className)}
         onError={onError}
       />
@@ -49,7 +46,6 @@ export function CardArt({
           alt={alt}
           fill
           sizes={sizes}
-          unoptimized
           className={cn(
             className,
             "transition-opacity duration-200",

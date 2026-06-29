@@ -41,10 +41,6 @@ export function DraftCardPreview({ className }: DraftCardPreviewProps) {
             alt={previewCard.name}
             fill
             priority
-            // Load in the browser (no server-side optimize fetch). The web
-            // container has no guaranteed egress to the card CDN; the browser
-            // does, so unoptimized keeps previews working everywhere.
-            unoptimized
             className="object-contain"
             sizes="(min-width: 146rem) 30.45rem, (min-width: 114rem) calc(14.5rem + (100vw - 114rem) / 2), (min-width: 96rem) 14.5rem, 0px"
             onError={() => setImageErrors((prev) => new Set(prev).add(previewCard.id))}
