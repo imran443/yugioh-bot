@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ThemeSummary {
@@ -36,6 +37,25 @@ export function ThemesList() {
   }, []);
 
   React.useEffect(() => load(), [load]);
+
+  const deleteTheme = async (id: number, name: string) => {
+    if (typeof window !== "undefined" && !window.confirm(`Delete "${name}"? This can't be undone.`)) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/themes/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? "Failed to delete theme.");
+        return;
+      }
+      setThemes((cur) => cur.filter((t) => t.id !== id));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const create = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -105,15 +125,25 @@ export function ThemesList() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {themes.map((theme) => (
+            <div key={theme.id} className="relative">
             <Link
-              key={theme.id}
               href={`/themes/${theme.id}`}
-              className="rounded-lg border border-border bg-surface p-4 hover:border-accent-primary"
+              className="block rounded-lg border border-border bg-surface p-4 pr-10 hover:border-accent-primary"
             >
               <p className="font-display text-text-primary">{theme.name}</p>
               {theme.archetype && <p className="mt-1 text-xs text-accent-primary">{theme.archetype}</p>}
               <p className="mt-2 text-sm text-text-secondary">{theme.mainCount} main · {theme.extraCount} extra</p>
             </Link>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void deleteTheme(theme.id, theme.name)}
+              title={`Delete ${theme.name}`}
+              className="absolute right-2 top-2 rounded-lg border border-accent-cta/40 p-1.5 text-accent-cta hover:bg-accent-cta/10 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            </div>
           ))}
         </div>
       )}

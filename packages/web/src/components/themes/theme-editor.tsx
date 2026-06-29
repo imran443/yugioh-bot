@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Upload, Trash2, Sparkles, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CardPoolGrid } from "@/components/cards/card-pool-grid";
 import { CardHoverPopup } from "@/components/draft/card-hover-popup";
@@ -41,12 +42,16 @@ function getSearchPopupPosition(rect: DOMRect): { left: number; top: number } {
 }
 
 export function ThemeEditor({ themeId }: { themeId: number }) {
+  const router = useRouter();
   const [theme, setTheme] = React.useState<ThemeDto | null>(null);
   const [pools, setPools] = React.useState<ThemePoolsDto>({ main: [], extra: [] });
   const [cardsById, setCardsById] = React.useState<Map<number, CardSummary>>(new Map());
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [importText, setImportText] = React.useState("");
+  const [archetypeQuery, setArchetypeQuery] = React.useState("");
+  const [archetypeSuggestions, setArchetypeSuggestions] = React.useState<string[]>([]);
+  const archetypeReqId = React.useRef(0);
   const [cardSearchQuery, setCardSearchQuery] = React.useState("");
   const [searchResults, setSearchResults] = React.useState<CardSummary[]>([]);
   const [searching, setSearching] = React.useState(false);
@@ -147,6 +152,58 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
     void mutate({ op: "remove", catalogCardId: card.id });
   };
 
+  const seedArchetype = async (name: string) => {
+    const archetype = name.trim();
+    if (!archetype) return;
+    setStatus(null);
+    const result = await mutate({ op: "seedArchetype", archetype });
+    if (result) {
+      setArchetypeQuery("");
+      setArchetypeSuggestions([]);
+      setStatus(`Added all "${archetype}" cards.`);
+    }
+  };
+
+  const deleteTheme = async () => {
+    if (typeof window !== "undefined" && !window.confirm("Delete this theme cube? This can't be undone.")) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/themes/${themeId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? "Failed to delete theme.");
+        return;
+      }
+      router.push("/themes");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Archetype type-ahead suggestions (graceful when the API can't be reached).
+  React.useEffect(() => {
+    const q = archetypeQuery.trim();
+    if (q.length < 2) {
+      setArchetypeSuggestions([]);
+      return;
+    }
+    const myReq = ++archetypeReqId.current;
+    const t = setTimeout(() => {
+      fetch(`/api/archetypes?query=${encodeURIComponent(q)}`)
+        .then((res) => (res.ok ? res.json() : { archetypes: [] }))
+        .then((data: { archetypes: string[] }) => {
+          if (myReq === archetypeReqId.current) setArchetypeSuggestions((data.archetypes ?? []).slice(0, 8));
+        })
+        .catch(() => {
+          if (myReq === archetypeReqId.current) setArchetypeSuggestions([]);
+        });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [archetypeQuery]);
+
   React.useEffect(() => {
     const trimmedQuery = cardSearchQuery.trim();
     if (trimmedQuery.length === 0) {
@@ -189,17 +246,66 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
         <ArrowLeft className="h-4 w-4" /> Back to Themes
       </Link>
 
-      <div>
-        <h1 className="font-display text-2xl text-text-primary sm:text-3xl">{theme?.name ?? "Theme"}</h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          {theme?.archetype ? `Archetype: ${theme.archetype} · ` : ""}
-          {mainGrid.cards.length + mainGrid.unknownIds.length} main · {extraGrid.cards.length + extraGrid.unknownIds.length} extra
-          {busy ? " · saving…" : ""}
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="font-display text-2xl text-text-primary sm:text-3xl">{theme?.name ?? "Theme"}</h1>
+          <p className="mt-2 text-sm text-text-secondary">
+            {theme?.archetype ? `Archetype: ${theme.archetype} · ` : ""}
+            {mainGrid.cards.length + mainGrid.unknownIds.length} main · {extraGrid.cards.length + extraGrid.unknownIds.length} extra
+            {busy ? " · saving…" : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void deleteTheme()}
+          disabled={busy}
+          className="inline-flex items-center gap-2 self-start rounded-lg border border-accent-cta/50 px-3 py-2 text-sm font-semibold text-accent-cta hover:bg-accent-cta/10 disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" /> Delete theme
+        </button>
       </div>
 
       {error && <p className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-3 text-sm text-accent-cta">{error}</p>}
       {status && <p className="rounded-lg border border-accent-primary/40 bg-accent-primary/10 px-4 py-3 text-sm text-accent-primary">{status}</p>}
+
+      <section className="rounded-xl border border-border bg-surface p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-accent-gold" />
+          <h2 className="font-display text-lg text-text-primary">Add a whole archetype</h2>
+        </div>
+        <div className="relative">
+          <label htmlFor="theme-archetype-search" className="mb-1 block text-sm font-medium text-text-primary">Search archetype</label>
+          <div className="flex gap-2">
+            <input
+              id="theme-archetype-search"
+              aria-label="Search archetype"
+              value={archetypeQuery}
+              onChange={(event) => setArchetypeQuery(event.target.value)}
+              placeholder="Blue-Eyes, Dark Magician, ..."
+              autoComplete="off"
+              className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
+            />
+            <Button type="button" variant="primary" size="sm" disabled={busy || archetypeQuery.trim().length === 0} onClick={() => void seedArchetype(archetypeQuery)}>
+              <Plus className="h-4 w-4" /> Add all
+            </Button>
+          </div>
+          {archetypeSuggestions.length > 0 && (
+            <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-bg-surface shadow-card">
+              {archetypeSuggestions.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => void seedArchetype(name)}
+                  className="block w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-elevated"
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-text-secondary">Adds every card in the archetype (main + extra) to this cube. Needs the card database; if it can&apos;t be reached, use passcode import below.</p>
+      </section>
 
       <section className="rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center gap-2">
