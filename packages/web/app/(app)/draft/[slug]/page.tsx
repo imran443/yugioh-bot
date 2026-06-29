@@ -332,19 +332,35 @@ export default function DraftDetailPage() {
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
         <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
           <div className="mx-auto max-w-[1800px]">
-            {isThemeDraft && draft.themeProgress && (
-              <div className="mb-2 flex items-center gap-2 text-sm">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${draft.phase === "extra" ? "bg-accent-gold/15 text-accent-gold" : "bg-accent-primary/15 text-accent-primary"}`}>
-                  {draft.phase === "extra" ? "Extra Deck" : "Main Deck"}
-                </span>
-                <span className="text-text-secondary">
-                  Main {draft.themeProgress.main}/{draft.themeProgress.mainTotal}
+            {isThemeDraft && draft.themeProgress && (() => {
+              const inExtra = draft.phase === "extra";
+              const current = inExtra ? draft.themeProgress.extra : draft.themeProgress.main;
+              const target = inExtra ? draft.themeProgress.extraTotal : draft.themeProgress.mainTotal;
+              const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+              return (
+                <div className="mb-2 flex items-center gap-3 text-sm">
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${inExtra ? "bg-accent-gold/15 text-accent-gold" : "bg-accent-primary/15 text-accent-primary"}`}
+                  >
+                    {inExtra ? "Extra Deck" : "Main Deck"}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-text-secondary">
+                    <span className="font-medium text-text-primary">{current}</span> / {target}
+                  </span>
+                  <div className="h-1 max-w-[14rem] flex-1 overflow-hidden rounded-full bg-bg-elevated">
+                    <div
+                      className={`h-full rounded-full transition-[width] duration-500 ${inExtra ? "bg-accent-gold" : "bg-accent-primary"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                   {draft.themeProgress.extraTotal > 0 && (
-                    <> · Extra {draft.themeProgress.extra}/{draft.themeProgress.extraTotal}</>
+                    <span className="hidden shrink-0 text-xs text-text-secondary sm:inline">
+                      then Extra {draft.themeProgress.extraTotal}
+                    </span>
                   )}
-                </span>
-              </div>
-            )}
+                </div>
+              );
+            })()}
             <TimerBar className="rounded-none border-0 bg-transparent p-0" totalDraftCards={totalDraftCards} />
           </div>
         </div>
@@ -375,14 +391,30 @@ export default function DraftDetailPage() {
                   </div>
                 )}
 
-                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border/50 pt-3 text-sm text-text-secondary">
-                  <span className="font-medium text-text-primary">
-                    Pack {draft.packRound ?? draft.currentPackRound ?? 1} · Pick{" "}
-                    {draft.pickStep ?? draft.currentPickStep ?? 1}
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/50 pt-3 text-sm text-text-secondary">
+                  {isThemeDraft ? (
+                    <span className="font-medium text-text-primary">
+                      {draft.phase === "extra" ? "Extra Deck" : "Main Deck"} pick
+                    </span>
+                  ) : (
+                    <span className="font-medium text-text-primary">
+                      Pack {draft.packRound ?? draft.currentPackRound ?? 1}, Pick{" "}
+                      {draft.pickStep ?? draft.currentPickStep ?? 1}
+                    </span>
+                  )}
+                  <span>
+                    <span className="tabular-nums text-text-primary">{draft.currentPack?.length ?? 0}</span>{" "}
+                    {isThemeDraft ? "choices" : "cards"} this pick
                   </span>
-                  <span>{draft.currentPack?.length ?? 0} cards in pack</span>
-                  <span>{draft.playerCount} players</span>
-                  <span>{draft.pickSeconds ?? draft.config.pickSeconds ?? 60}s timer</span>
+                  <span>
+                    <span className="tabular-nums text-text-primary">{draft.playerCount}</span> players
+                  </span>
+                  <span>
+                    <span className="tabular-nums text-text-primary">
+                      {draft.pickSeconds ?? draft.config.pickSeconds ?? 60}s
+                    </span>{" "}
+                    timer
+                  </span>
                 </div>
               </div>
               <CardGrid />

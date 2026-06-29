@@ -236,11 +236,16 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
       ) : (
         <ul className="space-y-2">
           {allowedThemes.map((theme) => (
-            <li key={theme.id} className="flex items-center justify-between rounded-lg border border-border bg-bg-elevated/40 px-3 py-2">
-              <div>
-                <p className="font-display text-text-primary">{theme.name}</p>
-                <p className="text-xs text-text-secondary">
-                  {theme.archetype ? `${theme.archetype} · ` : ""}{theme.mainCount} main · {theme.extraCount} extra
+            <li key={theme.id} className="flex items-center justify-between rounded-lg border border-border bg-bg-elevated/40 px-3 py-2 transition-colors hover:border-border/80">
+              <div className="min-w-0">
+                <p className="truncate font-display text-text-primary">
+                  {theme.name}
+                  {theme.archetype && theme.archetype !== theme.name && (
+                    <span className="ml-2 align-middle text-xs font-normal text-accent-primary">{theme.archetype}</span>
+                  )}
+                </p>
+                <p className="text-xs tabular-nums text-text-secondary">
+                  {theme.mainCount} main, {theme.extraCount} extra
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -251,10 +256,10 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
                 >
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Link>
-                <button type="button" disabled={busy} onClick={() => void detach(theme.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary" title="Detach from this draft (keeps the cube in your library)">
+                <button type="button" disabled={busy} onClick={() => void detach(theme.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary motion-safe:active:translate-y-px disabled:opacity-50" title="Detach from this draft (keeps the cube in your library)">
                   <Unlink className="h-3.5 w-3.5" /> Detach
                 </button>
-                <button type="button" disabled={busy} onClick={() => void deleteCube(theme.id, theme.name)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta hover:bg-accent-cta/10" title="Delete cube from your library for good">
+                <button type="button" disabled={busy} onClick={() => void deleteCube(theme.id, theme.name)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta transition-colors hover:bg-accent-cta/10 motion-safe:active:translate-y-px disabled:opacity-50" title="Delete cube from your library for good">
                   <Trash2 className="h-3.5 w-3.5" /> Delete
                 </button>
               </div>

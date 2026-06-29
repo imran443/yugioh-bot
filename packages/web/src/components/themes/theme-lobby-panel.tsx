@@ -72,10 +72,10 @@ export function ThemeLobbyPanel({ slug, allowedThemes, themeSelection, onClaimed
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {allowedThemes.map((theme) => (
-            <div key={theme.id} className="rounded-lg border border-border bg-bg-elevated/40 p-3">
+            <div key={theme.id} className="rounded-lg border border-border bg-bg-elevated/40 p-3 transition-colors hover:border-border/80">
               <p className="font-display text-text-primary">{theme.name}</p>
-              {theme.archetype && <p className="text-xs text-accent-primary">{theme.archetype}</p>}
-              <p className="mt-1 text-xs text-text-secondary">{theme.mainCount} main · {theme.extraCount} extra</p>
+              {theme.archetype && theme.archetype !== theme.name && <p className="text-xs text-accent-primary">{theme.archetype}</p>}
+              <p className="mt-1 text-xs tabular-nums text-text-secondary">{theme.mainCount} main, {theme.extraCount} extra</p>
               {theme.sampleImages.length > 0 && (
                 <div className="mt-2 flex gap-1">
                   {theme.sampleImages.slice(0, 4).map((img, i) => (
@@ -88,9 +88,9 @@ export function ThemeLobbyPanel({ slug, allowedThemes, themeSelection, onClaimed
                   type="button"
                   onClick={() => void claim(theme.id)}
                   disabled={claiming !== null}
-                  className="mt-2 w-full rounded-lg border border-accent-primary/60 bg-accent-primary/10 px-3 py-1.5 text-sm font-semibold text-accent-primary hover:bg-accent-primary/20 disabled:opacity-50"
+                  className="mt-2 w-full rounded-lg border border-accent-primary/60 bg-accent-primary/10 px-3 py-1.5 text-sm font-semibold text-accent-primary transition-colors hover:bg-accent-primary/20 motion-safe:active:translate-y-px disabled:opacity-50"
                 >
-                  {claiming === theme.id ? "Claiming…" : "Claim"}
+                  {claiming === theme.id ? "Claiming..." : "Claim"}
                 </button>
               )}
             </div>
