@@ -199,3 +199,16 @@ body {
   55% { transform: scale(0.92); }
   100% { transform: scale(1); }
 }
+
+/* Draft pack transition: fade + lift the new pack in when it changes, so picks
+   read as a smooth swap instead of a hard cut. */
+.pack-fade-in {
+  animation: pack-fade-in 0.26s ease-out both;
+}
+@keyframes pack-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pack-fade-in { animation: none; }
+}

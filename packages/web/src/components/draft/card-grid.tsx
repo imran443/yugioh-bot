@@ -180,11 +180,16 @@ export function CardGrid({ className }: CardGridProps) {
     );
   }
 
+  // A signature of the pack's contents — when it changes (new pick / new round),
+  // remounting the keyed wrapper replays the fade-in so the swap is smooth.
+  const packKey = currentPack.map((c) => c.id).join("-");
+
   return (
     <div className={cn("relative", className)}>
       <div
+        key={packKey}
         className={cn(
-          "grid gap-3 sm:gap-4",
+          "pack-fade-in grid gap-3 sm:gap-4",
           "grid-cols-[repeat(2,minmax(140px,1fr))]",
           "sm:grid-cols-[repeat(3,minmax(140px,1fr))]",
           "lg:grid-cols-[repeat(4,minmax(130px,1fr))]",

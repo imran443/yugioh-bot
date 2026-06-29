@@ -52,6 +52,7 @@ interface DraftData {
     themeSelection?: "host_assigned" | "random" | "player_pick";
     uniqueThemes?: boolean;
     extraDeckEnabled?: boolean;
+    extraDeckSize?: number;
   };
   phase?: "main" | "extra";
   themeProgress?: { main: number; mainTotal: number; extra: number; extraTotal: number };
@@ -121,6 +122,9 @@ export default function DraftDetailPage() {
 
   const setFromServer = useDraftStore((s) => s.setFromServer);
   const storeCompleted = useDraftStore((s) => s.completed);
+  // Live drafted count (updates optimistically on each pick), so the theme phase
+  // indicator stays in lock-step with the Your Pool / DRAFTED counters.
+  const draftedCount = useDraftStore((s) => s.myPool.length);
 
   const fetchDraft = useCallback(async () => {
     try {
@@ -264,7 +268,11 @@ export default function DraftDetailPage() {
 
   const isCreator = currentUserId === draft.createdByUserId;
   const isParticipant = draft.isParticipant;
-  const totalDraftCards = draft.config.cardsPerPlayer ?? 40;
+  const totalDraftCards =
+    (draft.config.cardsPerPlayer ?? 40) +
+    (draft.config.mode === "theme" && (draft.config.extraDeckEnabled ?? true)
+      ? draft.config.extraDeckSize ?? 15
+      : 0);
 
   const handleJoin = async () => {
     const res = await fetch(`/api/drafts/${slug}/join`, { method: "POST" });
@@ -285,6 +293,11 @@ export default function DraftDetailPage() {
   };
 
   const isThemeDraft = draft.config.mode === "theme";
+  // Live phase, derived from the optimistic drafted count so labels + progress
+  // update the instant a pick lands (not only on the next full fetch).
+  const themeMainTotal = draft.config.cardsPerPlayer ?? 40;
+  const themeExtraTotal = (draft.config.extraDeckEnabled ?? true) ? draft.config.extraDeckSize ?? 15 : 0;
+  const themeInExtra = isThemeDraft && draftedCount >= themeMainTotal && themeExtraTotal > 0;
 
   if (draft.status === "pending") {
     return (
@@ -332,10 +345,10 @@ export default function DraftDetailPage() {
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
         <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
           <div className="mx-auto max-w-[1800px]">
-            {isThemeDraft && draft.themeProgress && (() => {
-              const inExtra = draft.phase === "extra";
-              const current = inExtra ? draft.themeProgress.extra : draft.themeProgress.main;
-              const target = inExtra ? draft.themeProgress.extraTotal : draft.themeProgress.mainTotal;
+            {isThemeDraft && (() => {
+              const inExtra = themeInExtra;
+              const current = inExtra ? Math.min(draftedCount - themeMainTotal, themeExtraTotal) : Math.min(draftedCount, themeMainTotal);
+              const target = inExtra ? themeExtraTotal : themeMainTotal;
               const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
               return (
                 <div className="mb-2 flex items-center gap-3 text-sm">
@@ -353,9 +366,9 @@ export default function DraftDetailPage() {
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  {draft.themeProgress.extraTotal > 0 && (
+                  {!inExtra && themeExtraTotal > 0 && (
                     <span className="hidden shrink-0 text-xs text-text-secondary sm:inline">
-                      then Extra {draft.themeProgress.extraTotal}
+                      then Extra {themeExtraTotal}
                     </span>
                   )}
                 </div>
@@ -394,7 +407,7 @@ export default function DraftDetailPage() {
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/50 pt-3 text-sm text-text-secondary">
                   {isThemeDraft ? (
                     <span className="font-medium text-text-primary">
-                      {draft.phase === "extra" ? "Extra Deck" : "Main Deck"} pick
+                      {themeInExtra ? "Extra Deck" : "Main Deck"} pick
                     </span>
                   ) : (
                     <span className="font-medium text-text-primary">
