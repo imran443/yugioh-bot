@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Trash2, Pencil, Search } from "lucide-react";
+import { Plus, Unlink, Pencil, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface AllowedTheme {
@@ -24,10 +24,24 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
   const [query, setQuery] = React.useState("");
   const [suggestions, setSuggestions] = React.useState<string[]>([]);
   const [blankName, setBlankName] = React.useState("");
+  const [library, setLibrary] = React.useState<AllowedTheme[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
   const reqId = React.useRef(0);
+
+  // Existing library cubes that aren't already in this draft.
+  const attachedIds = React.useMemo(() => new Set(allowedThemes.map((t) => t.id)), [allowedThemes]);
+  const attachable = library.filter((c) => !attachedIds.has(c.id));
+
+  const loadLibrary = React.useCallback(() => {
+    fetch("/api/themes")
+      .then((res) => (res.ok ? res.json() : { themes: [] }))
+      .then((data: { themes: AllowedTheme[] }) => setLibrary(data.themes ?? []))
+      .catch(() => {});
+  }, []);
+
+  React.useEffect(() => loadLibrary(), [loadLibrary]);
 
   React.useEffect(() => {
     const q = query.trim();
@@ -73,6 +87,7 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
       setBlankName("");
       setSuggestions([]);
       onChanged();
+      loadLibrary();
     } finally {
       setBusy(false);
     }
@@ -89,7 +104,13 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
     void post({ kind: "blank", name: blankName.trim() }, `Added blank cube "${blankName.trim()}".`);
   };
 
-  const remove = async (themeId: number) => {
+  const attachExisting = (themeId: number) => {
+    if (!themeId) return;
+    const cube = library.find((c) => c.id === themeId);
+    void post({ kind: "existing", themeId }, `Attached "${cube?.name ?? "cube"}".`);
+  };
+
+  const detach = async (themeId: number) => {
     setBusy(true);
     setError(null);
     try {
@@ -99,6 +120,7 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
         body: JSON.stringify({ themeId }),
       });
       onChanged();
+      loadLibrary();
     } finally {
       setBusy(false);
     }
@@ -111,7 +133,8 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
         <span className="text-xs text-text-secondary">{allowedThemes.length} cube{allowedThemes.length === 1 ? "" : "s"}</span>
       </div>
       <p className="mb-3 text-sm text-text-secondary">
-        Add archetypes one at a time — each becomes its own editable cube. {uniqueThemes ? "Max players = number of cubes." : ""}
+        Add archetypes one at a time (each becomes its own editable cube), attach cubes you already built, or start a blank one.
+        {uniqueThemes ? " Max players = number of cubes." : ""}
       </p>
 
       {error && <div className="mb-3 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-3 py-2 text-sm text-accent-cta">{error}</div>}
@@ -152,17 +175,37 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
       </div>
 
       {/* Blank custom cube */}
-      <div className="mb-4 flex gap-2">
+      <div className="mb-3 flex gap-2">
         <input
           value={blankName}
           onChange={(e) => setBlankName(e.target.value)}
           placeholder="Custom cube name (e.g. Stun)"
           className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
         />
-        <Button type="button" variant="secondary" size="sm" disabled={busy || blankName.trim().length === 0} onClick={addBlank}>
+        <Button type="button" variant="secondary" size="sm" className="shrink-0 whitespace-nowrap" disabled={busy || blankName.trim().length === 0} onClick={addBlank}>
           <Plus className="h-4 w-4" /> Blank
         </Button>
       </div>
+
+      {/* Attach an existing library cube */}
+      {attachable.length > 0 && (
+        <div className="mb-4 flex gap-2">
+          <select
+            aria-label="Attach an existing cube"
+            value=""
+            onChange={(e) => attachExisting(Number(e.target.value))}
+            disabled={busy}
+            className="native-select w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+          >
+            <option value="">Attach from my cubes…</option>
+            {attachable.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.archetype ? ` (${c.archetype})` : ""} — {c.mainCount} main · {c.extraCount} extra
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Cube list */}
       {allowedThemes.length === 0 ? (
@@ -187,8 +230,8 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
                 >
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Link>
-                <button type="button" disabled={busy} onClick={() => void remove(theme.id)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta hover:bg-accent-cta/10" title="Remove cube">
-                  <Trash2 className="h-3.5 w-3.5" />
+                <button type="button" disabled={busy} onClick={() => void detach(theme.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary" title="Detach from this draft (keeps the cube in your library)">
+                  <Unlink className="h-3.5 w-3.5" /> Detach
                 </button>
               </div>
             </li>

@@ -569,7 +569,12 @@ export function createDraftService(db: Database.Database) {
   };
 
   const assignThemes = (draftId: number, playerIds: number[], config: DraftConfig) => {
-    const allowed = config.allowedThemeIds ?? [];
+    const requested = config.allowedThemeIds ?? [];
+    // Drop any themes that were deleted from the library after being attached.
+    const existing = new Set(
+      (db.prepare("select id from themes").all() as Array<{ id: number }>).map((r) => r.id),
+    );
+    const allowed = requested.filter((id) => existing.has(id));
     if (allowed.length === 0) {
       throw new Error("Theme draft requires at least one allowed theme");
     }

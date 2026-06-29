@@ -71,6 +71,40 @@ describe("POST/DELETE /api/drafts/[slug]/themes (theme cubes)", () => {
     expect(removed.allowedThemeIds).not.toContain(added.theme.id);
   }, 30000);
 
+  it("attaches an existing library cube and detaching keeps it in the library", async () => {
+    await seedBlankThemeDraft();
+    const Database = (await import("better-sqlite3")).default;
+    const seed = new Database(process.env.DATABASE_PATH!);
+    const libThemeId = Number(
+      seed.prepare("insert into themes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1','Goat format','u1','t','t')").run().lastInsertRowid,
+    );
+    seed.close();
+
+    const { POST, DELETE } = await import("../app/api/drafts/[slug]/themes/route");
+
+    const attachRes = await POST(
+      new Request("http://localhost/api/drafts/theme-slug/themes", { method: "POST", body: JSON.stringify({ kind: "existing", themeId: libThemeId }) }) as any,
+      { params: Promise.resolve({ slug: "theme-slug" }) },
+    );
+    expect(attachRes.status).toBe(201);
+    const attached = await attachRes.json();
+    expect(attached.allowedThemeIds).toContain(libThemeId);
+
+    // Detach — removed from the draft but the cube row survives.
+    const detachRes = await DELETE(
+      new Request("http://localhost/api/drafts/theme-slug/themes", { method: "DELETE", body: JSON.stringify({ themeId: libThemeId }) }) as any,
+      { params: Promise.resolve({ slug: "theme-slug" }) },
+    );
+    expect(detachRes.status).toBe(200);
+
+    const verify = new Database(process.env.DATABASE_PATH!);
+    const stillThere = verify.prepare("select id from themes where id = ?").get(libThemeId);
+    const cfg = JSON.parse((verify.prepare("select config_json from drafts where web_slug='theme-slug'").get() as any).config_json);
+    verify.close();
+    expect(stillThere).toBeTruthy(); // detach kept the library cube
+    expect(cfg.allowedThemeIds).not.toContain(libThemeId);
+  }, 30000);
+
   it("rejects a non-host", async () => {
     await seedBlankThemeDraft();
     auth.mockResolvedValue({ user: { id: "someone-else" } });

@@ -46,9 +46,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const themes = createThemesService(db, catalog);
 
   const body = (await request.json().catch(() => ({}))) as {
-    kind?: "archetype" | "blank";
+    kind?: "archetype" | "blank" | "existing";
     archetype?: string;
     name?: string;
+    themeId?: number;
   };
 
   try {
@@ -64,6 +65,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
         includeStaples: true,
         extraTarget,
       });
+    } else if (body.kind === "existing") {
+      // Attach an existing library cube to this draft (does not create a new one).
+      if (!Number.isInteger(body.themeId)) {
+        return NextResponse.json({ error: "themeId is required" }, { status: 400 });
+      }
+      const owned = db
+        .prepare("select id from themes where id = ? and guild_id = ?")
+        .get(body.themeId, guildId) as { id: number } | undefined;
+      if (!owned) {
+        return NextResponse.json({ error: "Theme not found" }, { status: 404 });
+      }
+      if ((draft.config.allowedThemeIds ?? []).includes(owned.id)) {
+        return NextResponse.json({ error: "That cube is already in this draft" }, { status: 409 });
+      }
+      theme = themes.findTheme(owned.id);
     } else {
       const name = body.name?.trim();
       if (!name) {
@@ -125,10 +141,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
   const allowedThemeIds = (draft.config.allowedThemeIds ?? []).filter((id) => id !== themeId);
   persistAllowedThemeIds(db, row.id, allowedThemeIds);
 
-  // The theme cube belongs to this draft — delete it and its cards.
-  db.prepare("delete from theme_cards where theme_id = ?").run(themeId);
+  // Detach only — the cube stays in the library (delete it from its editor instead).
   db.prepare("delete from draft_player_theme where draft_id = ? and theme_id = ?").run(row.id, themeId);
-  db.prepare("delete from themes where id = ?").run(themeId);
 
   return NextResponse.json({ ok: true, allowedThemeIds });
 }
