@@ -30,6 +30,7 @@ interface DraftManageViewProps {
       customCardIds?: number[];
       alternatePassDirection?: boolean;
       randomizeSeats?: boolean;
+      mode?: "booster" | "theme";
     };
     players: Array<{
       playerId: number;
@@ -84,18 +85,22 @@ export function DraftManageView({
   const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Card pool
+  // Theme drafts have no single shared card pool — each player drafts from their
+  // own theme cube — so the pool preview / booster config don't apply.
+  const isTheme = draft.config?.mode === "theme";
+
+  // Card pool (booster only)
   const [poolCards, setPoolCards] = React.useState<CardSummary[] | null>(null);
   const [poolError, setPoolError] = React.useState(false);
   const loadPool = React.useCallback(() => {
-    if (!slug) return;
+    if (!slug || isTheme) return;
     setPoolCards(null);
     setPoolError(false);
     fetch(`/api/drafts/${slug}/pool`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: { cards: CardSummary[] }) => setPoolCards(data.cards))
       .catch(() => setPoolError(true));
-  }, [slug]);
+  }, [slug, isTheme]);
   React.useEffect(() => { loadPool(); }, [loadPool]);
   const onUpdateWithPoolRefresh = React.useCallback(async (data: { name?: string; config?: unknown }) => {
     await onUpdate(data);
@@ -247,7 +252,6 @@ export function DraftManageView({
                 {isDev && onAddBot && (
                   <Button
                     variant="secondary"
-                    size="sm"
                     loading={addingBot}
                     onClick={handleAddBot}
                   >
@@ -307,21 +311,23 @@ export function DraftManageView({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        {/* Left — sticky card pool */}
-        <aside className="lg:sticky lg:top-6 lg:self-start">
-          {slug && (
-            <CardPoolPanel
-              title="Card pool"
-              cards={poolCards ?? []}
-              loading={poolCards === null && !poolError}
-              error={poolError ? "Couldn't load the pool." : null}
-              emptyMessage="This draft's pool hasn't been resolved yet."
-              countMode="copies"
-              heightClassName="h-[calc(100vh-16rem)]"
-            />
-          )}
-        </aside>
+      <div className={isTheme ? "space-y-6" : "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]"}>
+        {/* Left — sticky card pool (booster only; theme drafts have per-player cubes) */}
+        {!isTheme && (
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            {slug && (
+              <CardPoolPanel
+                title="Card pool"
+                cards={poolCards ?? []}
+                loading={poolCards === null && !poolError}
+                error={poolError ? "Couldn't load the pool." : null}
+                emptyMessage="This draft's pool hasn't been resolved yet."
+                countMode="copies"
+                heightClassName="h-[calc(100vh-16rem)]"
+              />
+            )}
+          </aside>
+        )}
 
         {/* Right — name, players, configuration */}
         <div className="space-y-6">
