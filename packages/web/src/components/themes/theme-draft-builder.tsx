@@ -180,7 +180,11 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Link href={`/themes/${theme.id}`} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary" title="Edit / view cube">
+                <Link
+                  href={`/themes/${theme.id}?from=${encodeURIComponent(`/draft/${slug}`)}`}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
+                  title="Edit / view cube"
+                >
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Link>
                 <button type="button" disabled={busy} onClick={() => void remove(theme.id)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta hover:bg-accent-cta/10" title="Remove cube">

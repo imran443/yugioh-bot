@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Upload, Trash2, Sparkles, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CardPoolGrid } from "@/components/cards/card-pool-grid";
@@ -43,6 +43,11 @@ function getSearchPopupPosition(rect: DOMRect): { left: number; top: number } {
 
 export function ThemeEditor({ themeId }: { themeId: number }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // When opened from a draft's cube builder, return there instead of the library.
+  const from = searchParams.get("from");
+  const backHref = from && from.startsWith("/draft/") ? from : "/themes";
+  const backLabel = from && from.startsWith("/draft/") ? "Back to draft" : "Back to Themes";
   const [theme, setTheme] = React.useState<ThemeDto | null>(null);
   const [pools, setPools] = React.useState<ThemePoolsDto>({ main: [], extra: [] });
   const [cardsById, setCardsById] = React.useState<Map<number, CardSummary>>(new Map());
@@ -242,8 +247,8 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/themes" className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary">
-        <ArrowLeft className="h-4 w-4" /> Back to Themes
+      <Link href={backHref} className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary">
+        <ArrowLeft className="h-4 w-4" /> {backLabel}
       </Link>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
