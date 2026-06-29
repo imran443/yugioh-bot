@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Unlink, Pencil, Search } from "lucide-react";
+import { Plus, Unlink, Pencil, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface AllowedTheme {
@@ -126,6 +126,27 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
     }
   };
 
+  const deleteCube = async (themeId: number, name: string) => {
+    if (typeof window !== "undefined" && !window.confirm(`Delete "${name}" from your library for good? This can't be undone.`)) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      // Detach from this draft, then delete the cube from the library.
+      await fetch(`/api/drafts/${slug}/themes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ themeId }),
+      });
+      await fetch(`/api/themes/${themeId}`, { method: "DELETE" });
+      onChanged();
+      loadLibrary();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="rounded-xl border border-border bg-surface p-4">
       <div className="mb-1 flex items-center justify-between">
@@ -232,6 +253,9 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
                 </Link>
                 <button type="button" disabled={busy} onClick={() => void detach(theme.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary" title="Detach from this draft (keeps the cube in your library)">
                   <Unlink className="h-3.5 w-3.5" /> Detach
+                </button>
+                <button type="button" disabled={busy} onClick={() => void deleteCube(theme.id, theme.name)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta hover:bg-accent-cta/10" title="Delete cube from your library for good">
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
                 </button>
               </div>
             </li>
