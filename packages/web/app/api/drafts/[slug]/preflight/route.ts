@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
-import { createCardCatalogService, createDraftService, createThemesService } from "@yugidraft/shared/services";
+import { createCardCatalogService, createDraftService, createCubeService } from "@yugidraft/shared/services";
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ errors: [], warnings: [] });
   }
 
-  const themes = createThemesService(db, createCardCatalogService(db));
+  const cubes = createCubeService(db, createCardCatalogService(db));
   const cfg = {
     themePackSize: draft.config.themePackSize ?? 3,
     cardsPerPlayer: draft.config.cardsPerPlayer ?? 40,
@@ -39,9 +39,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   // Check every allowed theme — any of them could be assigned at start.
   const errors: string[] = [];
   const warnings: string[] = [];
-  for (const themeId of draft.config.allowedThemeIds ?? []) {
-    const analysis = themes.analyzeTheme(themeId, cfg);
-    const name = (db.prepare("select name from themes where id = ?").get(themeId) as { name: string } | undefined)?.name ?? `Theme ${themeId}`;
+  for (const cubeId of draft.config.allowedCubeIds ?? []) {
+    const analysis = cubes.analyzeCubePools(cubeId, cfg);
+    const name = (db.prepare("select name from cubes where id = ?").get(cubeId) as { name: string } | undefined)?.name ?? `Cube ${cubeId}`;
     for (const e of analysis.errors) errors.push(`${name}: ${e}`);
     for (const w of analysis.warnings) warnings.push(`${name}: ${w}`);
   }

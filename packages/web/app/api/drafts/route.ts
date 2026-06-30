@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
       guildId,
       resolvedChannelId,
       name,
-      { ...config, allowedThemeIds: config.allowedThemeIds ?? [] },
+      { ...config, allowedCubeIds: config.allowedCubeIds ?? [] },
       session.user.id,
       player.id,
     );

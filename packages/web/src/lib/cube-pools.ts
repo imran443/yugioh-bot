@@ -10,23 +10,23 @@ export function isExtraDeckCardClient(card: { frameType: string; type: string })
   );
 }
 
-export type ThemePoolName = "main" | "extra";
+export type CubePoolName = "main" | "extra";
 
-export interface ThemeCardDto {
+export interface CubeCardDto {
   catalogCardId: number;
-  pool: ThemePoolName;
+  pool: CubePoolName;
   maxCopies: number;
   source?: string;
 }
 
-export interface ThemePoolsDto {
-  main: ThemeCardDto[];
-  extra: ThemeCardDto[];
+export interface CubePoolsDto {
+  main: CubeCardDto[];
+  extra: CubeCardDto[];
 }
 
 /** Build CardPoolGrid inputs for one pool: qty = maxCopies; ids without catalog data are unknown. */
 export function poolToGridCards(
-  pool: ThemeCardDto[],
+  pool: CubeCardDto[],
   cardsById: Map<number, CardSummary>,
 ): { cards: CardSummary[]; unknownIds: number[] } {
   const cards: CardSummary[] = [];

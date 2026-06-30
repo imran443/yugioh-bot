@@ -1,13 +1,13 @@
-import type { ThemePools } from "@yugidraft/shared/types";
-import type { CardCatalogService, ThemesService } from "@yugidraft/shared/services";
+import type { CubePools } from "@yugidraft/shared/types";
+import type { CardCatalogService, CubeService } from "@yugidraft/shared/services";
 import type { CardSummary } from "@/lib/card-types";
 
 /**
- * Build the editor-facing payload for a theme: its split pools plus resolved
+ * Build the editor-facing payload for a cube: its split pools plus resolved
  * catalog card details (CardSummary) for every card id in either pool.
  */
-export function buildThemeCards(
-  pools: ThemePools,
+export function buildCubeCards(
+  pools: CubePools,
   catalog: CardCatalogService,
 ): CardSummary[] {
   const ids = [...pools.main, ...pools.extra].map((c) => c.catalogCardId);
@@ -26,7 +26,7 @@ export function buildThemeCards(
   }));
 }
 
-export function themeDetail(themeId: number, themes: ThemesService, catalog: CardCatalogService) {
-  const pools = themes.getThemePools(themeId);
-  return { pools, cards: buildThemeCards(pools, catalog) };
+export function cubeDetail(cubeId: number, cubes: CubeService, catalog: CardCatalogService) {
+  const pools = cubes.getCubePools(cubeId);
+  return { pools, cards: buildCubeCards(pools, catalog) };
 }
