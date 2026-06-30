@@ -241,11 +241,22 @@ describe("cube service Discord-template-compatible ops", () => {
     expect(cubes.list("g").filter((c) => c.name === "T")).toHaveLength(1);
   });
 
-  it("delete removes a template cube by name", () => {
+  it("delete removes a template cube by name; deleting a missing one is a no-op", () => {
     const { cubes } = setup();
     cubes.save("g", "T", {}, "u");
     cubes.delete("g", "T");
     expect(cubes.findByName("g", "T")).toBeUndefined();
+    expect(() => cubes.delete("g", "Missing")).not.toThrow();
+  });
+
+  it("list is scoped to the guild and ordered by name", () => {
+    const { cubes } = setup();
+    cubes.save("g", "Zoo", { setNames: ["Z"] }, "u");
+    cubes.save("g", "Alpha", { setNames: ["A"] }, "u");
+    cubes.save("other", "Modern", { setNames: ["M"] }, "u");
+    expect(cubes.list("g").map((c) => c.name)).toEqual(["Alpha", "Zoo"]);
+    expect(cubes.findByName("other", "Modern")?.config).toEqual({ setNames: ["M"] });
+    expect(cubes.findByName("g", "Modern")).toBeUndefined();
   });
 
   it("applyCubeToConfig unions cube_cards into customCardIds and preserves setNames", () => {

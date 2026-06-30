@@ -19,14 +19,17 @@ describe("shared database package", () => {
         .map((row: any) => row.name);
 
       expect(tables).toEqual([
+        "archetypes",
         "card_catalog",
         "card_sets",
+        "cube_cards",
+        "cubes",
         "draft_cards",
         "draft_deal",
         "draft_packs",
         "draft_picks",
+        "draft_player_cube",
         "draft_players",
-        "draft_templates",
         "drafts",
         "guild_settings",
         "matches",

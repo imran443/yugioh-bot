@@ -3,9 +3,8 @@ import { formatLeaderboard, formatStats } from "../formatters/stats.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
 import type { DraftImageService } from "../services/draft-images.js";
-import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { Draft, DraftService } from "../services/drafts.js";
-import type { MatchService } from "@yugidraft/shared/services";
+import type { CubeService, MatchService } from "@yugidraft/shared/services";
 import type { TournamentFormat, TournamentService } from "@yugidraft/shared/services";
 import type { Broadcaster } from "@yugidraft/shared/notify";
 
@@ -54,7 +53,7 @@ type CommandDependencies = {
   tournaments: TournamentService;
   drafts: DraftService;
   cards: CardCatalogService;
-  templates: DraftTemplateService;
+  templates: CubeService;
   draftImages: DraftImageService;
   messenger: DraftMessenger;
   announceTournamentCompleted?: (tournamentId: number) => Promise<void>;

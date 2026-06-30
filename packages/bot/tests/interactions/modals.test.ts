@@ -7,8 +7,7 @@ import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftImageService } from "../../src/services/draft-images.js";
 import { createDraftService } from "../../src/services/drafts.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
-import { createDraftTemplateService } from "../../src/services/draft-templates.js";
-import { createTournamentService } from "@yugidraft/shared/services";
+import { createCubeService, createTournamentService } from "@yugidraft/shared/services";
 
 type ModalDependencies = Parameters<typeof handleModal>[1];
 type _DraftModalDependencyChecks = [
@@ -26,7 +25,7 @@ function setup() {
     tournaments: createTournamentService(db),
     drafts: createDraftService(db),
     cards: createCardCatalogService(db),
-    templates: createDraftTemplateService(db),
+    templates: createCubeService(db, createCardCatalogService(db)),
     draftImages: createDraftImageService({ cacheDir: "./data/test-card-images" }),
     players: createPlayerRepository(db),
   };
