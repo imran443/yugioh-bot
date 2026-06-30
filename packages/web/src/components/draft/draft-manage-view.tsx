@@ -12,6 +12,7 @@ import {
   fieldsFromConfig,
 } from "./draft-config-fields";
 import { CardPoolPanel } from "@/components/cards/card-pool-panel";
+import { parseCustomCardIds } from "@/lib/custom-card-pool";
 import type { CardSummary } from "@/lib/card-types";
 
 interface DraftManageViewProps {
@@ -114,6 +115,47 @@ export function DraftManageView({
   );
   const [editError, setEditError] = React.useState<string | null>(null);
   const [configSaving, setConfigSaving] = React.useState(false);
+
+  // Live pool resolved from the in-progress edit fields. The left card pool
+  // pane mirrors this while editing (the inline "Pool preview" is hidden), so
+  // there's a single synced view of the cards.
+  const [editPoolCards, setEditPoolCards] = React.useState<CardSummary[]>([]);
+  const [editPoolUnknownIds, setEditPoolUnknownIds] = React.useState<number[]>([]);
+  const [editPoolLoading, setEditPoolLoading] = React.useState(false);
+  const handleEditPool = React.useCallback(
+    (cards: CardSummary[], unknownIds: number[], loading: boolean) => {
+      setEditPoolCards(cards);
+      setEditPoolUnknownIds(unknownIds);
+      setEditPoolLoading(loading);
+    },
+    [],
+  );
+  const editCardActionLabel = React.useCallback(
+    (card: CardSummary) => `Remove ${card.name} from pool`,
+    [],
+  );
+  // Remove one copy of a card from the pool by editing the underlying fields.
+  // When sets are active they're first materialized into explicit passcodes so
+  // the removal sticks (mirrors the cube editor).
+  const removeOneFromEditPool = React.useCallback(
+    (card: CardSummary) => {
+      setEditFields((prev) => {
+        if (prev.setNames.length > 0) {
+          const expandedIds = editPoolCards.flatMap((c) => Array(c.qty ?? 1).fill(c.id));
+          const idx = expandedIds.indexOf(card.id);
+          if (idx === -1) return prev;
+          expandedIds.splice(idx, 1);
+          return { ...prev, setNames: [], customCardText: expandedIds.join("\n") };
+        }
+        const { cardIds } = parseCustomCardIds(prev.customCardText);
+        const idx = cardIds.indexOf(card.id);
+        if (idx === -1) return prev;
+        cardIds.splice(idx, 1);
+        return { ...prev, customCardText: cardIds.join("\n") };
+      });
+    },
+    [editPoolCards],
+  );
 
   const handleSaveName = async () => {
     const trimmed = nameValue.trim();
@@ -312,19 +354,35 @@ export function DraftManageView({
       )}
 
       <div className={isTheme ? "space-y-6" : "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]"}>
-        {/* Left — sticky card pool (booster only; theme drafts have per-player cubes) */}
+        {/* Left — sticky card pool (booster only; theme drafts have per-player
+            cubes). While editing the config it mirrors the in-progress pool and
+            lets the creator click a card to remove a copy. */}
         {!isTheme && (
           <aside className="lg:sticky lg:top-6 lg:self-start">
-            {slug && (
+            {isEditingConfig ? (
               <CardPoolPanel
                 title="Card pool"
-                cards={poolCards ?? []}
-                loading={poolCards === null && !poolError}
-                error={poolError ? "Couldn't load the pool." : null}
-                emptyMessage="This draft's pool hasn't been resolved yet."
+                cards={editPoolCards}
+                unknownIds={editPoolUnknownIds}
+                loading={editPoolLoading}
+                emptyMessage="Add sets or card IDs to build the pool."
                 countMode="copies"
                 heightClassName="h-[calc(100vh-16rem)]"
+                onCardClick={removeOneFromEditPool}
+                cardActionLabel={editCardActionLabel}
               />
+            ) : (
+              slug && (
+                <CardPoolPanel
+                  title="Card pool"
+                  cards={poolCards ?? []}
+                  loading={poolCards === null && !poolError}
+                  error={poolError ? "Couldn't load the pool." : null}
+                  emptyMessage="This draft's pool hasn't been resolved yet."
+                  countMode="copies"
+                  heightClassName="h-[calc(100vh-16rem)]"
+                />
+              )
             )}
           </aside>
         )}
@@ -455,7 +513,12 @@ export function DraftManageView({
                     {editError}
                   </div>
                 )}
-                <DraftConfigFields value={editFields} onChange={setEditFields} />
+                <DraftConfigFields
+                  value={editFields}
+                  onChange={setEditFields}
+                  poolBuilderShowPreview={false}
+                  onPool={handleEditPool}
+                />
                 <div className="flex gap-3">
                   <Button variant="primary" size="sm" loading={configSaving} onClick={handleSaveConfig}>
                     Save Configuration

@@ -108,7 +108,9 @@ interface NumberFieldProps {
 
 function NumberField({ id, label, value, onChange, min, max }: NumberFieldProps) {
   return (
-    <div>
+    // Full-height flex column so inputs bottom-align across the row even when a
+    // label wraps to two lines (e.g. "Rounds — cards drafted per player").
+    <div className="flex h-full flex-col">
       <label htmlFor={id} className="mb-1 block text-sm font-medium text-text-primary">
         {label}
       </label>
@@ -119,7 +121,7 @@ function NumberField({ id, label, value, onChange, min, max }: NumberFieldProps)
         onChange={(e) => onChange(e.target.value)}
         min={min}
         max={max}
-        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+        className="mt-auto w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
       />
     </div>
   );

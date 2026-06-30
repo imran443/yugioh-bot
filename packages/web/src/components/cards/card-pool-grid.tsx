@@ -335,6 +335,7 @@ function CardPoolGridBase({
                         className={cn(
                           "group flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-bg-elevated/40 p-2 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-primary",
                           cubeEditMode ? "cursor-pointer" : "transition-colors duration-150 hover:bg-bg-elevated",
+                          onCardClick && "cursor-pointer",
                         )}
                         onClick={(e) => {
                           if (onCardClick) {

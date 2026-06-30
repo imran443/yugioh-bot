@@ -211,8 +211,14 @@ export function createCardCatalogService(
   return {
     async syncDraftPool(input: SyncDraftPoolInput) {
       const fetchedSets = await Promise.all(input.setNames.map((setName) => fetchCards("cardset", setName)));
+      // Only fetch custom passcodes missing from the catalog. A materialized
+      // cube can carry hundreds of passcodes already synced via their sets;
+      // re-fetching each one individually makes saves take many seconds.
+      const distinctCustomIds = [...new Set(input.customCardIds ?? [])];
+      const cachedCustomIds = new Set(findByIds(distinctCustomIds).map((card) => card.ygoprodeckId));
+      const missingCustomIds = distinctCustomIds.filter((id) => !cachedCustomIds.has(id));
       const fetchedCustomCards = await Promise.all(
-        (input.customCardIds ?? []).map((cardId) => fetchCards("id", String(cardId))),
+        missingCustomIds.map((cardId) => fetchCards("id", String(cardId))),
       );
       const fetchedIncludes = await Promise.all(
         input.includeNames.map((cardName) => fetchCards("name", cardName)),
