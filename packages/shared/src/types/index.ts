@@ -16,13 +16,13 @@ export interface DraftConfig {
   // ----- theme mode -----
   /** Draft mode. Absent or "booster" => existing behavior. */
   mode?: "booster" | "theme";
-  /** Theme ids the host allows for this draft (the "X" pool). */
-  allowedThemeIds?: number[];
+  /** Cube ids the host allows for this draft (the "X" pool). */
+  allowedCubeIds?: number[];
   /** How each player's theme is chosen. Default "player_pick". */
   themeSelection?: "host_assigned" | "random" | "player_pick";
   /** Optional explicit player -> theme map for host_assigned. */
   themeAssignments?: Record<string, number>;
-  /** If true (default), every player gets a distinct theme, capping players at allowedThemeIds.length. */
+  /** If true (default), every player gets a distinct cube, capping players at allowedCubeIds.length. */
   uniqueThemes?: boolean;
   /** Number of choices shown per pick. Admin-set; default 3, any X >= 2. */
   themePackSize?: number;

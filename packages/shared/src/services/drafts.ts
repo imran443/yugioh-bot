@@ -569,8 +569,8 @@ export function createDraftService(db: Database.Database) {
   };
 
   const assignThemes = (draftId: number, playerIds: number[], config: DraftConfig) => {
-    const requested = config.allowedThemeIds ?? [];
-    // Drop any themes that were deleted from the library after being attached.
+    const requested = config.allowedCubeIds ?? [];
+    // Drop any cubes that were deleted from the library after being attached.
     const existing = new Set(
       (db.prepare("select id from themes").all() as Array<{ id: number }>).map((r) => r.id),
     );
