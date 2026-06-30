@@ -84,24 +84,32 @@ git commit -m "feat(shared): rename theme/template tables to unified cubes schem
 ### Task 1.1: Rename `allowedThemeIds` → `allowedCubeIds` in DraftConfig
 
 **Files:**
-- Modify: `packages/shared/src/types/index.ts`
+- Modify: `packages/shared/src/types/index.ts`, `packages/shared/src/services/drafts.ts`
+
+**Why the consumer rename is bundled here:** `DraftConfig` is a `strict`-mode interface with no index signature, and `tsconfig.build.json` compiles `src/**/*.ts`, so renaming the field breaks `tsc` at its one shared consumer (`drafts.ts:572`, `config.allowedThemeIds`) — and bot/web typecheck depend on shared's `dist`. To keep the shared build green at this step's commit, rename that consumer now. (Web/bot consumers don't build in Phase 1; they're fixed in Tasks 4.x/5.x. Only the field name changes here — table-name SQL strings in `drafts.ts` are retargeted in Task 2.1.)
 
 - [ ] **Step 1: Edit the type**
 
-In `packages/shared/src/types/index.ts`, rename the field `allowedThemeIds?: number[]` to `allowedCubeIds?: number[]`. Leave all other fields unchanged.
+In `packages/shared/src/types/index.ts`, rename the field `allowedThemeIds?: number[]` → `allowedCubeIds?: number[]` and update the doc comment at `:25` (`allowedThemeIds.length` → `allowedCubeIds.length`). Leave all other fields unchanged.
 
-- [ ] **Step 2: Find all references (they will be fixed in later tasks)**
+- [ ] **Step 2: Rename the shared engine consumer**
 
-Run: `grep -rn "allowedThemeIds" packages --include="*.ts" --include="*.tsx" | grep -v node_modules`
-Note the list; each call site is updated in its owning task (engine in 2.x, web routes in 4.x, components in 5.x).
+In `packages/shared/src/services/drafts.ts:572`, change `config.allowedThemeIds` → `config.allowedCubeIds`. Confirm it is the only `allowedThemeIds` reference in `packages/shared/src`:
+
+Run: `grep -rn "allowedThemeIds" packages/shared/src`
+Expected: no matches.
 
 - [ ] **Step 3: Build shared + commit**
 
+Run: `npm run build --workspace=packages/shared`
+Expected: PASS (clean tsc).
+
 ```bash
-npm run build --workspace=packages/shared
-git add packages/shared/src/types/index.ts
+git add packages/shared/src/types/index.ts packages/shared/src/services/drafts.ts
 git commit -m "feat(shared): rename DraftConfig.allowedThemeIds to allowedCubeIds"
 ```
+
+> **Note for the executor:** Phase 0 already dropped the legacy theme tables, so the theme-engine *test* file `packages/shared/tests/services/drafts-theme.test.ts` is expected to be RED from Phase 0 until Task 2.1 retargets it. That is fine — each task runs only its own tests; the full `npm test` gate is Phase 6. The per-step gates in Phase 1 check the **build** (`tsc`), not that whole-suite test.
 
 ### Task 1.2: Rename `cube.ts` → `deal.ts`
 
@@ -162,7 +170,7 @@ Expected: FAIL (`createCubeService` not defined).
 
 - [ ] **Step 3: Implement `createCubeService`**
 
-Port `packages/shared/src/services/themes.ts` verbatim into `packages/shared/src/services/cubes.ts`, applying the rename map: `themes`→`cubes`, `theme_cards`→`cube_cards`, `theme_id`→`cube_id`, `findTheme`→`findCube`, `listThemes`→`listCubes`, `getThemePools`→`getCubePools`, `createThemesService`→`createCubeService`. Then ADD:
+Port `packages/shared/src/services/themes.ts` verbatim into `packages/shared/src/services/cubes.ts`, applying the rename map: `themes`→`cubes`, `theme_cards`→`cube_cards`, `theme_id`→`cube_id`, `findTheme`→`findCube`, `listThemes`→`listCubes`, `getThemePools`→`getCubePools`, **`analyzeTheme`→`analyzeCubePools`** (this already exists at `themes.ts:240` as `analyzeTheme(themeId, config)` returning `{ ok, errors, warnings }` — it is a 1:1 rename, NOT new code), `createThemesService`→`createCubeService`. Then ADD the two genuinely-new methods (`renameCube`, `deleteCube`) and the template-compat methods:
 
 ```ts
 // rename a cube (centralizes today's inline SQL from /api/themes/[id])
@@ -201,7 +209,7 @@ list(guildId: string) { /* select * from cubes where guild_id=? order by name as
 delete(guildId: string, name: string) { db.prepare("delete from cube_cards where cube_id in (select id from cubes where guild_id=? and name=?)").run(guildId, name); db.prepare("delete from cubes where guild_id=? and name=?").run(guildId, name); },
 ```
 
-`analyzeCubePools(cubeId, config)`: port the main/extra sufficiency math currently inside `drafts.ts` `preflightThemes` into a pure method that reads `cube_cards` and returns `{ ok, errors, warnings }`. (Task 2.3 makes `preflightThemes` call this.)
+`analyzeCubePools` is the renamed `analyzeTheme` (reads `cube_cards`, returns `{ ok, errors, warnings }`). The engine's `preflightThemes` currently duplicates this sufficiency math inline; Task 2.1 Step 4 makes it delegate to `analyzeCubePools` so there is exactly one analyzer.
 
 Update the barrel `packages/shared/src/services/index.ts`: export `createCubeService` from `./cubes`, remove the `createThemesService` export, delete `packages/shared/src/services/themes.ts`.
 
@@ -226,16 +234,16 @@ git commit -m "feat(shared): createCubeService merges themes + template ops + re
 
 **Files:**
 - Modify: `packages/shared/src/services/drafts.ts`
-- Test: `packages/shared/tests/services/drafts.test.ts` (the theme-draft cases)
+- Test: `packages/shared/tests/services/drafts-theme.test.ts` (the dedicated theme-draft engine test file — `drafts.test.ts` has no theme cases)
 
 - [ ] **Step 1: Update the theme-draft tests' table/field names**
 
-In the theme-draft test cases in `packages/shared/tests/services/drafts.test.ts`, rename `draft_player_theme`→`draft_player_cube`, `theme_cards`→`cube_cards`, `theme_id`→`cube_id`, `themes`→`cubes`, `allowedThemeIds`→`allowedCubeIds`. Behavior assertions stay identical.
+In `packages/shared/tests/services/drafts-theme.test.ts`, rename `draft_player_theme`→`draft_player_cube`, `theme_cards`→`cube_cards`, `theme_id`→`cube_id`, `themes`→`cubes`, `allowedThemeIds`→`allowedCubeIds`. Behavior assertions stay identical.
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `npx vitest run packages/shared/tests/services/drafts.test.ts`
-Expected: FAIL (engine still reads old tables).
+Run: `npx vitest run packages/shared/tests/services/drafts-theme.test.ts`
+Expected: FAIL (engine still reads old tables in its SQL strings — the dropped `theme_cards`/`draft_player_theme`).
 
 - [ ] **Step 3: Retarget the engine**
 
@@ -247,14 +255,14 @@ Replace the inline main-pool sufficiency math in `preflightThemes` with a call t
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npx vitest run packages/shared/tests/services/drafts.test.ts`
+Run: `npx vitest run packages/shared/tests/services/drafts-theme.test.ts`
 Expected: PASS.
 
 - [ ] **Step 6: Build shared + commit**
 
 ```bash
 npm run build --workspace=packages/shared
-git add packages/shared/src/services/drafts.ts packages/shared/tests/services/drafts.test.ts
+git add packages/shared/src/services/drafts.ts packages/shared/tests/services/drafts-theme.test.ts
 git commit -m "feat(shared): retarget theme-draft engine to cube tables; preflight uses analyzeCubePools"
 ```
 
@@ -350,11 +358,11 @@ git commit -m "feat(bot): replace draft-template service with shared cube servic
 - Create: `packages/web/app/api/cubes/route.ts`, `packages/web/app/api/cubes/[id]/route.ts`, `packages/web/app/api/cubes/[id]/cards/route.ts`
 - Delete: `packages/web/app/api/themes/route.ts`, `.../themes/[id]/route.ts`, `.../themes/[id]/cards/route.ts`, `packages/web/app/api/draft-templates/route.ts`, `.../draft-templates/[id]/route.ts`
 - Modify: `packages/web/src/lib/theme-detail.ts` → `cube-detail.ts` (rename), any `theme-pools.ts` helper → `cube-pools.ts`
-- Test: `packages/web/tests/cubes-route.test.ts` (port from theme route tests)
+- Test: `packages/web/tests/cubes-route.test.ts` (rename/port from the existing `packages/web/tests/themes-routes.test.ts`)
 
 - [ ] **Step 1: Port the failing route tests**
 
-Create `packages/web/tests/cubes-route.test.ts` from the existing theme/draft-template route tests, hitting `/api/cubes` and `/api/cubes/[id]` (GET list, POST create blank/archetype, PUT rename, DELETE). Use the cube service.
+Rename `packages/web/tests/themes-routes.test.ts` → `packages/web/tests/cubes-route.test.ts` (use `git mv`), retarget it to hit `/api/cubes` and `/api/cubes/[id]` (GET list, POST create blank/archetype, PUT rename, DELETE) against the cube service.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -382,8 +390,8 @@ git commit -m "feat(web): /api/cubes library routes replace /api/themes and /api
 **Files:**
 - Create: `packages/web/app/api/drafts/[slug]/cubes/route.ts` (from `.../themes/route.ts`), `packages/web/app/api/drafts/[slug]/claim-cube/route.ts` (from `claim-theme`)
 - Delete: `.../themes/route.ts`, `.../claim-theme/route.ts`
-- Modify: `packages/web/app/api/drafts/route.ts` (create branch), `packages/web/app/api/drafts/[slug]/route.ts` (DELETE clears `draft_player_cube`), `packages/web/app/api/drafts/[slug]/helpers.ts` (`allowedThemes`→`allowedCubes`, reads cube tables)
-- Test: `packages/web/tests/drafts-delete-route.test.ts` (the theme case → cube), plus a draft-cubes attach/detach test
+- Modify: `packages/web/app/api/drafts/route.ts` (create branch), `packages/web/app/api/drafts/[slug]/route.ts` (DELETE clears `draft_player_cube`), `packages/web/app/api/drafts/[slug]/helpers.ts` (`allowedThemes`→`allowedCubes`, reads cube tables), **`packages/web/app/api/drafts/[slug]/preflight/route.ts`** (uses `createThemesService` + `themes.analyzeTheme` + `config.allowedThemeIds` → swap to `createCubeService` + `analyzeCubePools` + `allowedCubeIds`)
+- Test: `packages/web/tests/drafts-delete-route.test.ts` (the theme case → cube), and **rename the existing** `packages/web/tests/drafts-theme-cubes-route.test.ts` → `drafts-cubes-route.test.ts` (the attach/detach test) retargeting it to `/api/drafts/[slug]/cubes`
 
 - [ ] **Step 1: Update the delete-route theme test → cube**
 
@@ -400,6 +408,7 @@ Expected: FAIL.
 - `app/api/drafts/[slug]/route.ts` DELETE: change `delete from draft_player_theme` → `delete from draft_player_cube`.
 - `app/api/drafts/route.ts` create branch: `allowedThemeIds`→`allowedCubeIds`; when a cube is chosen for a shared draft, call `applyCubeToConfig`.
 - `helpers.ts` `buildDraftResponse`: `allowedThemes`→`allowedCubes`, read `cubes`/`cube_cards`/`draft_player_cube`; keep `phase`/`themeProgress` keys (UI contract) unless also renaming UI in Phase 5.
+- `app/api/drafts/[slug]/preflight/route.ts`: swap `createThemesService`→`createCubeService`, `themes.analyzeTheme(themeId, cfg)`→`cubes.analyzeCubePools(cubeId, cfg)`, `config.allowedThemeIds`→`config.allowedCubeIds`, and `from themes` SQL → `from cubes`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -482,11 +491,11 @@ git commit -m "feat(web): single cube editor replaces theme + legacy cube editor
 
 **Files:**
 - Rename/Modify: `themes/theme-draft-builder.tsx` → `cubes/cube-draft-builder.tsx`, `themes/theme-lobby-panel.tsx` → `cubes/cube-lobby-panel.tsx`
-- Modify: `packages/web/app/(app)/draft/[slug]/page.tsx`, `packages/web/src/components/draft/draft-manage-view.tsx` (any theme references)
+- Modify: `packages/web/app/(app)/draft/[slug]/page.tsx`, `packages/web/src/components/draft/draft-manage-view.tsx` (any theme references), `packages/web/src/components/draft/create-theme-draft-form.tsx` (the `/drafts/new/theme` form — `allowedThemeIds: []` → `allowedCubeIds: []`, any `/api/themes` reads → `/api/cubes`)
 
 - [ ] **Step 1: Port components**
 
-Move the two components, swap API calls to `/api/drafts/[slug]/cubes` and `/api/drafts/[slug]/claim-cube`, props `allowedThemes`→`allowedCubes`, `themeId`→`cubeId`. Keep all UI behavior (phase indicator, claim/preview/preflight, edit/detach/delete). Update `draft/[slug]/page.tsx` imports and the `isThemeDraft` branch to render the renamed components (the `mode === "theme"` check stays).
+Move the two components, swap API calls to `/api/drafts/[slug]/cubes` and `/api/drafts/[slug]/claim-cube`, props `allowedThemes`→`allowedCubes`, `themeId`→`cubeId`. Keep all UI behavior (phase indicator, claim/preview/preflight, edit/detach/delete). Update `draft/[slug]/page.tsx` imports and the `isThemeDraft` branch to render the renamed components (the `mode === "theme"` check stays). Update `create-theme-draft-form.tsx`'s `allowedThemeIds` → `allowedCubeIds` and any theme-library fetch to `/api/cubes`.
 
 - [ ] **Step 2: Typecheck + the draft page/manage-view tests**
 
