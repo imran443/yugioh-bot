@@ -130,31 +130,27 @@ export interface Card {
   archetype?: string;
 }
 
-export type ThemePool = "main" | "extra";
+export type CubePool = "main" | "extra";
 
-export interface ThemeCard {
+export interface CubeCard {
   catalogCardId: number;
-  pool: ThemePool;
+  pool: CubePool;
   maxCopies: number;
   source?: string;
 }
 
-export interface ThemePools {
-  main: ThemeCard[];
-  extra: ThemeCard[];
+export interface CubePools {
+  main: CubeCard[];
+  extra: CubeCard[];
 }
 
-export interface Theme {
+export interface Cube {
   id: number;
   guildId: string;
   name: string;
   archetype: string | null;
   banlist: string | null;
+  /** Pack/mode defaults + set/passcode pool sources (bot templates & set draws). */
+  config: DraftConfig;
   createdByUserId: string;
-}
-
-export interface ThemeAnalysis {
-  ok: boolean;
-  errors: string[];
-  warnings: string[];
 }
