@@ -74,7 +74,8 @@ A cube with only `config_json` and no `cube_cards` (a set/passcode bot template)
 
 **One shared service** `packages/shared/src/services/cubes.ts` → `createCubeService(db, catalog)`, merging today's `createThemesService` (`packages/shared/src/services/themes.ts`) and the bot's `createDraftTemplateService` (`packages/bot/src/services/draft-templates.ts`):
 
-- *Pool/library ops* (from themes): `createBlank`, `createFromArchetype`, `findCube`, `listCubes`, `getCubePools`, `addCard`, `removeCard`, `setMaxCopies`, `importPasscodes`, `seedArchetypeInto`, `analyzeCubePools`, `renameCube`, `deleteCube`.
+- *Pool/library ops — renamed 1:1 from the themes service:* `createBlank`, `createFromArchetype`, `findCube` (was `findTheme`), `listCubes` (was `listThemes`), `getCubePools` (was `getThemePools`), `addCard`, `removeCard`, `setMaxCopies`, `importPasscodes`, `seedArchetypeInto`.
+- *Pool/library ops — NEW methods (not present on the themes service today):* `renameCube` and `deleteCube` centralize what is currently inline SQL in `packages/web/app/api/themes/[id]/route.ts` (`update themes set name…` / `delete from themes…`); `analyzeCubePools` centralizes the main/extra sufficiency check that today lives in the engine's `preflightThemes`. The web routes and engine then call these instead of duplicating SQL. Budget these as new code, not renames.
 - *Template-compatible ops* (from the bot service, **identical signatures**): `save(guildId, name, config, userId)`, `findByName(guildId, name)`, `list(guildId)`, `delete(guildId, name)` — so bot call sites swap only the wiring, not their logic.
 
 **Deal algorithm untouched.** `packages/shared/src/services/cube.ts` (`analyzeCube` / `buildDeal` / `seededShuffle`) is deal *math*, not storage. Rename the file to `deal.ts` purely to avoid `cube.ts` vs `cubes.ts` confusion (mechanical import update across `drafts.ts` and any web importers).
@@ -85,7 +86,7 @@ A cube with only `config_json` and no `cube_cards` (a set/passcode bot template)
 
 ## Bot rewire (deliberately tiny)
 
-- Delete `packages/bot/src/services/draft-templates.ts`; wire `deps.cubes = createCubeService(db, catalog)`.
+- Delete `packages/bot/src/services/draft-templates.ts`; wire `deps.cubes = createCubeService(db, catalog)`. Note: the merged service takes a `catalog` arg the old `createDraftTemplateService(db)` did not — confirm a card-catalog instance is available at the bot wire site (it is; the bot already runs set sync via the catalog service) and pass it in.
 - `packages/bot/src/commands/handlers.ts`, `interactions/modals.ts`, `interactions/autocomplete.ts` keep their `save`/`list`/`findByName`/`delete` call sites (signatures preserved); only the dependency name changes.
 - No new Discord theme-draft path is added — Theme Draft remains web-only, as today.
 
@@ -107,6 +108,7 @@ A cube with only `config_json` and no `cube_cards` (a set/passcode bot template)
 - Chooser `/drafts/new` (theme vs cube) stays. `theme-draft-builder` → `cube-draft-builder`, `theme-lobby-panel` → `cube-lobby-panel`, all reading `/api/.../cubes`. Live phase indicator, pack fade, draft-type badges, editable titles — behavior unchanged.
 
 ### Shared cube draft gains archetype search
+*(Explicit user request, bundled into this work — a small new capability beyond the pure store merge, justified because cubes can now hold archetype-seeded cards and the seed primitive already exists.)*
 - The cube-draft pool builder (`create-draft-form` + `card-pool-editor`) gets an **"Add a whole archetype"** type-ahead reusing `/api/archetypes` + the seed primitive, resolving that archetype's cards into the shared pool. A shared cube draft can be built from **archetypes + sets + passcodes**.
 - "Save pool as cube" → `/api/cubes`; "load saved cube" → `/api/cubes`.
 - Settings `card-pool-manager` → points at `/api/cubes`.
@@ -122,6 +124,7 @@ A cube with only `config_json` and no `cube_cards` (a set/passcode bot template)
 - **Web routes:** `/api/cubes` CRUD, `/api/drafts/[slug]/cubes` attach/detach, `claim-cube`, delete-route clears `draft_player_cube`, create-route theme + cube branches.
 - **Bot:** template `save`/`list`/`findByName`/`delete` retargeted to the cube service.
 - **Components:** cube editor (was `theme-editor.test`), archetype search in the shared cube-draft pool builder.
+- **Schema:** `packages/shared/tests/db/schema.test.ts` hard-asserts the old table names (`themes`, `theme_cards`, `draft_player_theme`) and will fail on the rename — update it to assert `cubes` / `cube_cards` / `draft_player_cube`.
 - Rename existing tests rather than duplicate.
 
 **Verification:** `npm run typecheck` + `npm test` per package, `npm run reset:test-data`, then smoke: seed a cube from an archetype → run a shared cube draft seeded from an archetype → run a Theme Draft on cubes → confirm bot `/draft template` save/load still works.
