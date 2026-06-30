@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Upload, Trash2, Sparkles, Plus } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, Sparkles, Plus, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CardPoolGrid } from "@/components/cards/card-pool-grid";
 import { CardHoverPopup } from "@/components/draft/card-hover-popup";
@@ -65,6 +65,9 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
   const [searchPopupPosition, setSearchPopupPosition] = React.useState<{ left: number; top: number } | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [editingName, setEditingName] = React.useState(false);
+  const [nameDraft, setNameDraft] = React.useState("");
+  const [savingName, setSavingName] = React.useState(false);
   const searchReqId = React.useRef(0);
 
   const applyDetail = React.useCallback(
@@ -169,6 +172,37 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
     }
   };
 
+  const startRename = () => {
+    setNameDraft(theme?.name ?? "");
+    setEditingName(true);
+  };
+
+  const saveName = async () => {
+    const next = nameDraft.trim();
+    if (!next || next === theme?.name) {
+      setEditingName(false);
+      return;
+    }
+    setSavingName(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/themes/${themeId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: next }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Failed to rename theme.");
+        return;
+      }
+      setTheme((cur) => (cur ? { ...cur, name: next } : cur));
+      setEditingName(false);
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const deleteTheme = async () => {
     if (typeof window !== "undefined" && !window.confirm("Delete this theme cube? This can't be undone.")) {
       return;
@@ -252,8 +286,41 @@ export function ThemeEditor({ themeId }: { themeId: number }) {
       </Link>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl text-text-primary sm:text-3xl">{theme?.name ?? "Theme"}</h1>
+        <div className="min-w-0">
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                aria-label="Theme name"
+                value={nameDraft}
+                autoFocus
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void saveName();
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+                className="w-full max-w-md rounded-lg border border-border bg-bg-deep px-3 py-1.5 font-display text-2xl text-text-primary focus:border-accent-primary focus:outline-none sm:text-3xl"
+              />
+              <Button type="button" variant="primary" size="sm" loading={savingName} onClick={() => void saveName()}>
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setEditingName(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-2xl text-text-primary sm:text-3xl">{theme?.name ?? "Theme"}</h1>
+              <button
+                type="button"
+                onClick={startRename}
+                title="Rename theme"
+                aria-label="Rename theme"
+                className="rounded-lg border border-border p-1.5 text-text-secondary transition-colors hover:text-text-primary motion-safe:active:translate-y-px"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <p className="mt-2 text-sm text-text-secondary">
             {theme?.archetype ? `Archetype: ${theme.archetype} · ` : ""}
             {mainGrid.cards.length + mainGrid.unknownIds.length} main · {extraGrid.cards.length + extraGrid.unknownIds.length} extra

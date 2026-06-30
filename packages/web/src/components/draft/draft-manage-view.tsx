@@ -428,22 +428,35 @@ export function DraftManageView({
                     </Button>
                   </div>
                 ) : (
-                  <h1
-                    className="font-display text-xl text-text-primary sm:text-2xl"
-                    onClick={() => isCreator && setEditing(true)}
-                    role={isCreator ? "button" : undefined}
-                    tabIndex={isCreator ? 0 : undefined}
-                    onKeyDown={
-                      isCreator
-                        ? (e) => {
-                            if (e.key === "Enter") setEditing(true);
-                          }
-                        : undefined
-                    }
-                    style={isCreator ? { cursor: "text" } : undefined}
-                  >
-                    {draft.name}
-                  </h1>
+                  <div className="flex items-center gap-2">
+                    <h1
+                      className="font-display text-xl text-text-primary sm:text-2xl"
+                      onClick={() => isCreator && setEditing(true)}
+                      role={isCreator ? "button" : undefined}
+                      tabIndex={isCreator ? 0 : undefined}
+                      onKeyDown={
+                        isCreator
+                          ? (e) => {
+                              if (e.key === "Enter") setEditing(true);
+                            }
+                          : undefined
+                      }
+                      style={isCreator ? { cursor: "text" } : undefined}
+                    >
+                      {draft.name}
+                    </h1>
+                    {isCreator && (
+                      <button
+                        type="button"
+                        onClick={() => setEditing(true)}
+                        title="Rename draft"
+                        aria-label="Rename draft"
+                        className="shrink-0 rounded-lg border border-border p-1.5 text-text-secondary transition-colors hover:text-text-primary motion-safe:active:translate-y-px"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 )}
                 <div className="mt-2 flex items-center gap-3">
                   <Badge variant="warning">Pending</Badge>

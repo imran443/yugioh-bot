@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ThemeSummary {
@@ -18,8 +18,6 @@ export function ThemesList() {
   const router = useRouter();
   const [themes, setThemes] = React.useState<ThemeSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [name, setName] = React.useState("");
-  const [archetype, setArchetype] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -77,50 +75,32 @@ export function ThemesList() {
     }
   };
 
+  // Create a fresh blank theme (auto-named to avoid collisions) and jump straight
+  // into its editor, where the user names it and builds the pool.
+  const addTheme = () => {
+    const existing = new Set(themes.map((t) => t.name));
+    let name = "New theme";
+    let n = 2;
+    while (existing.has(name)) name = `New theme ${n++}`;
+    void create({ kind: "blank", name });
+  };
+
   return (
     <div className="space-y-6">
       {error && <p className="rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-4 py-3 text-sm text-accent-cta">{error}</p>}
 
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="mb-3 font-display text-lg text-text-primary">Create a theme</h2>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex-1">
-            <label htmlFor="theme-blank-name" className="mb-1 block text-sm font-medium text-text-primary">Blank theme name</label>
-            <input
-              id="theme-blank-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Stun"
-              className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-            />
-          </div>
-          <Button type="button" variant="secondary" disabled={busy || name.trim().length === 0} onClick={() => void create({ kind: "blank", name: name.trim() })}>
-            Create blank
-          </Button>
-        </div>
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex-1">
-            <label htmlFor="theme-archetype" className="mb-1 block text-sm font-medium text-text-primary">Seed from archetype</label>
-            <input
-              id="theme-archetype"
-              value={archetype}
-              onChange={(e) => setArchetype(e.target.value)}
-              placeholder="Blue-Eyes"
-              className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-            />
-          </div>
-          <Button type="button" variant="primary" disabled={busy || archetype.trim().length === 0} onClick={() => void create({ kind: "archetype", archetype: archetype.trim() })}>
-            Seed archetype
-          </Button>
-        </div>
-      </section>
+      <div className="flex items-center justify-end">
+        <Button type="button" variant="primary" disabled={busy} onClick={() => addTheme()}>
+          <Plus className="h-4 w-4" /> Add theme
+        </Button>
+      </div>
 
       {loading ? (
         <p className="text-sm text-text-secondary">Loading themes...</p>
       ) : themes.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-8 text-center">
           <p className="text-lg text-text-secondary">No themes yet</p>
-          <p className="mt-2 text-sm text-text-muted">Create a blank theme or seed one from an archetype above.</p>
+          <p className="mt-2 text-sm text-text-muted">Click &ldquo;Add theme&rdquo; to build your first one.</p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
