@@ -291,6 +291,28 @@ export function createCubeService(db: Database.Database, catalog: CardCatalogSer
       db.prepare("delete from cubes where id = ?").run(cubeId);
     },
 
+    /**
+     * Flatten a cube into a shared-draft config: the cube's own config (pack/mode
+     * settings + setNames) merged over `base`, with `customCardIds` unioned from
+     * base, the cube's config, and every explicit cube_cards entry (main + extra).
+     * Lets a saved cube drive a shared (non-theme) draft through the unchanged
+     * resolveCubeCardIds -> buildDeal path.
+     */
+    applyCubeToConfig(cubeId: number, base: DraftConfig = {}): DraftConfig {
+      const cube = findCube(cubeId);
+      const pools = getCubePools(cubeId);
+      const flat = [...pools.main, ...pools.extra].map((c) => c.catalogCardId);
+      const customCardIds = Array.from(
+        new Set([...(base.customCardIds ?? []), ...(cube.config.customCardIds ?? []), ...flat]),
+      );
+      return {
+        ...base,
+        ...cube.config,
+        customCardIds,
+        setNames: cube.config.setNames ?? base.setNames,
+      };
+    },
+
     getCubePools,
 
     findCube,

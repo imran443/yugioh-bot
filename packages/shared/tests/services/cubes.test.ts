@@ -247,4 +247,13 @@ describe("cube service Discord-template-compatible ops", () => {
     cubes.delete("g", "T");
     expect(cubes.findByName("g", "T")).toBeUndefined();
   });
+
+  it("applyCubeToConfig unions cube_cards into customCardIds and preserves setNames", () => {
+    const { cubes } = setup(); // catalog cards 1 (main/normal) and 2 (extra/xyz)
+    const cube = cubes.save("g", "Hybrid", { setNames: ["Metal Raiders"], customCardIds: [1] }, "u");
+    cubes.addCard(cube.id, 2, "extra"); // explicit extra-pool card
+    const out = cubes.applyCubeToConfig(cube.id, { customCardIds: [3] });
+    expect(out.setNames).toEqual(["Metal Raiders"]);
+    expect([...out.customCardIds!].sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
 });

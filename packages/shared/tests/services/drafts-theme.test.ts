@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../../src/db/index.js";
 import { createDraftService } from "../../src/services/drafts.js";
-import { createThemesService } from "../../src/services/themes.js";
+import { createCubeService } from "../../src/services/cubes.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftTournamentService } from "../../src/services/draft-tournament.js";
 import type { DraftConfig } from "../../src/types/index.js";
@@ -23,7 +23,7 @@ function insertPlayer(db: Database.Database, guildId: string, discordUserId: str
 let catalogId = 1;
 function seedThemeCards(
   db: Database.Database,
-  themes: ReturnType<typeof createThemesService>,
+  themes: ReturnType<typeof createCubeService>,
   guildId: string,
   name: string,
   mainCount: number,
@@ -58,7 +58,7 @@ function makeThemeDraft(opts: {
   const db = new Database(":memory:");
   migrate(db);
   const drafts = createDraftService(db);
-  const themesService = createThemesService(db, emptyCatalog(db));
+  const themesService = createCubeService(db, emptyCatalog(db));
   const guildId = "g";
 
   const themeIds = opts.themes.map((t, i) => seedThemeCards(db, themesService, guildId, `Theme${i}`, t.main, t.extra));
@@ -130,8 +130,8 @@ describe("theme draft — start & assignment", () => {
     const started = drafts.start(draftId);
     expect(started.status).toBe("active");
     expect(started.currentPackRound).toBe(1);
-    const assigned = db.prepare("select theme_id from draft_player_theme where draft_id = ?").all(draftId) as Array<{ theme_id: number }>;
-    expect(new Set(assigned.map((r) => r.theme_id)).size).toBe(2); // distinct
+    const assigned = db.prepare("select cube_id from draft_player_cube where draft_id = ?").all(draftId) as Array<{ cube_id: number }>;
+    expect(new Set(assigned.map((r) => r.cube_id)).size).toBe(2); // distinct
     expect(drafts.currentPackOptions(draftId, playerIds[0])).toHaveLength(3);
   });
 

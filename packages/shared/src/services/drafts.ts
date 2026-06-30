@@ -477,7 +477,7 @@ export function createDraftService(db: Database.Database) {
       "update draft_players set finished_at = ? where draft_id = ? and player_id = ? and finished_at is null",
     );
     const poolStmt = db.prepare(
-      "select catalog_card_id, max_copies from theme_cards where theme_id = ? and pool = ?",
+      "select catalog_card_id, max_copies from cube_cards where cube_id = ? and pool = ?",
     );
     const burnConsumedStmt = db.prepare(
       `select dc.catalog_card_id as catalog_card_id, count(*) as n
@@ -498,16 +498,16 @@ export function createDraftService(db: Database.Database) {
     let dealt = 0;
 
     for (const player of activePlayerRows(draftId)) {
-      const themeRow = db
-        .prepare("select theme_id from draft_player_theme where draft_id = ? and player_id = ?")
-        .get(draftId, player.player_id) as { theme_id: number } | undefined;
+      const cubeRow = db
+        .prepare("select cube_id from draft_player_cube where draft_id = ? and player_id = ?")
+        .get(draftId, player.player_id) as { cube_id: number } | undefined;
       const seat = player.seat_index;
-      if (!themeRow || seat === null || seat === undefined) {
+      if (!cubeRow || seat === null || seat === undefined) {
         continue;
       }
 
       const remaining = new Map<number, number>();
-      for (const row of poolStmt.all(themeRow.theme_id, phase) as Array<{ catalog_card_id: number; max_copies: number }>) {
+      for (const row of poolStmt.all(cubeRow.cube_id, phase) as Array<{ catalog_card_id: number; max_copies: number }>) {
         remaining.set(row.catalog_card_id, row.max_copies);
       }
 
@@ -572,7 +572,7 @@ export function createDraftService(db: Database.Database) {
     const requested = config.allowedCubeIds ?? [];
     // Drop any cubes that were deleted from the library after being attached.
     const existing = new Set(
-      (db.prepare("select id from themes").all() as Array<{ id: number }>).map((r) => r.id),
+      (db.prepare("select id from cubes").all() as Array<{ id: number }>).map((r) => r.id),
     );
     const allowed = requested.filter((id) => existing.has(id));
     if (allowed.length === 0) {
@@ -588,17 +588,17 @@ export function createDraftService(db: Database.Database) {
     }
 
     const upsertTheme = db.prepare(
-      `insert into draft_player_theme (draft_id, player_id, theme_id) values (?, ?, ?)
-       on conflict (draft_id, player_id) do update set theme_id = excluded.theme_id`,
+      `insert into draft_player_cube (draft_id, player_id, cube_id) values (?, ?, ?)
+       on conflict (draft_id, player_id) do update set cube_id = excluded.cube_id`,
     );
 
     // Existing claims (player_pick lobby). Other modes ignore them.
     const claims = new Map<number, number>();
     if (selection === "player_pick") {
       for (const row of db
-        .prepare("select player_id, theme_id from draft_player_theme where draft_id = ?")
-        .all(draftId) as Array<{ player_id: number; theme_id: number }>) {
-        claims.set(row.player_id, row.theme_id);
+        .prepare("select player_id, cube_id from draft_player_cube where draft_id = ?")
+        .all(draftId) as Array<{ player_id: number; cube_id: number }>) {
+        claims.set(row.player_id, row.cube_id);
       }
     }
 
@@ -642,18 +642,18 @@ export function createDraftService(db: Database.Database) {
 
     const rows = db
       .prepare(
-        `select dpt.theme_id as theme_id, coalesce(sum(tc.max_copies), 0) as main_size
-           from draft_player_theme dpt
-           left join theme_cards tc on tc.theme_id = dpt.theme_id and tc.pool = 'main'
+        `select dpt.cube_id as cube_id, coalesce(sum(tc.max_copies), 0) as main_size
+           from draft_player_cube dpt
+           left join cube_cards tc on tc.cube_id = dpt.cube_id and tc.pool = 'main'
           where dpt.draft_id = ?
-          group by dpt.theme_id`,
+          group by dpt.cube_id`,
       )
-      .all(draftId) as Array<{ theme_id: number; main_size: number }>;
+      .all(draftId) as Array<{ cube_id: number; main_size: number }>;
 
     for (const row of rows) {
       if (row.main_size < requiredMain) {
         throw new Error(
-          `Theme ${row.theme_id} has only ${row.main_size} main-pool cards but needs ${requiredMain} to fill a ${cardsPerPlayer}-card main deck.`,
+          `Cube ${row.cube_id} has only ${row.main_size} main-pool cards but needs ${requiredMain} to fill a ${cardsPerPlayer}-card main deck.`,
         );
       }
     }
