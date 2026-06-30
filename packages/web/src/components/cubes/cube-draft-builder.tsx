@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Plus, Unlink, Pencil, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface AllowedTheme {
+interface AllowedCube {
   id: number;
   name: string;
   archetype: string | null;
@@ -13,31 +13,31 @@ interface AllowedTheme {
   extraCount: number;
 }
 
-interface ThemeDraftBuilderProps {
+interface CubeDraftBuilderProps {
   slug: string;
-  allowedThemes: AllowedTheme[];
+  allowedCubes: AllowedCube[];
   uniqueThemes: boolean;
   onChanged: () => void;
 }
 
-export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged }: ThemeDraftBuilderProps) {
+export function CubeDraftBuilder({ slug, allowedCubes, uniqueThemes, onChanged }: CubeDraftBuilderProps) {
   const [query, setQuery] = React.useState("");
   const [suggestions, setSuggestions] = React.useState<string[]>([]);
   const [blankName, setBlankName] = React.useState("");
-  const [library, setLibrary] = React.useState<AllowedTheme[]>([]);
+  const [library, setLibrary] = React.useState<AllowedCube[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
   const reqId = React.useRef(0);
 
   // Existing library cubes that aren't already in this draft.
-  const attachedIds = React.useMemo(() => new Set(allowedThemes.map((t) => t.id)), [allowedThemes]);
+  const attachedIds = React.useMemo(() => new Set(allowedCubes.map((c) => c.id)), [allowedCubes]);
   const attachable = library.filter((c) => !attachedIds.has(c.id));
 
   const loadLibrary = React.useCallback(() => {
-    fetch("/api/themes")
-      .then((res) => (res.ok ? res.json() : { themes: [] }))
-      .then((data: { themes: AllowedTheme[] }) => setLibrary(data.themes ?? []))
+    fetch("/api/cubes")
+      .then((res) => (res.ok ? res.json() : { cubes: [] }))
+      .then((data: { cubes: AllowedCube[] }) => setLibrary(data.cubes ?? []))
       .catch(() => {});
   }, []);
 
@@ -68,7 +68,7 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
     setError(null);
     setInfo(null);
     try {
-      const res = await fetch(`/api/drafts/${slug}/themes`, {
+      const res = await fetch(`/api/drafts/${slug}/cubes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -78,7 +78,7 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
         setError(
           res.status === 502
             ? `${data.error ?? "Couldn't reach the card database."} You can still add a blank cube and import passcodes in its editor.`
-            : data.error ?? "Failed to add theme cube",
+            : data.error ?? "Failed to add cube",
         );
         return;
       }
@@ -104,20 +104,20 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
     void post({ kind: "blank", name: blankName.trim() }, `Added blank cube "${blankName.trim()}".`);
   };
 
-  const attachExisting = (themeId: number) => {
-    if (!themeId) return;
-    const cube = library.find((c) => c.id === themeId);
-    void post({ kind: "existing", themeId }, `Attached "${cube?.name ?? "cube"}".`);
+  const attachExisting = (cubeId: number) => {
+    if (!cubeId) return;
+    const cube = library.find((c) => c.id === cubeId);
+    void post({ kind: "existing", cubeId }, `Attached "${cube?.name ?? "cube"}".`);
   };
 
-  const detach = async (themeId: number) => {
+  const detach = async (cubeId: number) => {
     setBusy(true);
     setError(null);
     try {
-      await fetch(`/api/drafts/${slug}/themes`, {
+      await fetch(`/api/drafts/${slug}/cubes`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ themeId }),
+        body: JSON.stringify({ cubeId }),
       });
       onChanged();
       loadLibrary();
@@ -126,7 +126,7 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
     }
   };
 
-  const deleteCube = async (themeId: number, name: string) => {
+  const deleteCube = async (cubeId: number, name: string) => {
     if (typeof window !== "undefined" && !window.confirm(`Delete "${name}" from your library for good? This can't be undone.`)) {
       return;
     }
@@ -134,12 +134,12 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
     setError(null);
     try {
       // Detach from this draft, then delete the cube from the library.
-      await fetch(`/api/drafts/${slug}/themes`, {
+      await fetch(`/api/drafts/${slug}/cubes`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ themeId }),
+        body: JSON.stringify({ cubeId }),
       });
-      await fetch(`/api/themes/${themeId}`, { method: "DELETE" });
+      await fetch(`/api/cubes/${cubeId}`, { method: "DELETE" });
       onChanged();
       loadLibrary();
     } finally {
@@ -151,7 +151,7 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
     <section className="rounded-xl border border-border bg-surface p-4">
       <div className="mb-1 flex items-center justify-between">
         <h2 className="font-display text-lg text-text-primary">Theme cubes</h2>
-        <span className="text-xs text-text-secondary">{allowedThemes.length} cube{allowedThemes.length === 1 ? "" : "s"}</span>
+        <span className="text-xs text-text-secondary">{allowedCubes.length} cube{allowedCubes.length === 1 ? "" : "s"}</span>
       </div>
       <p className="mb-3 text-sm text-text-secondary">
         Add archetypes one at a time (each becomes its own editable cube), attach cubes you already built, or start a blank one.
@@ -229,37 +229,37 @@ export function ThemeDraftBuilder({ slug, allowedThemes, uniqueThemes, onChanged
       )}
 
       {/* Cube list */}
-      {allowedThemes.length === 0 ? (
+      {allowedCubes.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-text-secondary">
           No cubes yet. Search an archetype above or add a blank cube to start.
         </p>
       ) : (
         <ul className="space-y-2">
-          {allowedThemes.map((theme) => (
-            <li key={theme.id} className="flex items-center justify-between rounded-lg border border-border bg-bg-elevated/40 px-3 py-2 transition-colors hover:border-border/80">
+          {allowedCubes.map((cube) => (
+            <li key={cube.id} className="flex items-center justify-between rounded-lg border border-border bg-bg-elevated/40 px-3 py-2 transition-colors hover:border-border/80">
               <div className="min-w-0">
                 <p className="truncate font-display text-text-primary">
-                  {theme.name}
-                  {theme.archetype && theme.archetype !== theme.name && (
-                    <span className="ml-2 align-middle text-xs font-normal text-accent-primary">{theme.archetype}</span>
+                  {cube.name}
+                  {cube.archetype && cube.archetype !== cube.name && (
+                    <span className="ml-2 align-middle text-xs font-normal text-accent-primary">{cube.archetype}</span>
                   )}
                 </p>
                 <p className="text-xs tabular-nums text-text-secondary">
-                  {theme.mainCount} main, {theme.extraCount} extra
+                  {cube.mainCount} main, {cube.extraCount} extra
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <Link
-                  href={`/themes/${theme.id}?from=${encodeURIComponent(`/draft/${slug}`)}`}
+                  href={`/cubes/${cube.id}?from=${encodeURIComponent(`/draft/${slug}`)}`}
                   className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
                   title="Edit / view cube"
                 >
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Link>
-                <button type="button" disabled={busy} onClick={() => void detach(theme.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary motion-safe:active:translate-y-px disabled:opacity-50" title="Detach from this draft (keeps the cube in your library)">
+                <button type="button" disabled={busy} onClick={() => void detach(cube.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary motion-safe:active:translate-y-px disabled:opacity-50" title="Detach from this draft (keeps the cube in your library)">
                   <Unlink className="h-3.5 w-3.5" /> Detach
                 </button>
-                <button type="button" disabled={busy} onClick={() => void deleteCube(theme.id, theme.name)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta transition-colors hover:bg-accent-cta/10 motion-safe:active:translate-y-px disabled:opacity-50" title="Delete cube from your library for good">
+                <button type="button" disabled={busy} onClick={() => void deleteCube(cube.id, cube.name)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta transition-colors hover:bg-accent-cta/10 motion-safe:active:translate-y-px disabled:opacity-50" title="Delete cube from your library for good">
                   <Trash2 className="h-3.5 w-3.5" /> Delete
                 </button>
               </div>

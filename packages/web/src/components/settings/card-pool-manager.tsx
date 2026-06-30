@@ -36,10 +36,10 @@ export function CardPoolManager() {
   const reload = React.useCallback(async () => {
     setLoadError(null);
     try {
-      const res = await fetch("/api/draft-templates");
+      const res = await fetch("/api/cubes");
       if (res.ok) {
-        const data = (await res.json()) as { templates: PoolListItem[] };
-        setPools(data.templates);
+        const data = (await res.json()) as { cubes: PoolListItem[] };
+        setPools(data.cubes);
       } else {
         setLoadError("Failed to load pools.");
       }
@@ -70,14 +70,16 @@ export function CardPoolManager() {
     try {
       let res: Response;
       if (editor.mode === "new") {
-        res = await fetch("/api/draft-templates", {
+        res = await fetch("/api/cubes", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, config: { setNames: editor.pool.setNames, customCardIds } }),
         });
       } else {
-        res = await fetch(`/api/draft-templates/${editor.id}`, {
+        // Editing an existing cube renames it; its card pool is edited in the rich
+        // cube editor (/cubes/[id]). The library [id] route only accepts a rename.
+        res = await fetch(`/api/cubes/${editor.id}`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, setNames: editor.pool.setNames, customCardIds }),
+          body: JSON.stringify({ name }),
         });
       }
       if (!res.ok) {
@@ -93,7 +95,7 @@ export function CardPoolManager() {
   };
 
   const doDelete = async (id: number) => {
-    const res = await fetch(`/api/draft-templates/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/cubes/${id}`, { method: "DELETE" });
     setConfirmDeleteId(null);
     if (res.ok) {
       await reload();

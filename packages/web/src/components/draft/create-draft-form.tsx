@@ -6,6 +6,7 @@ import type { DraftConfig } from "@yugidraft/shared/types";
 import { Button } from "@/components/ui/button";
 import { parseCustomCardIds } from "@/lib/custom-card-pool";
 import { CardPoolPanel } from "@/components/cards/card-pool-panel";
+import { ArchetypeSearch } from "@/components/cubes/archetype-search";
 import type { CardSummary } from "@/lib/card-types";
 import {
   CARDS_PER_PLAYER_DEFAULT,
@@ -65,12 +66,50 @@ export function CreateDraftForm() {
 
   React.useEffect(() => {
     let cancelled = false;
-    fetch("/api/draft-templates")
-      .then((res) => (res.ok ? res.json() : { templates: [] }))
-      .then((data) => { if (!cancelled) setTemplates(data.templates ?? []); })
+    fetch("/api/cubes")
+      .then((res) => (res.ok ? res.json() : { cubes: [] }))
+      .then((data: { cubes?: Array<{ id: number; name: string; setNames?: string[]; customCardIds?: number[] }> }) => {
+        if (cancelled) return;
+        // Cubes carry their pool as setNames/customCardIds; surface them as loadable
+        // saved pools for the shared cube draft.
+        setTemplates(
+          (data.cubes ?? []).map((c) => ({
+            id: c.id,
+            name: c.name,
+            config: { setNames: c.setNames ?? [], customCardIds: c.customCardIds ?? [] },
+          })),
+        );
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // Resolve a whole archetype to card ids and union them into the custom pool.
+  const handleAddArchetype = async (archetype: string) => {
+    setError(null);
+    setTemplateStatus(null);
+    try {
+      const res = await fetch("/api/cards/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archetype }),
+      });
+      if (!res.ok) {
+        setError(`Couldn't add "${archetype}" — the card database may be unreachable.`);
+        return;
+      }
+      const data = (await res.json()) as { cards: Array<{ id: number }> };
+      const ids = data.cards.map((c) => c.id);
+      setFields((f) => {
+        const existing = parseCustomCardIds(f.customCardText).cardIds;
+        const union = Array.from(new Set([...existing, ...ids]));
+        return { ...f, customCardText: union.join("\n") };
+      });
+      setTemplateStatus(`Added ${ids.length} card${ids.length === 1 ? "" : "s"} from "${archetype}".`);
+    } catch {
+      setError(`Couldn't add "${archetype}" — the card database may be unreachable.`);
+    }
+  };
 
   const applyTemplate = (template: DraftTemplate) => {
     const c = template.config;
@@ -97,7 +136,7 @@ export function CreateDraftForm() {
     if (poolError) { setError(poolError); return; }
 
     const { cardIds: customCardIds } = parseCustomCardIds(fields.customCardText);
-    const res = await fetch("/api/draft-templates", {
+    const res = await fetch("/api/cubes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: templateName.trim(), config: { setNames: fields.setNames, customCardIds } }),
@@ -107,8 +146,13 @@ export function CreateDraftForm() {
       setError(data.error ?? "Failed to save pool");
       return;
     }
-    const data = await res.json();
-    const saved = data.template as DraftTemplate;
+    const data = (await res.json()) as { cube?: { id: number; name: string; config?: DraftConfig } };
+    const cube = data.cube;
+    const saved: DraftTemplate = {
+      id: cube?.id ?? 0,
+      name: cube?.name ?? templateName.trim(),
+      config: cube?.config ?? { setNames: fields.setNames, customCardIds },
+    };
     setTemplates((cur) =>
       [...cur.filter((item) => item.name !== saved.name), saved].sort((a, b) => a.name.localeCompare(b.name)),
     );
@@ -247,6 +291,17 @@ export function CreateDraftForm() {
                   Save Pool
                 </button>
                 {templateStatus && <p className="text-xs text-accent-primary sm:col-span-3">{templateStatus}</p>}
+              </div>
+
+              <div className="rounded-lg border border-border bg-bg-elevated/50 p-3">
+                <ArchetypeSearch
+                  inputId="draft-archetype-search"
+                  label="Add a whole archetype"
+                  onSelect={(archetype) => void handleAddArchetype(archetype)}
+                />
+                <p className="mt-2 text-xs text-text-secondary">
+                  Unions every card in the archetype into the custom pool above. Needs the card database.
+                </p>
               </div>
 
               <DraftConfigFields

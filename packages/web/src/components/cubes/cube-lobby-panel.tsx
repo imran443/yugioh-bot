@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-interface AllowedTheme {
+interface AllowedCube {
   id: number;
   name: string;
   archetype: string | null;
@@ -11,14 +11,14 @@ interface AllowedTheme {
   sampleImages: string[];
 }
 
-interface ThemeLobbyPanelProps {
+interface CubeLobbyPanelProps {
   slug: string;
-  allowedThemes: AllowedTheme[];
+  allowedCubes: AllowedCube[];
   themeSelection: "host_assigned" | "random" | "player_pick";
   onClaimed?: () => void;
 }
 
-export function ThemeLobbyPanel({ slug, allowedThemes, themeSelection, onClaimed }: ThemeLobbyPanelProps) {
+export function CubeLobbyPanel({ slug, allowedCubes, themeSelection, onClaimed }: CubeLobbyPanelProps) {
   const [claiming, setClaiming] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [preflight, setPreflight] = React.useState<{ errors: string[]; warnings: string[] } | null>(null);
@@ -30,18 +30,18 @@ export function ThemeLobbyPanel({ slug, allowedThemes, themeSelection, onClaimed
       .catch(() => {});
   }, [slug]);
 
-  const claim = async (themeId: number) => {
-    setClaiming(themeId);
+  const claim = async (cubeId: number) => {
+    setClaiming(cubeId);
     setError(null);
     try {
-      const res = await fetch(`/api/drafts/${slug}/claim-theme`, {
+      const res = await fetch(`/api/drafts/${slug}/claim-cube`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ themeId }),
+        body: JSON.stringify({ cubeId }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Could not claim theme");
+        setError(data.error ?? "Could not claim cube");
         return;
       }
       onClaimed?.();
@@ -62,7 +62,7 @@ export function ThemeLobbyPanel({ slug, allowedThemes, themeSelection, onClaimed
       {preflight?.warnings.length ? (
         <div className="mb-3 rounded-lg border border-accent-gold/40 bg-accent-gold/10 px-3 py-2 text-sm text-accent-gold">
           {preflight.warnings.map((w, i) => <p key={i}>{w}</p>)}
-          <p className="mt-1 text-xs opacity-80">You can re-roll, edit the theme, turn the Extra phase off, or proceed anyway.</p>
+          <p className="mt-1 text-xs opacity-80">You can re-roll, edit the cube, turn the Extra phase off, or proceed anyway.</p>
         </div>
       ) : null}
       {error && <div className="mb-3 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-3 py-2 text-sm text-accent-cta">{error}</div>}
@@ -71,14 +71,14 @@ export function ThemeLobbyPanel({ slug, allowedThemes, themeSelection, onClaimed
         <p className="text-sm text-text-secondary">Themes are assigned randomly and revealed at start.</p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {allowedThemes.map((theme) => (
-            <div key={theme.id} className="rounded-lg border border-border bg-bg-elevated/40 p-3 transition-colors hover:border-border/80">
-              <p className="font-display text-text-primary">{theme.name}</p>
-              {theme.archetype && theme.archetype !== theme.name && <p className="text-xs text-accent-primary">{theme.archetype}</p>}
-              <p className="mt-1 text-xs tabular-nums text-text-secondary">{theme.mainCount} main, {theme.extraCount} extra</p>
-              {theme.sampleImages.length > 0 && (
+          {allowedCubes.map((cube) => (
+            <div key={cube.id} className="rounded-lg border border-border bg-bg-elevated/40 p-3 transition-colors hover:border-border/80">
+              <p className="font-display text-text-primary">{cube.name}</p>
+              {cube.archetype && cube.archetype !== cube.name && <p className="text-xs text-accent-primary">{cube.archetype}</p>}
+              <p className="mt-1 text-xs tabular-nums text-text-secondary">{cube.mainCount} main, {cube.extraCount} extra</p>
+              {cube.sampleImages.length > 0 && (
                 <div className="mt-2 flex gap-1">
-                  {theme.sampleImages.slice(0, 4).map((img, i) => (
+                  {cube.sampleImages.slice(0, 4).map((img, i) => (
                     <img key={i} src={img} alt="" className="h-12 w-8 rounded object-contain" />
                   ))}
                 </div>
@@ -86,11 +86,11 @@ export function ThemeLobbyPanel({ slug, allowedThemes, themeSelection, onClaimed
               {themeSelection === "player_pick" && (
                 <button
                   type="button"
-                  onClick={() => void claim(theme.id)}
+                  onClick={() => void claim(cube.id)}
                   disabled={claiming !== null}
                   className="mt-2 w-full rounded-lg border border-accent-primary/60 bg-accent-primary/10 px-3 py-1.5 text-sm font-semibold text-accent-primary transition-colors hover:bg-accent-primary/20 motion-safe:active:translate-y-px disabled:opacity-50"
                 >
-                  {claiming === theme.id ? "Claiming..." : "Claim"}
+                  {claiming === cube.id ? "Claiming..." : "Claim"}
                 </button>
               )}
             </div>

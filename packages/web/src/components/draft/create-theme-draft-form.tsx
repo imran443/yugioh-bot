@@ -39,7 +39,7 @@ export function CreateThemeDraftForm() {
     }
     const config: DraftConfig = {
       mode: "theme",
-      allowedThemeIds: [],
+      allowedCubeIds: [],
       themePackSize,
       cardsPerPlayer,
       extraDeckEnabled,

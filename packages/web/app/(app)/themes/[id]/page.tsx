@@ -1,15 +1,6 @@
-import { Suspense } from "react";
-import { ThemeEditor } from "@/components/themes/theme-editor";
+import { redirect } from "next/navigation";
 
-export default async function ThemeEditorPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ThemeEditorRedirectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const themeId = Number.parseInt(id, 10);
-
-  return (
-    <div className="mx-auto max-w-[1800px] px-2 sm:px-4">
-      <Suspense fallback={<p className="text-sm text-text-secondary">Loading theme...</p>}>
-        <ThemeEditor themeId={themeId} />
-      </Suspense>
-    </div>
-  );
+  redirect(`/cubes/${id}`);
 }
