@@ -3,7 +3,7 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installVirtualizerJsdomEnv } from "./helpers/virtualizer-jsdom";
-import { ThemeEditor } from "@/components/themes/theme-editor";
+import { CubeEditor } from "@/components/cubes/cube-editor";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -21,7 +21,7 @@ function card(id: number, name: string, type: string, frameType: string) {
 }
 
 const initialDetail = {
-  theme: { id: 5, name: "Custom", archetype: null, banlist: null },
+  cube: { id: 5, name: "Custom", archetype: null, banlist: null },
   pools: { main: [], extra: [] },
   cards: [],
 };
@@ -36,15 +36,15 @@ const afterImport = {
   unknown: [],
 };
 
-describe("ThemeEditor", () => {
+describe("CubeEditor", () => {
   beforeEach(() => {
     installVirtualizerJsdomEnv();
     const fetchMock = vi.fn(async (input: any, init?: any) => {
       const url = String(input);
-      if (url.endsWith("/api/themes/5") && (!init || init.method === undefined)) {
+      if (url.endsWith("/api/cubes/5") && (!init || init.method === undefined)) {
         return { ok: true, json: async () => initialDetail } as Response;
       }
-      if (url.endsWith("/api/themes/5/cards")) {
+      if (url.endsWith("/api/cubes/5/cards")) {
         return { ok: true, json: async () => afterImport } as Response;
       }
       return { ok: true, json: async () => ({ cards: [] }) } as Response;
@@ -57,7 +57,7 @@ describe("ThemeEditor", () => {
   });
 
   it("imports passcodes and updates the main/extra pool counts", async () => {
-    render(<ThemeEditor themeId={5} />);
+    render(<CubeEditor cubeId={5} />);
 
     // initial load resolves
     await waitFor(() => expect(screen.getByText("Custom")).toBeInTheDocument());

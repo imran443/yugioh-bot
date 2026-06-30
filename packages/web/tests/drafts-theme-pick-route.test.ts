@@ -34,22 +34,22 @@ describe("POST /api/drafts/[slug]/pick (theme mode bots)", () => {
 
     const Database = (await import("better-sqlite3")).default;
     const { migrate } = await import("@yugidraft/shared/db");
-    const { createDraftService, createThemesService, createCardCatalogService } = await import("@yugidraft/shared/services");
+    const { createDraftService, createCubeService, createCardCatalogService } = await import("@yugidraft/shared/services");
     const db = new Database(dbPath);
     migrate(db);
 
-    const themes = createThemesService(db, createCardCatalogService(db, { fetch: async () => ({ ok: true, async json() { return { data: [] }; } }) as Response }));
+    const cubes = createCubeService(db, createCardCatalogService(db, { fetch: async () => ({ ok: true, async json() { return { data: [] }; } }) as Response }));
     const ins = db.prepare("insert into card_catalog (ygoprodeck_id,name,type,frame_type,image_url,image_url_small,card_sets_json,cached_at) values (?,?,?,?,?,?,?,?)");
     let cardId = 1;
-    const themeIds: number[] = [];
+    const cubeIds: number[] = [];
     for (let t = 0; t < 2; t++) {
-      const theme = themes.createBlank("guild-1", `Theme${t}`, "u1");
+      const cube = cubes.createBlank("guild-1", `Theme${t}`, "u1");
       for (let i = 0; i < 42; i++) {
         ins.run(cardId, `M${cardId}`, "Normal Monster", "normal", "i", "i", "[]", "t");
-        themes.addCard(theme.id, cardId, "main", 1);
+        cubes.addCard(cube.id, cardId, "main", 1);
         cardId++;
       }
-      themeIds.push(theme.id);
+      cubeIds.push(cube.id);
     }
 
     const human = Number(db.prepare("insert into players (guild_id, discord_user_id, display_name) values ('guild-1','u1','P1')").run().lastInsertRowid);
@@ -60,7 +60,7 @@ describe("POST /api/drafts/[slug]/pick (theme mode bots)", () => {
       "guild-1",
       "c",
       "Theme Night",
-      { mode: "theme", allowedThemeIds: themeIds, themeSelection: "random", extraDeckEnabled: false, cardsPerPlayer: 40, themePackSize: 3 },
+      { mode: "theme", allowedCubeIds: cubeIds, themeSelection: "random", extraDeckEnabled: false, cardsPerPlayer: 40, themePackSize: 3 },
       "u1",
       human,
     );

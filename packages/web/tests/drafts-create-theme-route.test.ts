@@ -40,9 +40,9 @@ describe("POST /api/drafts (theme mode)", () => {
     const { migrate } = await import("@yugidraft/shared/db");
     const db = new Database(dbPath);
     migrate(db);
-    // two themes to allow
-    db.prepare("insert into themes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1','Blue-Eyes','u','t','t')").run();
-    db.prepare("insert into themes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1','Dark Magician','u','t','t')").run();
+    // two cubes to allow
+    db.prepare("insert into cubes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1','Blue-Eyes','u','t','t')").run();
+    db.prepare("insert into cubes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1','Dark Magician','u','t','t')").run();
     db.close();
 
     const { POST } = await import("../app/api/drafts/route");
@@ -50,7 +50,7 @@ describe("POST /api/drafts (theme mode)", () => {
       method: "POST",
       body: JSON.stringify({
         name: "Theme Night",
-        config: { mode: "theme", allowedThemeIds: [1, 2], themePackSize: 4, extraDeckEnabled: false },
+        config: { mode: "theme", allowedCubeIds: [1, 2], themePackSize: 4, extraDeckEnabled: false },
       }),
     }) as NextRequest;
     const response = await POST(request);
@@ -60,7 +60,7 @@ describe("POST /api/drafts (theme mode)", () => {
     const row = verifyDb.prepare("select config_json from drafts where name = ?").get("Theme Night") as { config_json: string };
     const config = JSON.parse(row.config_json);
     expect(config.mode).toBe("theme");
-    expect(config.allowedThemeIds).toEqual([1, 2]);
+    expect(config.allowedCubeIds).toEqual([1, 2]);
     expect(config.themePackSize).toBe(4);
     expect(config.uniqueThemes).toBe(true); // default applied
     verifyDb.close();

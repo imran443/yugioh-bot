@@ -8,9 +8,9 @@ const tempDirs: string[] = [];
 
 vi.mock("@/lib/auth", () => ({ auth }));
 
-type SeedTheme = { main: number; extra: number };
+type SeedCube = { main: number; extra: number };
 
-async function seedDraft(themes: SeedTheme[], configOverrides: Record<string, unknown> = {}) {
+async function seedDraft(cubes: SeedCube[], configOverrides: Record<string, unknown> = {}) {
   const tempDir = mkdtempSync(join(tmpdir(), "yugioh-theme-lobby-"));
   const dbPath = join(tempDir, "lobby.sqlite");
   tempDirs.push(tempDir);
@@ -29,25 +29,25 @@ async function seedDraft(themes: SeedTheme[], configOverrides: Record<string, un
     "insert into card_catalog (ygoprodeck_id,name,type,frame_type,image_url,image_url_small,card_sets_json,cached_at) values (?,?,?,?,?,?,?,?)",
   );
   let cardId = 1;
-  const themeIds: number[] = [];
-  for (const t of themes) {
-    const themeId = Number(db.prepare("insert into themes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1', ?, 'u', 't', 't')").run(`Theme${themeIds.length}`).lastInsertRowid);
+  const cubeIds: number[] = [];
+  for (const t of cubes) {
+    const cubeId = Number(db.prepare("insert into cubes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1', ?, 'u', 't', 't')").run(`Theme${cubeIds.length}`).lastInsertRowid);
     for (let i = 0; i < t.main; i++) {
       insCard.run(cardId, `M${cardId}`, "Normal Monster", "normal", "i", "i", "[]", "t");
-      db.prepare("insert into theme_cards (theme_id, catalog_card_id, pool, max_copies) values (?, ?, 'main', 1)").run(themeId, cardId);
+      db.prepare("insert into cube_cards (cube_id, catalog_card_id, pool, max_copies) values (?, ?, 'main', 1)").run(cubeId, cardId);
       cardId++;
     }
     for (let i = 0; i < t.extra; i++) {
       insCard.run(cardId, `X${cardId}`, "XYZ Monster", "xyz", "i", "i", "[]", "t");
-      db.prepare("insert into theme_cards (theme_id, catalog_card_id, pool, max_copies) values (?, ?, 'extra', 1)").run(themeId, cardId);
+      db.prepare("insert into cube_cards (cube_id, catalog_card_id, pool, max_copies) values (?, ?, 'extra', 1)").run(cubeId, cardId);
       cardId++;
     }
-    themeIds.push(themeId);
+    cubeIds.push(cubeId);
   }
 
   const config = {
     mode: "theme",
-    allowedThemeIds: themeIds,
+    allowedCubeIds: cubeIds,
     themeSelection: "player_pick",
     uniqueThemes: true,
     themePackSize: 3,
@@ -69,7 +69,7 @@ async function seedDraft(themes: SeedTheme[], configOverrides: Record<string, un
   db.prepare("insert into draft_players (draft_id, player_id) values (?, ?)").run(draftId, p2);
   db.close();
 
-  return { themeIds, p1, p2 };
+  return { cubeIds, p1, p2 };
 }
 
 describe("theme lobby routes", () => {
@@ -86,20 +86,20 @@ describe("theme lobby routes", () => {
     }
   });
 
-  it("claims a theme and rejects a second claim of the same theme (uniqueThemes)", async () => {
-    const { themeIds } = await seedDraft([{ main: 42, extra: 0 }, { main: 42, extra: 0 }]);
-    const { POST } = await import("../app/api/drafts/[slug]/claim-theme/route");
+  it("claims a cube and rejects a second claim of the same cube (uniqueThemes)", async () => {
+    const { cubeIds } = await seedDraft([{ main: 42, extra: 0 }, { main: 42, extra: 0 }]);
+    const { POST } = await import("../app/api/drafts/[slug]/claim-cube/route");
 
     auth.mockResolvedValue({ user: { id: "u1", name: "P1" } });
-    const res1 = await POST(new Request("http://localhost/api/drafts/theme-slug/claim-theme", { method: "POST", body: JSON.stringify({ themeId: themeIds[0] }) }) as any, { params: Promise.resolve({ slug: "theme-slug" }) });
+    const res1 = await POST(new Request("http://localhost/api/drafts/theme-slug/claim-cube", { method: "POST", body: JSON.stringify({ cubeId: cubeIds[0] }) }) as any, { params: Promise.resolve({ slug: "theme-slug" }) });
     expect(res1.status).toBe(200);
 
     auth.mockResolvedValue({ user: { id: "u2", name: "P2" } });
-    const res2 = await POST(new Request("http://localhost/api/drafts/theme-slug/claim-theme", { method: "POST", body: JSON.stringify({ themeId: themeIds[0] }) }) as any, { params: Promise.resolve({ slug: "theme-slug" }) });
+    const res2 = await POST(new Request("http://localhost/api/drafts/theme-slug/claim-cube", { method: "POST", body: JSON.stringify({ cubeId: cubeIds[0] }) }) as any, { params: Promise.resolve({ slug: "theme-slug" }) });
     expect(res2.status).toBe(409);
   }, 30000);
 
-  it("preflight reports an error for a main-short theme and a warning for a thin-extra theme", async () => {
+  it("preflight reports an error for a main-short cube and a warning for a thin-extra cube", async () => {
     await seedDraft([{ main: 5, extra: 0 }, { main: 42, extra: 0 }]);
     auth.mockResolvedValue({ user: { id: "u1", name: "P1" } });
     const { GET } = await import("../app/api/drafts/[slug]/preflight/route");

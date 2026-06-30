@@ -4,14 +4,15 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CubesPage from "../../app/(app)/cubes/page";
 
-vi.mock("../../src/components/cubes/my-cubes-list", () => ({
-  MyCubesList: () => <div>Mock cubes list</div>,
+vi.mock("../../src/components/cubes/cubes-library-list", () => ({
+  CubesLibraryList: () => <div>Mock cubes list</div>,
 }));
 
 describe("CubesPage", () => {
-  it("renders a Create Card Pool link to /cubes/new", () => {
+  it("renders the Cubes heading and the library list", () => {
     render(<CubesPage />);
 
-    expect(screen.getByRole("link", { name: /create card pool/i })).toHaveAttribute("href", "/cubes/new");
+    expect(screen.getByRole("heading", { name: /^cubes$/i })).toBeInTheDocument();
+    expect(screen.getByText("Mock cubes list")).toBeInTheDocument();
   });
 });
