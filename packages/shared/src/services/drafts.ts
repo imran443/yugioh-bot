@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
 import { generateWebSlug } from "../util/web-slug.js";
-import { analyzeCube, buildDeal, seededShuffle } from "./cube.js";
+import { analyzeCube, buildDeal, seededShuffle } from "./deal.js";
 
 export type DraftStatus = "pending" | "active" | "cancelled" | "completed";
 export type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";

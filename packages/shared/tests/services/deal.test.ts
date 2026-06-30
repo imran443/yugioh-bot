@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mulberry32, seededShuffle, analyzeCube, buildDeal } from "../../src/services/cube.js";
+import { mulberry32, seededShuffle, analyzeCube, buildDeal } from "../../src/services/deal.js";
 
 describe("cube engine", () => {
   it("mulberry32 is deterministic for a seed", () => {

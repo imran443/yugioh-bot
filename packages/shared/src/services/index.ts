@@ -1,7 +1,7 @@
 export * from "./constants.js";
 export * from "./card-catalog.js";
 export * from "./themes.js";
-export * from "./cube.js";
+export * from "./deal.js";
 export * from "./card-images.js";
 export * from "./drafts.js";
 export { createGuildSettingsService } from "./guild-settings.js";

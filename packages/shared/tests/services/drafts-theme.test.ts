@@ -68,7 +68,7 @@ function makeThemeDraft(opts: {
     playerIds.push(insertPlayer(db, guildId, `u${i}`, `P${i}`));
   }
 
-  const config: DraftConfig = { mode: "theme", allowedThemeIds: themeIds, ...opts.config };
+  const config: DraftConfig = { mode: "theme", allowedCubeIds: themeIds, ...opts.config };
   if (opts.assign) {
     config.themeSelection = "host_assigned";
     config.themeAssignments = Object.fromEntries(
