@@ -40,6 +40,7 @@ async function main() {
       def integer,
       attribute text,
       level integer,
+      archetype text,
       image_url text not null,
       image_url_small text not null,
       card_sets_json text not null,
