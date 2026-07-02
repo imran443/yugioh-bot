@@ -82,11 +82,13 @@ describe("cube service core", () => {
     expect(cards.c).toBe(0);
   });
 
-  it("seeds a cube from an archetype and tops up thin extra with generics", async () => {
+  it("seeds a cube from an archetype without padding a thin extra deck", async () => {
     const db = new Database(":memory:");
     migrate(db);
     const archMain = { id: 10, name: "BEWD", type: "Normal Monster", frameType: "normal", archetype: "Blue-Eyes", card_images: [{ image_url: "i", image_url_small: "i" }] };
     const archExtra = { id: 11, name: "BE Twin", type: "Fusion Monster", frameType: "fusion", archetype: "Blue-Eyes", card_images: [{ image_url: "i", image_url_small: "i" }] };
+    // A generic Extra-Deck card is available from the API, but must NOT be pulled
+    // in to pad a thin extra deck — that top-up behaviour was removed.
     const genXyz = { id: 12, name: "Utopia", type: "XYZ Monster", frameType: "xyz", card_images: [{ image_url: "i", image_url_small: "i" }] };
     const catalog = createCardCatalogService(db, {
       fetch: async (input) => {
@@ -98,11 +100,12 @@ describe("cube service core", () => {
       },
     });
     const cubes = createCubeService(db, catalog);
-    const cube = await cubes.createFromArchetype("g", "Blue-Eyes", "u", { extraTarget: 2, topUpExtraWithGenerics: true });
+    const cube = await cubes.createFromArchetype("g", "Blue-Eyes", "u");
     const pools = cubes.getCubePools(cube.id);
     expect(pools.main.map((c) => c.catalogCardId)).toContain(10);
-    expect(pools.extra.map((c) => c.catalogCardId)).toEqual(expect.arrayContaining([11, 12]));
-    expect(pools.extra.find((c) => c.catalogCardId === 12)?.source).toBe("generic-extra");
+    // Extra pool is exactly the archetype's own extra cards — no generic top-up.
+    expect(pools.extra.map((c) => c.catalogCardId)).toEqual([11]);
+    expect(pools.extra.some((c) => c.source === "generic-extra")).toBe(false);
     expect(cube.archetype).toBe("Blue-Eyes");
   });
 

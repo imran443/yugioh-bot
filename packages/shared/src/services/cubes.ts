@@ -109,8 +109,6 @@ export function createCubeService(db: Database.Database, catalog: CardCatalogSer
         name?: string;
         banlist?: string;
         includeStaples?: boolean;
-        topUpExtraWithGenerics?: boolean;
-        extraTarget?: number;
         maxCopies?: number;
       } = {},
     ): Promise<Cube> {
@@ -118,8 +116,6 @@ export function createCubeService(db: Database.Database, catalog: CardCatalogSer
         name = archetype,
         banlist,
         includeStaples = false,
-        topUpExtraWithGenerics = true,
-        extraTarget = 15,
         maxCopies = 3,
       } = opts;
 
@@ -139,22 +135,6 @@ export function createCubeService(db: Database.Database, catalog: CardCatalogSer
         for (const card of staples) {
           if (!present.has(card.ygoprodeckId)) {
             upsertCard.run(cubeId, card.ygoprodeckId, "main", maxCopies, "staple");
-          }
-        }
-      }
-
-      if (topUpExtraWithGenerics && extra.length < extraTarget) {
-        const generics = await catalog.syncGenericExtra({ banlist });
-        const present = existingCardIds(cubeId);
-        let added = extra.length;
-        for (const card of generics) {
-          if (added >= extraTarget) {
-            break;
-          }
-          if (!present.has(card.ygoprodeckId)) {
-            upsertCard.run(cubeId, card.ygoprodeckId, "extra", maxCopies, "generic-extra");
-            present.add(card.ygoprodeckId);
-            added += 1;
           }
         }
       }

@@ -274,38 +274,6 @@ export function createCardCatalogService(
       return findByIds(mainOnly.map((card) => card.id));
     },
 
-    async syncGenericExtra(
-      opts: { banlist?: string; types?: ("xyz" | "synchro" | "link")[] } = {},
-    ): Promise<CardCatalogCard[]> {
-      const types = opts.types ?? ["xyz", "synchro", "link"];
-      const typeParam: Record<"xyz" | "synchro" | "link", string> = {
-        xyz: "XYZ Monster",
-        synchro: "Synchro Monster",
-        link: "Link Monster",
-      };
-
-      const orderedIds: number[] = [];
-      const seen = new Set<number>();
-      for (const type of types) {
-        const params: Record<string, string> = { type: typeParam[type] };
-        if (opts.banlist) {
-          params.banlist = opts.banlist;
-        }
-        const cards = await fetchCardsWith(params);
-        const extraOnly = cards.filter(isExtraDeckCard);
-        upsertCards(extraOnly);
-        for (const card of extraOnly) {
-          if (!seen.has(card.id)) {
-            seen.add(card.id);
-            orderedIds.push(card.id);
-          }
-        }
-      }
-
-      // findByIds preserves the requested id order, keeping XYZ (first type) first.
-      return findByIds(orderedIds);
-    },
-
     async syncCardById(id: number): Promise<CardCatalogCard | undefined> {
       const [card] = await fetchCards("id", String(id));
       if (!card) {

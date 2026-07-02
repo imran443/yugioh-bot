@@ -69,7 +69,6 @@ export async function POST(request: Request) {
     archetype?: string;
     banlist?: string;
     includeStaples?: boolean;
-    extraTarget?: number;
     config?: DraftConfig;
   };
 
@@ -88,7 +87,6 @@ export async function POST(request: Request) {
         name: body.name?.trim() || archetype,
         banlist: body.banlist,
         includeStaples: body.includeStaples ?? false,
-        extraTarget: typeof body.extraTarget === "number" ? body.extraTarget : undefined,
       });
       return NextResponse.json({ cube }, { status: 201 });
     }

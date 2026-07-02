@@ -59,11 +59,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
       if (!archetype) {
         return NextResponse.json({ error: "archetype is required" }, { status: 400 });
       }
-      const extraTarget = (draft.config.extraDeckEnabled ?? true) ? draft.config.extraDeckSize ?? 15 : 0;
       cube = await cubes.createFromArchetype(guildId, archetype, session.user.id, {
         name: archetype,
         includeStaples: true,
-        extraTarget,
       });
     } else if (body.kind === "existing") {
       // Attach an existing library cube to this draft (does not create a new one).
