@@ -68,7 +68,6 @@ export async function POST(request: Request) {
     name?: string;
     archetype?: string;
     banlist?: string;
-    includeStaples?: boolean;
     config?: DraftConfig;
   };
 
@@ -86,7 +85,6 @@ export async function POST(request: Request) {
       const cube = await cubes.createFromArchetype(guildId, archetype, session.user.id, {
         name: body.name?.trim() || archetype,
         banlist: body.banlist,
-        includeStaples: body.includeStaples ?? false,
       });
       return NextResponse.json({ cube }, { status: 201 });
     }

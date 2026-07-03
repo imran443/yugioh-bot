@@ -61,7 +61,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
       }
       cube = await cubes.createFromArchetype(guildId, archetype, session.user.id, {
         name: archetype,
-        includeStaples: true,
       });
     } else if (body.kind === "existing") {
       // Attach an existing library cube to this draft (does not create a new one).

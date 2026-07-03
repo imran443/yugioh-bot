@@ -262,18 +262,6 @@ export function createCardCatalogService(
       };
     },
 
-    async syncStaples(opts: { banlist?: string } = {}): Promise<CardCatalogCard[]> {
-      const params: Record<string, string> = { staple: "yes" };
-      if (opts.banlist) {
-        params.banlist = opts.banlist;
-      }
-
-      const cards = await fetchCardsWith(params);
-      const mainOnly = cards.filter((card) => !isExtraDeckCard(card));
-      upsertCards(mainOnly);
-      return findByIds(mainOnly.map((card) => card.id));
-    },
-
     async syncCardById(id: number): Promise<CardCatalogCard | undefined> {
       const [card] = await fetchCards("id", String(id));
       if (!card) {

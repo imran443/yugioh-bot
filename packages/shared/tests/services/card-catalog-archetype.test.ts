@@ -66,29 +66,6 @@ describe("card-catalog archetype support", () => {
     expect(calls[0]).toContain("banlist=tcg");
   });
 
-  it("syncStaples pulls staple cards (main pool only)", async () => {
-    const pot = {
-      id: 55144522,
-      name: "Pot of Greed",
-      type: "Spell Card",
-      frameType: "spell",
-      card_images: [{ image_url: "i", image_url_small: "i" }],
-    };
-    const db = new Database(":memory:");
-    migrate(db);
-    const catalog = createCardCatalogService(db, {
-      fetch: async (input) => {
-        const u = new URL(String(input));
-        return {
-          ok: true,
-          async json() { return { data: u.searchParams.get("staple") ? [pot] : [] }; },
-        } as Response;
-      },
-    });
-    const staples = await catalog.syncStaples();
-    expect(staples.map((c) => c.ygoprodeckId)).toContain(55144522);
-  });
-
   it("lists archetypes from the API and caches them", async () => {
     let calls = 0;
     const db = new Database(":memory:");

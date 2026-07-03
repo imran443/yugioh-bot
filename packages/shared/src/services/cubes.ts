@@ -108,14 +108,12 @@ export function createCubeService(db: Database.Database, catalog: CardCatalogSer
       opts: {
         name?: string;
         banlist?: string;
-        includeStaples?: boolean;
         maxCopies?: number;
       } = {},
     ): Promise<Cube> {
       const {
         name = archetype,
         banlist,
-        includeStaples = false,
         maxCopies = 3,
       } = opts;
 
@@ -127,16 +125,6 @@ export function createCubeService(db: Database.Database, catalog: CardCatalogSer
       }
       for (const card of extra) {
         upsertCard.run(cubeId, card.ygoprodeckId, "extra", maxCopies, null);
-      }
-
-      if (includeStaples) {
-        const staples = await catalog.syncStaples({ banlist });
-        const present = existingCardIds(cubeId);
-        for (const card of staples) {
-          if (!present.has(card.ygoprodeckId)) {
-            upsertCard.run(cubeId, card.ygoprodeckId, "main", maxCopies, "staple");
-          }
-        }
       }
 
       bump(cubeId);
