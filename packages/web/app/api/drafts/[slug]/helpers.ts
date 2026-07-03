@@ -163,6 +163,58 @@ export async function buildDraftResponse(slug: string, userId: string) {
 
   const currentPack = mapDraftCardDetails(db, currentPackCards);
   const myPool = mapDraftCardDetails(db, myPoolCards);
+
+  // Theme-mode extras: derived phase, progress, and lobby theme previews.
+  const isTheme = draftModel.config.mode === "theme";
+  const mainSize = draftModel.config.cardsPerPlayer ?? 40;
+  const phase: "main" | "extra" | undefined = isTheme
+    ? draftModel.currentPackRound <= mainSize
+      ? "main"
+      : "extra"
+    : undefined;
+
+  let allowedCubes:
+    | Array<{ id: number; name: string; archetype: string | null; mainCount: number; extraCount: number; sampleImages: string[] }>
+    | undefined;
+  let themeProgress: { main: number; mainTotal: number; extra: number; extraTotal: number } | undefined;
+  if (isTheme) {
+    const ids = draftModel.config.allowedCubeIds ?? [];
+    // The pool of theme cubes is always shown (the host builds it openly here);
+    // only per-player random *assignment* is hidden until reveal, handled client-side.
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => "?").join(",");
+      const rows = db
+        .prepare(`select id, name, archetype from cubes where id in (${placeholders})`)
+        .all(...ids) as Array<{ id: number; name: string; archetype: string | null }>;
+      const countStmt = db.prepare("select pool, count(*) as n from cube_cards where cube_id = ? group by pool");
+      const sampleStmt = db.prepare(
+        "select cc.image_url_small as img from cube_cards tc join card_catalog cc on cc.ygoprodeck_id = tc.catalog_card_id where tc.cube_id = ? limit 4",
+      );
+      allowedCubes = rows.map((r) => {
+        const counts = countStmt.all(r.id) as Array<{ pool: string; n: number }>;
+        const samples = (sampleStmt.all(r.id) as Array<{ img: string }>).map((s) => s.img);
+        return {
+          id: r.id,
+          name: r.name,
+          archetype: r.archetype,
+          mainCount: counts.find((c) => c.pool === "main")?.n ?? 0,
+          extraCount: counts.find((c) => c.pool === "extra")?.n ?? 0,
+          sampleImages: samples,
+        };
+      });
+    }
+    const picked =
+      currentPlayer && isParticipant
+        ? players.find((p) => p.playerId === currentPlayer.id)?.pickCount ?? 0
+        : 0;
+    themeProgress = {
+      main: Math.min(picked, mainSize),
+      mainTotal: mainSize,
+      extra: Math.max(0, picked - mainSize),
+      extraTotal: (draftModel.config.extraDeckEnabled ?? true) ? draftModel.config.extraDeckSize ?? 15 : 0,
+    };
+  }
+
   const timerSeconds = getTimerSeconds(draft.pick_deadline_at);
   const pickSeconds = draftModel.config.pickSeconds ?? 45;
   const isMyTurn = draft.status === "active" && currentPack.length > 0;
@@ -200,5 +252,8 @@ export async function buildDraftResponse(slug: string, userId: string) {
     isMyTurn,
     completed: draft.status === "completed",
     pickSeconds,
+    phase,
+    themeProgress,
+    allowedCubes,
   };
 }

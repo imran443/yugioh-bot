@@ -31,6 +31,7 @@ interface DraftManageViewProps {
       customCardIds?: number[];
       alternatePassDirection?: boolean;
       randomizeSeats?: boolean;
+      mode?: "booster" | "theme";
     };
     players: Array<{
       playerId: number;
@@ -85,18 +86,22 @@ export function DraftManageView({
   const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Card pool
+  // Theme drafts have no single shared card pool — each player drafts from their
+  // own theme cube — so the pool preview / booster config don't apply.
+  const isTheme = draft.config?.mode === "theme";
+
+  // Card pool (booster only)
   const [poolCards, setPoolCards] = React.useState<CardSummary[] | null>(null);
   const [poolError, setPoolError] = React.useState(false);
   const loadPool = React.useCallback(() => {
-    if (!slug) return;
+    if (!slug || isTheme) return;
     setPoolCards(null);
     setPoolError(false);
     fetch(`/api/drafts/${slug}/pool`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: { cards: CardSummary[] }) => setPoolCards(data.cards))
       .catch(() => setPoolError(true));
-  }, [slug]);
+  }, [slug, isTheme]);
   React.useEffect(() => { loadPool(); }, [loadPool]);
   const onUpdateWithPoolRefresh = React.useCallback(async (data: { name?: string; config?: unknown }) => {
     await onUpdate(data);
@@ -289,7 +294,6 @@ export function DraftManageView({
                 {isDev && onAddBot && (
                   <Button
                     variant="secondary"
-                    size="sm"
                     loading={addingBot}
                     onClick={handleAddBot}
                   >
@@ -349,36 +353,39 @@ export function DraftManageView({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        {/* Left — sticky card pool. While editing the config it mirrors the
-            in-progress pool and lets the creator click a card to remove a copy. */}
-        <aside className="lg:sticky lg:top-6 lg:self-start">
-          {isEditingConfig ? (
-            <CardPoolPanel
-              title="Card pool"
-              cards={editPoolCards}
-              unknownIds={editPoolUnknownIds}
-              loading={editPoolLoading}
-              emptyMessage="Add sets or card IDs to build the pool."
-              countMode="copies"
-              heightClassName="h-[calc(100vh-16rem)]"
-              onCardClick={removeOneFromEditPool}
-              cardActionLabel={editCardActionLabel}
-            />
-          ) : (
-            slug && (
+      <div className={isTheme ? "space-y-6" : "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]"}>
+        {/* Left — sticky card pool (booster only; theme drafts have per-player
+            cubes). While editing the config it mirrors the in-progress pool and
+            lets the creator click a card to remove a copy. */}
+        {!isTheme && (
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            {isEditingConfig ? (
               <CardPoolPanel
                 title="Card pool"
-                cards={poolCards ?? []}
-                loading={poolCards === null && !poolError}
-                error={poolError ? "Couldn't load the pool." : null}
-                emptyMessage="This draft's pool hasn't been resolved yet."
+                cards={editPoolCards}
+                unknownIds={editPoolUnknownIds}
+                loading={editPoolLoading}
+                emptyMessage="Add sets or card IDs to build the pool."
                 countMode="copies"
                 heightClassName="h-[calc(100vh-16rem)]"
+                onCardClick={removeOneFromEditPool}
+                cardActionLabel={editCardActionLabel}
               />
-            )
-          )}
-        </aside>
+            ) : (
+              slug && (
+                <CardPoolPanel
+                  title="Card pool"
+                  cards={poolCards ?? []}
+                  loading={poolCards === null && !poolError}
+                  error={poolError ? "Couldn't load the pool." : null}
+                  emptyMessage="This draft's pool hasn't been resolved yet."
+                  countMode="copies"
+                  heightClassName="h-[calc(100vh-16rem)]"
+                />
+              )
+            )}
+          </aside>
+        )}
 
         {/* Right — name, players, configuration */}
         <div className="space-y-6">
@@ -421,22 +428,35 @@ export function DraftManageView({
                     </Button>
                   </div>
                 ) : (
-                  <h1
-                    className="font-display text-xl text-text-primary sm:text-2xl"
-                    onClick={() => isCreator && setEditing(true)}
-                    role={isCreator ? "button" : undefined}
-                    tabIndex={isCreator ? 0 : undefined}
-                    onKeyDown={
-                      isCreator
-                        ? (e) => {
-                            if (e.key === "Enter") setEditing(true);
-                          }
-                        : undefined
-                    }
-                    style={isCreator ? { cursor: "text" } : undefined}
-                  >
-                    {draft.name}
-                  </h1>
+                  <div className="flex items-center gap-2">
+                    <h1
+                      className="font-display text-xl text-text-primary sm:text-2xl"
+                      onClick={() => isCreator && setEditing(true)}
+                      role={isCreator ? "button" : undefined}
+                      tabIndex={isCreator ? 0 : undefined}
+                      onKeyDown={
+                        isCreator
+                          ? (e) => {
+                              if (e.key === "Enter") setEditing(true);
+                            }
+                          : undefined
+                      }
+                      style={isCreator ? { cursor: "text" } : undefined}
+                    >
+                      {draft.name}
+                    </h1>
+                    {isCreator && (
+                      <button
+                        type="button"
+                        onClick={() => setEditing(true)}
+                        title="Rename draft"
+                        aria-label="Rename draft"
+                        className="shrink-0 rounded-lg border border-border p-1.5 text-text-secondary transition-colors hover:text-text-primary motion-safe:active:translate-y-px"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 )}
                 <div className="mt-2 flex items-center gap-3">
                   <Badge variant="warning">Pending</Badge>

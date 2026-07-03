@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { Users, Sparkles, Layers } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export interface DraftCardProps {
   id: number;
   name: string;
   status: string;
+  mode?: "booster" | "theme";
   currentPackRound: number;
   currentPickStep: number;
   playerCount: number;
@@ -31,6 +32,8 @@ export function DraftCard({ draft }: { draft: DraftCardProps }) {
         ? "Cancelled"
         : draft.status.charAt(0).toUpperCase() + draft.status.slice(1);
 
+  const isTheme = draft.mode === "theme";
+
   const isLinkable = draft.webSlug && (draft.status === "active" || draft.status === "pending" || draft.status === "completed" || draft.status === "cancelled");
 
   const card = (
@@ -40,11 +43,22 @@ export function DraftCard({ draft }: { draft: DraftCardProps }) {
           <h3 className="font-body text-lg font-semibold text-text-primary">
             {draft.name}
           </h3>
-          <div className="mt-2 flex items-center gap-3">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant={statusVariant}>{statusLabel}</Badge>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-text-secondary">
+              {isTheme ? (
+                <>
+                  <Sparkles className="h-3 w-3 text-accent-gold" /> Theme draft
+                </>
+              ) : (
+                <>
+                  <Layers className="h-3 w-3 text-accent-primary" /> Cube draft
+                </>
+              )}
+            </span>
             {draft.status === "active" && (
-              <span className="text-sm text-text-muted">
-                Pack {draft.currentPackRound}, Pick {draft.currentPickStep}
+              <span className="text-sm tabular-nums text-text-muted">
+                {isTheme ? `Round ${draft.currentPackRound}` : `Pack ${draft.currentPackRound}, Pick ${draft.currentPickStep}`}
               </span>
             )}
           </div>

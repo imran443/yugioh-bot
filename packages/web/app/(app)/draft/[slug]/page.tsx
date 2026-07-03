@@ -9,6 +9,8 @@ import { DraftCardPreview } from "@/components/draft/draft-card-preview";
 import { TimerBar } from "@/components/draft/timer-bar";
 import { SeatList } from "@/components/draft/seat-list";
 import { PoolPanel } from "@/components/draft/pool-panel";
+import { CubeLobbyPanel } from "@/components/cubes/cube-lobby-panel";
+import { CubeDraftBuilder } from "@/components/cubes/cube-draft-builder";
 import { useDraftStore } from "@/lib/stores/draft-store";
 import { useDraftWebsocket } from "@/lib/hooks/use-draft-websocket";
 import { useDraftCountdown } from "@/lib/hooks/use-draft-countdown";
@@ -46,7 +48,22 @@ interface DraftData {
     pickSeconds?: number;
     setNames?: string[];
     customCardIds?: number[];
+    mode?: "booster" | "theme";
+    themeSelection?: "host_assigned" | "random" | "player_pick";
+    uniqueThemes?: boolean;
+    extraDeckEnabled?: boolean;
+    extraDeckSize?: number;
   };
+  phase?: "main" | "extra";
+  themeProgress?: { main: number; mainTotal: number; extra: number; extraTotal: number };
+  allowedCubes?: Array<{
+    id: number;
+    name: string;
+    archetype: string | null;
+    mainCount: number;
+    extraCount: number;
+    sampleImages: string[];
+  }>;
   players: DraftPlayer[];
   playerCount: number;
   participantPickCount?: number;
@@ -105,6 +122,9 @@ export default function DraftDetailPage() {
 
   const setFromServer = useDraftStore((s) => s.setFromServer);
   const storeCompleted = useDraftStore((s) => s.completed);
+  // Live drafted count (updates optimistically on each pick), so the theme phase
+  // indicator stays in lock-step with the Your Pool / DRAFTED counters.
+  const draftedCount = useDraftStore((s) => s.myPool.length);
 
   const fetchDraft = useCallback(async () => {
     try {
@@ -248,7 +268,11 @@ export default function DraftDetailPage() {
 
   const isCreator = currentUserId === draft.createdByUserId;
   const isParticipant = draft.isParticipant;
-  const totalDraftCards = draft.config.cardsPerPlayer ?? 40;
+  const totalDraftCards =
+    (draft.config.cardsPerPlayer ?? 40) +
+    (draft.config.mode === "theme" && (draft.config.extraDeckEnabled ?? true)
+      ? draft.config.extraDeckSize ?? 15
+      : 0);
 
   const handleJoin = async () => {
     const res = await fetch(`/api/drafts/${slug}/join`, { method: "POST" });
@@ -268,9 +292,37 @@ export default function DraftDetailPage() {
     await fetchDraft();
   };
 
+  const isThemeDraft = draft.config.mode === "theme";
+  // Live phase, derived from the optimistic drafted count so labels + progress
+  // update the instant a pick lands (not only on the next full fetch).
+  const themeMainTotal = draft.config.cardsPerPlayer ?? 40;
+  const themeExtraTotal = (draft.config.extraDeckEnabled ?? true) ? draft.config.extraDeckSize ?? 15 : 0;
+  const themeInExtra = isThemeDraft && draftedCount >= themeMainTotal && themeExtraTotal > 0;
+
   if (draft.status === "pending") {
     return (
       <div>
+        {isThemeDraft && (
+          <div className="mx-auto max-w-[1800px] px-4 pt-4 sm:px-6 lg:px-8">
+            {isCreator ? (
+              <CubeDraftBuilder
+                slug={slug}
+                allowedCubes={draft.allowedCubes ?? []}
+                uniqueThemes={draft.config.uniqueThemes ?? true}
+                onChanged={() => void fetchDraft()}
+              />
+            ) : (
+              draft.allowedCubes && (
+                <CubeLobbyPanel
+                  slug={slug}
+                  allowedCubes={draft.allowedCubes}
+                  themeSelection={draft.config.themeSelection ?? "player_pick"}
+                  onClaimed={() => void fetchDraft()}
+                />
+              )
+            )}
+          </div>
+        )}
         <DraftManageView
           draft={draft}
           slug={slug}
@@ -293,6 +345,35 @@ export default function DraftDetailPage() {
         {/* Full-width sticky timer — visible at ALL screen sizes, centered */}
         <div className="sticky top-14 z-40 border-b border-border bg-bg-deep/95 backdrop-blur-sm px-4 py-3">
           <div className="mx-auto max-w-[1800px]">
+            {isThemeDraft && (() => {
+              const inExtra = themeInExtra;
+              const current = inExtra ? Math.min(draftedCount - themeMainTotal, themeExtraTotal) : Math.min(draftedCount, themeMainTotal);
+              const target = inExtra ? themeExtraTotal : themeMainTotal;
+              const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+              return (
+                <div className="mb-2 flex items-center gap-3 text-sm">
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${inExtra ? "bg-accent-gold/15 text-accent-gold" : "bg-accent-primary/15 text-accent-primary"}`}
+                  >
+                    {inExtra ? "Extra Deck" : "Main Deck"}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-text-secondary">
+                    <span className="font-medium text-text-primary">{current}</span> / {target}
+                  </span>
+                  <div className="h-1 max-w-[14rem] flex-1 overflow-hidden rounded-full bg-bg-elevated">
+                    <div
+                      className={`h-full rounded-full transition-[width] duration-500 ${inExtra ? "bg-accent-gold" : "bg-accent-primary"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {!inExtra && themeExtraTotal > 0 && (
+                    <span className="hidden shrink-0 text-xs text-text-secondary sm:inline">
+                      then Extra {themeExtraTotal}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             <TimerBar className="rounded-none border-0 bg-transparent p-0" totalDraftCards={totalDraftCards} />
           </div>
         </div>
@@ -323,14 +404,30 @@ export default function DraftDetailPage() {
                   </div>
                 )}
 
-                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border/50 pt-3 text-sm text-text-secondary">
-                  <span className="font-medium text-text-primary">
-                    Pack {draft.packRound ?? draft.currentPackRound ?? 1} · Pick{" "}
-                    {draft.pickStep ?? draft.currentPickStep ?? 1}
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/50 pt-3 text-sm text-text-secondary">
+                  {isThemeDraft ? (
+                    <span className="font-medium text-text-primary">
+                      {themeInExtra ? "Extra Deck" : "Main Deck"} pick
+                    </span>
+                  ) : (
+                    <span className="font-medium text-text-primary">
+                      Pack {draft.packRound ?? draft.currentPackRound ?? 1}, Pick{" "}
+                      {draft.pickStep ?? draft.currentPickStep ?? 1}
+                    </span>
+                  )}
+                  <span>
+                    <span className="tabular-nums text-text-primary">{draft.currentPack?.length ?? 0}</span>{" "}
+                    {isThemeDraft ? "choices" : "cards"} this pick
                   </span>
-                  <span>{draft.currentPack?.length ?? 0} cards in pack</span>
-                  <span>{draft.playerCount} players</span>
-                  <span>{draft.pickSeconds ?? draft.config.pickSeconds ?? 60}s timer</span>
+                  <span>
+                    <span className="tabular-nums text-text-primary">{draft.playerCount}</span> players
+                  </span>
+                  <span>
+                    <span className="tabular-nums text-text-primary">
+                      {draft.pickSeconds ?? draft.config.pickSeconds ?? 60}s
+                    </span>{" "}
+                    timer
+                  </span>
                 </div>
               </div>
               <CardGrid />

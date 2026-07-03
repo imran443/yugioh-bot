@@ -103,4 +103,56 @@ describe("DELETE /api/drafts/[slug]", () => {
     expect(row).toBeUndefined();
     expect(dealRows.c).toBe(0);
   });
+
+  it("deletes a completed theme draft that has draft_player_cube rows", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "yugioh-drafts-delete-theme-"));
+    const dbPath = join(tempDir, "delete-theme.sqlite");
+    tempDirs.push(tempDir);
+    process.env.DATABASE_PATH = dbPath;
+    process.env.DISCORD_GUILD_ID = "guild-1";
+
+    const Database = (await import("better-sqlite3")).default;
+    const { migrate } = await import("@yugidraft/shared/db");
+    const { createDraftService, createPlayerService } = await import("@yugidraft/shared/services");
+    const db = new Database(dbPath);
+    migrate(db);
+
+    const players = createPlayerService(db);
+    const creator = players.findOrCreate("guild-1", "creator-user", "Yugi");
+    const drafts = createDraftService(db);
+    const draft = drafts.create(
+      "guild-1",
+      "channel-1",
+      "completed theme draft",
+      { mode: "theme", allowedCubeIds: [] },
+      "creator-user",
+      creator.id,
+    );
+    const cubeId = Number(
+      db.prepare("insert into cubes (guild_id, name, created_by_user_id, created_at, updated_at) values ('guild-1','Blue-Eyes','creator-user','t','t')").run().lastInsertRowid,
+    );
+    // FK row that previously blocked deletion.
+    db.prepare("insert into draft_player_cube (draft_id, player_id, cube_id) values (?, ?, ?)").run(draft.id, creator.id, cubeId);
+    db.prepare("update drafts set status = 'completed' where id = ?").run(draft.id);
+    db.close();
+
+    const { DELETE } = await import("../app/api/drafts/[slug]/route");
+    const response = await DELETE(
+      new Request(`http://localhost/api/drafts/${draft.webSlug}`, { method: "DELETE" }),
+      { params: Promise.resolve({ slug: draft.webSlug ?? "" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).deleted).toBe(true);
+
+    const verify = new Database(dbPath);
+    const draftRow = verify.prepare("select id from drafts where id = ?").get(draft.id);
+    const dpcRows = verify.prepare("select count(*) as c from draft_player_cube where draft_id = ?").get(draft.id) as { c: number };
+    const cubeRow = verify.prepare("select id from cubes where id = ?").get(cubeId);
+    verify.close();
+
+    expect(draftRow).toBeUndefined();
+    expect(dpcRows.c).toBe(0);
+    expect(cubeRow).toBeTruthy(); // the reusable cube itself survives
+  });
 });

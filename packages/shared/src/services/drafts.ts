@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
 import { generateWebSlug } from "../util/web-slug.js";
-import { analyzeCube, buildDeal } from "./cube.js";
+import { analyzeCube, buildDeal, seededShuffle } from "./deal.js";
 
 export type DraftStatus = "pending" | "active" | "cancelled" | "completed";
 export type { Draft, DraftCard, DraftConfig, DraftPick, DraftPlayer } from "../types/index.js";
@@ -91,7 +91,7 @@ const defaultDraftConfig = {
 } satisfies Required<Pick<DraftConfig, "packSize" | "packsPerPlayer" | "cardsPerPlayer" | "pickSeconds" | "alternatePassDirection" | "randomizeSeats">>;
 
 function normalizeDraftConfig(config: DraftConfig): DraftConfig {
-  return {
+  const base = {
     ...config,
     packSize: config.packSize ?? defaultDraftConfig.packSize,
     packsPerPlayer: config.packsPerPlayer ?? defaultDraftConfig.packsPerPlayer,
@@ -100,6 +100,26 @@ function normalizeDraftConfig(config: DraftConfig): DraftConfig {
     alternatePassDirection: config.alternatePassDirection ?? defaultDraftConfig.alternatePassDirection,
     randomizeSeats: config.randomizeSeats ?? defaultDraftConfig.randomizeSeats,
   };
+  if (config.mode !== "theme") {
+    return base;
+  }
+  return {
+    ...base,
+    mode: "theme",
+    themePackSize: config.themePackSize ?? 3,
+    extraDeckEnabled: config.extraDeckEnabled ?? true,
+    extraDeckSize: config.extraDeckSize ?? 15,
+    burnUnpicked: config.burnUnpicked ?? false,
+    themeSelection: config.themeSelection ?? "player_pick",
+    uniqueThemes: config.uniqueThemes ?? true,
+  };
+}
+
+/** Per-player total rounds for a theme draft: main rounds + optional extra rounds. */
+export function totalThemeRounds(config: DraftConfig): number {
+  const main = config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer;
+  const extra = (config.extraDeckEnabled ?? true) ? (config.extraDeckSize ?? 15) : 0;
+  return main + extra;
 }
 
 const extraDeckFrameTypes = new Set(["fusion", "synchro", "xyz", "link"]);
@@ -107,6 +127,11 @@ const pickOptionLimit = 8;
 
 function deadlineIso(now: Date, seconds: number) {
   return new Date(now.getTime() + seconds * 1000).toISOString();
+}
+
+/** Deterministic per-(draft, player, round) seed so theme packs are reproducible. */
+function themeRoundSeed(draftId: number, playerId: number, roundNumber: number): number {
+  return ((draftId * 73856093) ^ (playerId * 19349663) ^ (roundNumber * 83492791)) >>> 0;
 }
 
 function isExtraDeckCatalogRow(row: CatalogRow) {
@@ -432,11 +457,245 @@ export function createDraftService(db: Database.Database) {
     }
   };
 
+  // Theme mode: deal each active player a private pack of `themePackSize` distinct
+  // choices from their assigned theme's current-phase pool. Returns the number of
+  // packs dealt this round (0 when every assigned theme's pool is exhausted).
+  const openThemeRound = (draftId: number, roundNumber: number, config: DraftConfig): number => {
+    const cardsPerPlayer = config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer;
+    const themePackSize = config.themePackSize ?? 3;
+    const burnUnpicked = config.burnUnpicked ?? false;
+    const phase: "main" | "extra" = roundNumber <= cardsPerPlayer ? "main" : "extra";
+
+    const insertPack = db.prepare(
+      `insert into draft_packs (draft_id, wave_number, origin_seat_index, current_holder_seat_index, pass_direction)
+       values (?, ?, ?, ?, ?)`,
+    );
+    const insertDraftCard = db.prepare(
+      `insert into draft_cards (draft_id, wave_number, draft_pack_id, catalog_card_id, position) values (?, ?, ?, ?, ?)`,
+    );
+    const markFinished = db.prepare(
+      "update draft_players set finished_at = ? where draft_id = ? and player_id = ? and finished_at is null",
+    );
+    const poolStmt = db.prepare(
+      "select catalog_card_id, max_copies from cube_cards where cube_id = ? and pool = ?",
+    );
+    const burnConsumedStmt = db.prepare(
+      `select dc.catalog_card_id as catalog_card_id, count(*) as n
+         from draft_cards dc
+         join draft_packs dp on dp.id = dc.draft_pack_id
+        where dp.draft_id = ? and dp.origin_seat_index = ? and dp.wave_number < ?
+        group by dc.catalog_card_id`,
+    );
+    const pickConsumedStmt = db.prepare(
+      `select dc.catalog_card_id as catalog_card_id, count(*) as n
+         from draft_picks pk
+         join draft_cards dc on dc.id = pk.draft_card_id
+        where pk.draft_id = ? and pk.player_id = ?
+        group by dc.catalog_card_id`,
+    );
+
+    const nowIso = new Date().toISOString();
+    let dealt = 0;
+
+    for (const player of activePlayerRows(draftId)) {
+      const cubeRow = db
+        .prepare("select cube_id from draft_player_cube where draft_id = ? and player_id = ?")
+        .get(draftId, player.player_id) as { cube_id: number } | undefined;
+      const seat = player.seat_index;
+      if (!cubeRow || seat === null || seat === undefined) {
+        continue;
+      }
+
+      const remaining = new Map<number, number>();
+      for (const row of poolStmt.all(cubeRow.cube_id, phase) as Array<{ catalog_card_id: number; max_copies: number }>) {
+        remaining.set(row.catalog_card_id, row.max_copies);
+      }
+
+      const consumed = (
+        burnUnpicked
+          ? burnConsumedStmt.all(draftId, seat, roundNumber)
+          : pickConsumedStmt.all(draftId, player.player_id)
+      ) as Array<{ catalog_card_id: number; n: number }>;
+      for (const row of consumed) {
+        const cur = remaining.get(row.catalog_card_id);
+        if (cur !== undefined) {
+          remaining.set(row.catalog_card_id, Math.max(0, cur - row.n));
+        }
+      }
+
+      const candidates = [...remaining.entries()].filter(([, count]) => count > 0).map(([id]) => id);
+      if (candidates.length === 0) {
+        markFinished.run(nowIso, draftId, player.player_id);
+        continue;
+      }
+
+      const chosen = seededShuffle(candidates, themeRoundSeed(draftId, player.player_id, roundNumber)).slice(
+        0,
+        themePackSize,
+      );
+      const packId = Number(insertPack.run(draftId, roundNumber, seat, seat, 1).lastInsertRowid);
+      chosen.forEach((catalogCardId, index) => {
+        insertDraftCard.run(draftId, roundNumber, packId, catalogCardId, index);
+      });
+      dealt += 1;
+    }
+
+    return dealt;
+  };
+
+  // Advance/complete the global round counter past any freshly-opened rounds that
+  // dealt zero packs (every assigned theme's pool exhausted). Loops so several empty
+  // Extra rounds in a row still terminate. Assumes the just-opened `roundNumber` is set.
+  const settleThemeRound = (draftId: number, openedRound: number, dealt: number, config: DraftConfig, now: Date) => {
+    let round = openedRound;
+    let dealtThisRound = dealt;
+    const total = totalThemeRounds(config);
+    while (dealtThisRound === 0 && round < total) {
+      round += 1;
+      dealtThisRound = openThemeRound(draftId, round, config);
+    }
+    if (dealtThisRound === 0) {
+      // Nothing left to deal anywhere — complete.
+      db.prepare("update drafts set status = 'completed', current_wave_number = ?, ended_at = ? where id = ?").run(
+        round,
+        now.toISOString(),
+        draftId,
+      );
+      return;
+    }
+    db.prepare(
+      "update drafts set current_wave_number = ?, current_pick_step = 1, pick_deadline_at = ? where id = ?",
+    ).run(round, deadlineIso(now, config.pickSeconds ?? defaultDraftConfig.pickSeconds), draftId);
+  };
+
+  const assignThemes = (draftId: number, playerIds: number[], config: DraftConfig) => {
+    const requested = config.allowedCubeIds ?? [];
+    // Drop any cubes that were deleted from the library after being attached.
+    const existing = new Set(
+      (db.prepare("select id from cubes").all() as Array<{ id: number }>).map((r) => r.id),
+    );
+    const allowed = requested.filter((id) => existing.has(id));
+    if (allowed.length === 0) {
+      throw new Error("Theme draft requires at least one allowed theme");
+    }
+    const uniqueThemes = config.uniqueThemes ?? true;
+    const selection = config.themeSelection ?? "player_pick";
+
+    if (uniqueThemes && allowed.length < playerIds.length) {
+      throw new Error(
+        `Theme draft needs at least ${playerIds.length} themes for ${playerIds.length} players when uniqueThemes is on, but only ${allowed.length} are allowed.`,
+      );
+    }
+
+    const upsertTheme = db.prepare(
+      `insert into draft_player_cube (draft_id, player_id, cube_id) values (?, ?, ?)
+       on conflict (draft_id, player_id) do update set cube_id = excluded.cube_id`,
+    );
+
+    // Existing claims (player_pick lobby). Other modes ignore them.
+    const claims = new Map<number, number>();
+    if (selection === "player_pick") {
+      for (const row of db
+        .prepare("select player_id, cube_id from draft_player_cube where draft_id = ?")
+        .all(draftId) as Array<{ player_id: number; cube_id: number }>) {
+        claims.set(row.player_id, row.cube_id);
+      }
+    }
+
+    const shuffled = seededShuffle(allowed, draftId);
+    const used = new Set<number>(claims.values());
+    let cursor = 0;
+    const nextTheme = (): number => {
+      if (uniqueThemes) {
+        while (cursor < shuffled.length && used.has(shuffled[cursor])) cursor += 1;
+        const theme = shuffled[cursor] ?? shuffled[shuffled.length - 1];
+        used.add(theme);
+        cursor += 1;
+        return theme;
+      }
+      const theme = shuffled[cursor % shuffled.length];
+      cursor += 1;
+      return theme;
+    };
+
+    for (const playerId of playerIds) {
+      let themeId: number | undefined;
+      if (selection === "host_assigned") {
+        themeId = config.themeAssignments?.[String(playerId)];
+        if (themeId === undefined) {
+          throw new Error(`Host-assigned theme draft is missing an assignment for player ${playerId}`);
+        }
+      } else if (selection === "player_pick" && claims.has(playerId)) {
+        themeId = claims.get(playerId);
+      } else {
+        themeId = nextTheme();
+      }
+      upsertTheme.run(draftId, playerId, themeId);
+    }
+  };
+
+  const preflightThemes = (draftId: number, config: DraftConfig) => {
+    const cardsPerPlayer = config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer;
+    const themePackSize = config.themePackSize ?? 3;
+    const burnUnpicked = config.burnUnpicked ?? false;
+    const requiredMain = burnUnpicked ? cardsPerPlayer * themePackSize : cardsPerPlayer + (themePackSize - 1);
+
+    const rows = db
+      .prepare(
+        `select dpt.cube_id as cube_id, coalesce(sum(tc.max_copies), 0) as main_size
+           from draft_player_cube dpt
+           left join cube_cards tc on tc.cube_id = dpt.cube_id and tc.pool = 'main'
+          where dpt.draft_id = ?
+          group by dpt.cube_id`,
+      )
+      .all(draftId) as Array<{ cube_id: number; main_size: number }>;
+
+    for (const row of rows) {
+      if (row.main_size < requiredMain) {
+        throw new Error(
+          `Cube ${row.cube_id} has only ${row.main_size} main-pool cards but needs ${requiredMain} to fill a ${cardsPerPlayer}-card main deck.`,
+        );
+      }
+    }
+  };
+
+  const startThemeDraft = (draftId: number, draft: Draft, now: Date): Draft => {
+    const playerIds = db
+      .prepare("select player_id from draft_players where draft_id = ? order by joined_at asc, rowid asc")
+      .all(draftId)
+      .map((row: any) => row.player_id as number);
+
+    if (playerIds.length < 2) {
+      throw new Error("Draft requires at least two players to start");
+    }
+
+    const assignSeat = db.prepare("update draft_players set seat_index = ? where draft_id = ? and player_id = ?");
+    for (const [seatIndex, playerId] of playerIds.entries()) {
+      assignSeat.run(seatIndex, draftId, playerId);
+    }
+
+    assignThemes(draftId, playerIds, draft.config);
+    preflightThemes(draftId, draft.config);
+
+    db.prepare(
+      `update drafts set status = 'active', started_at = ?, current_wave_number = 1, current_pick_step = 1, pick_deadline_at = ? where id = ?`,
+    ).run(now.toISOString(), deadlineIso(now, draft.config.pickSeconds ?? defaultDraftConfig.pickSeconds), draftId);
+
+    const dealt = openThemeRound(draftId, 1, draft.config);
+    settleThemeRound(draftId, 1, dealt, draft.config, now);
+
+    return findById(draftId);
+  };
+
   const startDraft = db.transaction((draftId: number, now = new Date()) => {
     const draft = findById(draftId);
 
     if (draft.status !== "pending") {
       throw new Error("Draft must be pending to start");
+    }
+
+    if (draft.config.mode === "theme") {
+      return startThemeDraft(draftId, draft, now);
     }
 
     const playerIds = db
@@ -512,6 +771,88 @@ export function createDraftService(db: Database.Database) {
     return findById(draftId);
   });
 
+  // Theme-mode pick: validate the card is in the player's private pack, record it,
+  // and advance the global round once every player dealt a pack this round has picked.
+  // Does NOT run the booster pass-the-pack logic.
+  const pickThemeCard = (
+    draftId: number,
+    playerId: number,
+    draftCardId: number,
+    pickMethod: "manual" | "auto",
+    now: Date,
+  ): DraftPick => {
+    const draft = findById(draftId);
+    const config = draft.config;
+    const total = totalThemeRounds(config);
+
+    const playerRow = playerProgress(draftId, playerId);
+    if (playerRow.finished_at !== null || playerRow.pick_count >= total) {
+      throw new Error("Player has already finished drafting");
+    }
+    if (hasPickedCurrentStep(draftId, playerId, draft.currentPackRound, 1)) {
+      throw new Error("Player has already picked this step");
+    }
+
+    const seat = playerSeatIndex(draftId, playerId);
+    const pack = db
+      .prepare(
+        "select id from draft_packs where draft_id = ? and wave_number = ? and current_holder_seat_index = ? limit 1",
+      )
+      .get(draftId, draft.currentPackRound, seat) as { id: number } | undefined;
+    if (!pack) {
+      throw new Error("Player has no current pack");
+    }
+    const cardRow = db
+      .prepare("select wave_number, draft_pack_id, picked_by_player_id from draft_cards where id = ? and draft_id = ?")
+      .get(draftCardId, draftId) as DraftCardRow | undefined;
+    if (!cardRow || cardRow.wave_number !== draft.currentPackRound) {
+      throw new Error("Card is not in the current wave");
+    }
+    if (cardRow.draft_pack_id !== pack.id) {
+      throw new Error("Card is not in your current pack");
+    }
+    if (cardRow.picked_by_player_id !== null) {
+      throw new Error("Card has already been picked");
+    }
+
+    db.prepare("update draft_cards set picked_by_player_id = ?, picked_at = ? where id = ?").run(
+      playerId,
+      now.toISOString(),
+      draftCardId,
+    );
+    const result = db
+      .prepare(
+        `insert into draft_picks (draft_id, player_id, draft_card_id, wave_number, pick_step, pick_method, picked_at)
+         values (?, ?, ?, ?, 1, ?, ?)`,
+      )
+      .run(draftId, playerId, draftCardId, draft.currentPackRound, pickMethod, now.toISOString());
+    db.prepare(
+      `update draft_players set pick_count = pick_count + 1,
+              finished_at = case when pick_count + 1 >= ? then ? else finished_at end
+        where draft_id = ? and player_id = ?`,
+    ).run(total, now.toISOString(), draftId, playerId);
+
+    // Advance gate: every player dealt a pack this round must have picked.
+    const dealt = db
+      .prepare("select count(*) as n from draft_packs where draft_id = ? and wave_number = ?")
+      .get(draftId, draft.currentPackRound) as { n: number };
+    const picked = db
+      .prepare("select count(*) as n from draft_picks where draft_id = ? and wave_number = ?")
+      .get(draftId, draft.currentPackRound) as { n: number };
+
+    if (picked.n >= dealt.n) {
+      if (draft.currentPackRound >= total) {
+        db.prepare("update drafts set status = 'completed', ended_at = ? where id = ?").run(now.toISOString(), draftId);
+      } else {
+        const nextRound = draft.currentPackRound + 1;
+        const dealtNext = openThemeRound(draftId, nextRound, config);
+        settleThemeRound(draftId, nextRound, dealtNext, config, now);
+      }
+    }
+
+    return mapDraftPick(db.prepare("select * from draft_picks where id = ?").get(Number(result.lastInsertRowid)));
+  };
+
   const pickCard = db.transaction(
     (
       draftId: number,
@@ -523,6 +864,10 @@ export function createDraftService(db: Database.Database) {
     const draft = findById(draftId);
     assertActiveDraft(draft);
     assertJoinedPlayer(draftId, playerId);
+
+    if (draft.config.mode === "theme") {
+      return pickThemeCard(draftId, playerId, draftCardId, pickMethod, now);
+    }
 
     const playerRow = playerProgress(draftId, playerId);
 
@@ -763,7 +1108,11 @@ export function createDraftService(db: Database.Database) {
 
     const playerRow = playerProgress(draftId, playerId);
 
-    if (playerRow.finished_at !== null || playerRow.pick_count >= (draft.config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer)) {
+    const perPlayerTotal =
+      draft.config.mode === "theme"
+        ? totalThemeRounds(draft.config)
+        : draft.config.cardsPerPlayer ?? defaultDraftConfig.cardsPerPlayer;
+    if (playerRow.finished_at !== null || playerRow.pick_count >= perPlayerTotal) {
       return [];
     }
 

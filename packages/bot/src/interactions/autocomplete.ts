@@ -1,9 +1,8 @@
 import type { DiscordUserLike } from "../commands/handlers.js";
 import type { PlayerRepository } from "../repositories/players.js";
 import type { CardCatalogService } from "../services/card-catalog.js";
-import type { DraftTemplateService } from "../services/draft-templates.js";
 import type { DraftService } from "../services/drafts.js";
-import type { TournamentService } from "@yugidraft/shared/services";
+import type { CubeService, TournamentService } from "@yugidraft/shared/services";
 
 type AutocompleteChoice = {
   name: string;
@@ -27,7 +26,7 @@ type AutocompleteDependencies = {
   tournaments: TournamentService;
   drafts: DraftService;
   cards: CardCatalogService;
-  templates: DraftTemplateService;
+  templates: CubeService;
 };
 
 const maxAutocompleteChoiceLength = 100;

@@ -11,7 +11,7 @@ vi.mock("next/image", () => ({
 }));
 
 function stubFetch() {
-  let templates = [
+  let cubes = [
     { id: 1, name: "Goat Cube", setNames: ["Metal Raiders"], customCardIds: [46986414, 83764718] },
     { id: 2, name: "Pauper", setNames: [], customCardIds: [12345678] },
   ];
@@ -20,22 +20,22 @@ function stubFetch() {
     const method = (init?.method ?? "GET").toUpperCase();
     if (url.startsWith("/api/sets")) return Response.json({ sets: [] });
     if (url === "/api/cards/resolve") return Response.json({ cards: [], unknownIds: [] });
-    if (url === "/api/draft-templates" && method === "GET") return Response.json({ templates });
-    if (url === "/api/draft-templates" && method === "POST") {
+    if (url === "/api/cubes" && method === "GET") return Response.json({ cubes });
+    if (url === "/api/cubes" && method === "POST") {
       const body = JSON.parse(String(init!.body)) as { name: string; config: { setNames: string[]; customCardIds: number[] } };
-      const t = { id: 3, name: body.name, setNames: body.config.setNames, customCardIds: body.config.customCardIds };
-      templates = [...templates, t];
-      return Response.json({ template: t }, { status: 201 });
+      const c = { id: 3, name: body.name, setNames: body.config.setNames, customCardIds: body.config.customCardIds };
+      cubes = [...cubes, c];
+      return Response.json({ cube: { id: 3, name: body.name, config: body.config } }, { status: 201 });
     }
-    if (url.startsWith("/api/draft-templates/") && method === "PUT") {
+    if (url.startsWith("/api/cubes/") && method === "PUT") {
       const id = Number(url.split("/").pop());
-      const body = JSON.parse(String(init!.body)) as { name: string; setNames: string[]; customCardIds: number[] };
-      templates = templates.map((t) => (t.id === id ? { id, name: body.name, setNames: body.setNames, customCardIds: body.customCardIds } : t));
-      return Response.json({ template: { id, ...body } });
+      const body = JSON.parse(String(init!.body)) as { name: string };
+      cubes = cubes.map((c) => (c.id === id ? { ...c, name: body.name } : c));
+      return Response.json({ ok: true });
     }
-    if (url.startsWith("/api/draft-templates/") && method === "DELETE") {
+    if (url.startsWith("/api/cubes/") && method === "DELETE") {
       const id = Number(url.split("/").pop());
-      templates = templates.filter((t) => t.id !== id);
+      cubes = cubes.filter((c) => c.id !== id);
       return Response.json({ ok: true });
     }
     return Response.json({}, { status: 404 });
@@ -66,7 +66,7 @@ describe("CardPoolManager", () => {
     fireEvent.change(screen.getByLabelText(/custom card ids/i), { target: { value: "11111111" } });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => {
-      const post = fetchMock.mock.calls.find(([u, i]) => String(u) === "/api/draft-templates" && (i as RequestInit)?.method === "POST");
+      const post = fetchMock.mock.calls.find(([u, i]) => String(u) === "/api/cubes" && (i as RequestInit)?.method === "POST");
       expect(post).toBeTruthy();
       expect(JSON.parse(String((post![1] as RequestInit).body))).toMatchObject({ name: "Speed Cube", config: { customCardIds: [11111111] } });
     });
@@ -80,7 +80,7 @@ describe("CardPoolManager", () => {
     fireEvent.click(screen.getByRole("button", { name: /delete pool pauper/i }));
     fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() => {
-      const del = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith("/api/draft-templates/2") && (i as RequestInit)?.method === "DELETE");
+      const del = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith("/api/cubes/2") && (i as RequestInit)?.method === "DELETE");
       expect(del).toBeTruthy();
     });
     await waitFor(() => expect(screen.queryByText("Pauper")).toBeNull());
@@ -92,9 +92,9 @@ describe("CardPoolManager", () => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (url.startsWith("/api/sets")) return Response.json({ sets: [] });
       if (url === "/api/cards/resolve") return Response.json({ cards: [], unknownIds: [] });
-      if (url === "/api/draft-templates" && method === "GET")
-        return Response.json({ templates: [{ id: 1, name: "Goat Cube", setNames: [], customCardIds: [1] }] });
-      if (url.startsWith("/api/draft-templates/") && method === "DELETE")
+      if (url === "/api/cubes" && method === "GET")
+        return Response.json({ cubes: [{ id: 1, name: "Goat Cube", setNames: [], customCardIds: [1] }] });
+      if (url.startsWith("/api/cubes/") && method === "DELETE")
         return Response.json({ error: "Not found" }, { status: 404 });
       return Response.json({}, { status: 404 });
     });
@@ -122,8 +122,8 @@ describe("CardPoolManager", () => {
       const url = String(input); const method = (init?.method ?? "GET").toUpperCase();
       if (url.startsWith("/api/sets")) return Response.json({ sets: [] });
       if (url === "/api/cards/resolve") return Response.json({ cards: [], unknownIds: [] });
-      if (url === "/api/draft-templates" && method === "GET") return Response.json({ templates: [{ id: 1, name: "Goat Cube", setNames: [], customCardIds: [1] }, { id: 2, name: "Pauper", setNames: [], customCardIds: [2] }] });
-      if (url.startsWith("/api/draft-templates/") && method === "PUT") return Response.json({ error: 'A pool named "Pauper" already exists' }, { status: 409 });
+      if (url === "/api/cubes" && method === "GET") return Response.json({ cubes: [{ id: 1, name: "Goat Cube", setNames: [], customCardIds: [1] }, { id: 2, name: "Pauper", setNames: [], customCardIds: [2] }] });
+      if (url.startsWith("/api/cubes/") && method === "PUT") return Response.json({ error: 'A cube named "Pauper" already exists' }, { status: 409 });
       return Response.json({}, { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);

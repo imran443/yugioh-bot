@@ -21,6 +21,7 @@ type YgoprodeckCard = {
   def?: number;
   attribute?: string;
   level?: number;
+  archetype?: string;
   card_images: Array<{
     image_url: string;
     image_url_small: string;
@@ -44,13 +45,14 @@ export type SyncDraftPoolInput = {
 
 const YGOPRODECK_API_URL = "https://db.ygoprodeck.com/api/v7/cardinfo.php";
 const YGOPRODECK_CARDSETS_URL = "https://db.ygoprodeck.com/api/v7/cardsets.php";
+const YGOPRODECK_ARCHETYPES_URL = "https://db.ygoprodeck.com/api/v7/archetypes.php";
 const EXTRA_DECK_FRAME_TYPES = new Set(["fusion", "synchro", "xyz", "link"]);
 
 function normalizeName(name: string) {
   return name.trim().toLowerCase();
 }
 
-function isExtraDeckCard(card: YgoprodeckCard) {
+export function isExtraDeckFrame(card: { frameType: string; type: string }) {
   return (
     EXTRA_DECK_FRAME_TYPES.has(card.frameType) ||
     card.type.includes("Fusion Monster") ||
@@ -59,6 +61,10 @@ function isExtraDeckCard(card: YgoprodeckCard) {
     card.type.includes("Xyz Monster") ||
     card.type.includes("Link Monster")
   );
+}
+
+function isExtraDeckCard(card: YgoprodeckCard) {
+  return isExtraDeckFrame(card);
 }
 
 function mapCard(row: any): CardCatalogCard {
@@ -76,6 +82,7 @@ function mapCard(row: any): CardCatalogCard {
     imageUrlSmall: row.image_url_small,
     cardSets: JSON.parse(row.card_sets_json),
     cachedAt: row.cached_at,
+    archetype: row.archetype ?? undefined,
   };
 }
 
@@ -85,19 +92,39 @@ export function createCardCatalogService(
 ) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  const fetchCards = async (searchParam: "cardset" | "id" | "name" | "fname", value: string) => {
-    const url = new URL(YGOPRODECK_API_URL);
-    url.searchParams.set(searchParam, value);
+  // Fail fast on an unreachable API instead of hanging the request for minutes.
+  const REQUEST_TIMEOUT_MS = 12000;
+  const withTimeout = (input: string | URL) => {
+    const init = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+      ? { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
+      : undefined;
+    return fetchImpl(input, init);
+  };
 
-    const response = await fetchImpl(url);
+  const fetchCardsWith = async (params: Record<string, string>) => {
+    const url = new URL(YGOPRODECK_API_URL);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+
+    let response;
+    try {
+      response = await withTimeout(url);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Could not reach the card database (${reason}). Check connectivity and try again.`);
+    }
 
     if (!response.ok) {
-      throw new Error(`YGOPRODeck request failed for ${searchParam}=${value}`);
+      throw new Error(`YGOPRODeck request failed for ${new URLSearchParams(params).toString()}`);
     }
 
     const payload = (await response.json()) as { data?: YgoprodeckCard[] };
     return payload.data ?? [];
   };
+
+  const fetchCards = (searchParam: "cardset" | "id" | "name" | "fname", value: string) =>
+    fetchCardsWith({ [searchParam]: value });
 
   const upsertCard = db.prepare(
     `
@@ -114,8 +141,9 @@ export function createCardCatalogService(
         image_url,
         image_url_small,
         card_sets_json,
-        cached_at
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cached_at,
+        archetype
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       on conflict(ygoprodeck_id) do update set
         name = excluded.name,
         type = excluded.type,
@@ -128,7 +156,8 @@ export function createCardCatalogService(
         image_url = excluded.image_url,
         image_url_small = excluded.image_url_small,
         card_sets_json = excluded.card_sets_json,
-        cached_at = excluded.cached_at
+        cached_at = excluded.cached_at,
+        archetype = excluded.archetype
     `,
   );
 
@@ -156,6 +185,7 @@ export function createCardCatalogService(
         image.image_url_small,
         JSON.stringify(card.card_sets ?? []),
         cachedAt,
+        card.archetype ?? null,
       );
     }
   });
@@ -209,6 +239,37 @@ export function createCardCatalogService(
       upsertCards(cardsToCache);
 
       return findByIds(cardsToCache.map((card) => card.id));
+    },
+
+    async syncByArchetype(
+      archetype: string,
+      opts: { banlist?: string } = {},
+    ): Promise<{ main: CardCatalogCard[]; extra: CardCatalogCard[] }> {
+      const params: Record<string, string> = { archetype };
+      if (opts.banlist) {
+        params.banlist = opts.banlist;
+      }
+
+      const cards = await fetchCardsWith(params);
+      upsertCards(cards);
+
+      const cached = findByIds(cards.map((card) => card.id));
+      const extraIds = new Set(cards.filter(isExtraDeckCard).map((card) => card.id));
+
+      return {
+        main: cached.filter((card) => !extraIds.has(card.ygoprodeckId)),
+        extra: cached.filter((card) => extraIds.has(card.ygoprodeckId)),
+      };
+    },
+
+    async syncCardById(id: number): Promise<CardCatalogCard | undefined> {
+      const [card] = await fetchCards("id", String(id));
+      if (!card) {
+        return undefined;
+      }
+      // Keep Extra Deck cards — themes need them for the extra pool.
+      upsertCards([card]);
+      return findByIds([card.id])[0];
     },
 
     async syncCardByName(name: string) {
@@ -265,6 +326,38 @@ export function createCardCatalogService(
       })();
 
       return payload.map((s) => s.set_name);
+    },
+
+    async listArchetypes(query?: string): Promise<string[]> {
+      const cachedCount = (
+        db.prepare("select count(*) as n from archetypes").get() as { n: number }
+      ).n;
+
+      if (cachedCount === 0) {
+        const response = await withTimeout(YGOPRODECK_ARCHETYPES_URL);
+        if (!response.ok) {
+          throw new Error("YGOPRODeck archetypes request failed");
+        }
+        const payload = (await response.json()) as Array<{ archetype_name: string }>;
+        const syncedAt = new Date().toISOString();
+        const insert = db.prepare(
+          "insert or replace into archetypes (name, synced_at) values (?, ?)",
+        );
+        db.transaction(() => {
+          for (const { archetype_name } of payload) {
+            insert.run(archetype_name, syncedAt);
+          }
+        })();
+      }
+
+      const hasQuery = query && query.trim().length > 0;
+      const rows = hasQuery
+        ? db
+            .prepare("select name from archetypes where lower(name) like lower(?) order by name")
+            .all(`%${query.trim()}%`)
+        : db.prepare("select name from archetypes order by name").all();
+
+      return (rows as Array<{ name: string }>).map((row) => row.name);
     },
 
     findByIds,

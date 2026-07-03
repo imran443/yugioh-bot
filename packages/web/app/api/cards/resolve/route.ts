@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     customCardIds?: number[];
     cardName?: string;
     fuzzyName?: string;
+    archetype?: string;
   };
   const setNames = Array.isArray(body.setNames) ? body.setNames.filter((s): s is string => typeof s === "string") : [];
   const customCardIds = Array.isArray(body.customCardIds)
@@ -53,10 +54,17 @@ export async function POST(request: Request) {
     : [];
   const cardName = typeof body.cardName === "string" ? body.cardName.trim() : "";
   const fuzzyName = typeof body.fuzzyName === "string" ? body.fuzzyName.trim() : "";
+  const archetype = typeof body.archetype === "string" ? body.archetype.trim() : "";
 
   const db = getDb();
   const drafts = createDraftService(db);
   const catalog = createCardCatalogService(db);
+
+  if (archetype) {
+    const { main, extra } = await catalog.syncByArchetype(archetype);
+    const cards = [...main, ...extra].map(toCardSummary);
+    return NextResponse.json({ cards, unknownIds: [] });
+  }
 
   if (cardName) {
     const card = await catalog.syncCardByName(cardName);

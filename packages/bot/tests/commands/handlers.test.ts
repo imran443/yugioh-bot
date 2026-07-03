@@ -6,9 +6,8 @@ import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftImageService } from "../../src/services/draft-images.js";
 import { createDraftService } from "../../src/services/drafts.js";
-import { createDraftTemplateService } from "../../src/services/draft-templates.js";
 import { createMatchService } from "@yugidraft/shared/services";
-import { createTournamentService } from "@yugidraft/shared/services";
+import { createCubeService, createTournamentService } from "@yugidraft/shared/services";
 import { recordingTransport, createBroadcaster } from "@yugidraft/shared/notify";
 
 const mockSetNames = ["Legend of Blue Eyes White Dragon", "Metal Raiders", "Pharaoh's Servant"];
@@ -99,7 +98,7 @@ function setup(options: { cardsBySet?: Record<string, unknown[]>; fetchCalls?: s
       return { ok: true, async json() { return { data: [] }; } } as Response;
     },
   });
-  const templates = createDraftTemplateService(db);
+  const templates = createCubeService(db, cards);
   const draftImages = createDraftImageService({ cacheDir: "./data/test-card-images" });
   const postStatusCalls: Array<{ draftId: number }> = [];
   const updateStatusCalls: Array<{ draftId: number }> = [];

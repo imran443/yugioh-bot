@@ -21,6 +21,7 @@ import {
 } from "./commands/handlers.js";
 import {
   createCardCatalogService,
+  createCubeService,
   createDraftImageService,
   createDraftService,
   createGuildSettingsService,
@@ -28,7 +29,6 @@ import {
 import type { Draft } from "@yugidraft/shared/types";
 import { openDatabase } from "./db/connection.js";
 import { createDraftCleanupService } from "./services/draft-cleanup.js";
-import { createDraftTemplateService } from "./services/draft-templates.js";
 import {
   handleAutocomplete,
   type AutocompleteInteractionLike,
@@ -144,7 +144,7 @@ const deps = {
   cards: createCardCatalogService(db),
   deleteNotifyMessage: (matchId: number) => deleteNotifyMessage(client, db, matchId),
   announceTournamentCompleted: (tournamentId: number) => announceTournamentCompleted(client, db, guildSettings, tournamentId),
-  templates: createDraftTemplateService(db),
+  templates: createCubeService(db, createCardCatalogService(db)),
   draftImages: createDraftImageService({ cacheDir: cardImageCacheDir }),
   guildSettings,
   cleanup,

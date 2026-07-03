@@ -14,6 +14,17 @@ function addColumnIfMissing(db: Database.Database, table: string, column: string
 export function migrate(db: Database.Database) {
   db.exec("drop table if exists tournaments_without_name_unique");
 
+  // Cube/theme unification: the legacy theme tables and the draft_templates
+  // store are replaced by the unified cubes/cube_cards/draft_player_cube tables
+  // below. Data was throwaway test data, so we drop rather than migrate. Drop
+  // children before parents. Idempotent: no-op on a fresh database.
+  db.exec(`
+    drop table if exists draft_player_theme;
+    drop table if exists theme_cards;
+    drop table if exists themes;
+    drop table if exists draft_templates;
+  `);
+
   db.exec(`
     create table if not exists players (
       id integer primary key autoincrement,
@@ -57,6 +68,40 @@ export function migrate(db: Database.Database) {
       image_url_small text not null,
       card_sets_json text not null,
       cached_at text not null
+    );
+
+    create table if not exists cubes (
+      id integer primary key autoincrement,
+      guild_id text not null,
+      name text not null,
+      archetype text,
+      banlist text,
+      config_json text not null default '{}',
+      created_by_user_id text not null,
+      created_at text not null default current_timestamp,
+      updated_at text not null default current_timestamp,
+      unique (guild_id, name)
+    );
+
+    create table if not exists cube_cards (
+      cube_id integer not null references cubes(id) on delete cascade,
+      catalog_card_id integer not null references card_catalog(ygoprodeck_id),
+      pool text not null,
+      max_copies integer not null default 3,
+      source text,
+      primary key (cube_id, catalog_card_id)
+    );
+
+    create table if not exists draft_player_cube (
+      draft_id integer not null references drafts(id),
+      player_id integer not null references players(id),
+      cube_id integer not null references cubes(id),
+      primary key (draft_id, player_id)
+    );
+
+    create table if not exists archetypes (
+      name text primary key,
+      synced_at text not null
     );
 
     create table if not exists drafts (
@@ -247,6 +292,7 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "card_catalog", "def", "integer");
   addColumnIfMissing(db, "card_catalog", "attribute", "text");
   addColumnIfMissing(db, "card_catalog", "level", "integer");
+  addColumnIfMissing(db, "card_catalog", "archetype", "text");
   addColumnIfMissing(db, "card_sets", "card_count", "integer");
   addColumnIfMissing(db, "card_sets", "set_code", "text");
   addColumnIfMissing(db, "drafts", "tournament_id", "integer references tournaments(id)");
@@ -295,16 +341,6 @@ export function migrate(db: Database.Database) {
     create unique index if not exists drafts_current_name_unique
     on drafts (guild_id, name)
     where status in ('pending', 'active');
-
-    create table if not exists draft_templates (
-      id integer primary key autoincrement,
-      guild_id text not null,
-      name text not null,
-      config_json text not null default '{}',
-      created_by_user_id text not null,
-      created_at text not null default current_timestamp,
-      unique (guild_id, name)
-    );
 
     create index if not exists draft_cards_unpicked_by_draft_wave
     on draft_cards (draft_id, wave_number)

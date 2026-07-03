@@ -102,11 +102,18 @@ export async function POST(
       after.currentPackRound !== currentStep.currentPackRound ||
       after.currentPickStep !== currentStep.currentPickStep
     ) {
+      const phase =
+        after.config.mode === "theme"
+          ? after.currentPackRound <= (after.config.cardsPerPlayer ?? 40)
+            ? ("main" as const)
+            : ("extra" as const)
+          : undefined;
       void broadcaster.draft({
         kind: "resync",
         slug,
         packRound: after.currentPackRound,
         pickStep: after.currentPickStep,
+        phase,
       });
     }
 

@@ -40,6 +40,7 @@ export async function GET() {
           d.name,
           d.status,
           d.web_slug,
+          d.config_json,
           d.current_wave_number,
           d.current_pick_step,
           d.created_at,
@@ -61,18 +62,29 @@ export async function GET() {
       `
       )
       .all(...playerIds)
-      .map((row: any) => ({
-        id: row.id,
-        guildId: row.guild_id,
-        name: row.name,
-        status: row.status,
-        webSlug: row.web_slug ?? undefined,
-        currentPackRound: row.current_wave_number ?? 0,
-        currentPickStep: row.current_pick_step ?? 0,
-        playerCount: row.player_count,
-        createdAt: toUtcIso(row.created_at),
-        endedAt: toUtcIso(row.ended_at),
-      }));
+      .map((row: any) => {
+        let mode: "booster" | "theme" = "booster";
+        try {
+          if ((JSON.parse(row.config_json ?? "{}") as { mode?: string }).mode === "theme") {
+            mode = "theme";
+          }
+        } catch {
+          // malformed config_json — default to booster
+        }
+        return {
+          id: row.id,
+          guildId: row.guild_id,
+          name: row.name,
+          status: row.status,
+          mode,
+          webSlug: row.web_slug ?? undefined,
+          currentPackRound: row.current_wave_number ?? 0,
+          currentPickStep: row.current_pick_step ?? 0,
+          playerCount: row.player_count,
+          createdAt: toUtcIso(row.created_at),
+          endedAt: toUtcIso(row.ended_at),
+        };
+      });
 
     const active = drafts.filter((d: any) => d.status === "active");
     const pending = drafts.filter((d: any) => d.status === "pending");
@@ -102,13 +114,6 @@ export async function POST(request: NextRequest) {
     config: DraftConfig;
   };
 
-  if (!name || (!config?.setNames?.length && !config?.customCardIds?.length)) {
-    return NextResponse.json(
-      { error: "name and a draft pool are required" },
-      { status: 400 }
-    );
-  }
-
   const guildId = env.discordGuildId;
   const resolvedChannelId = channelId || env.discordDefaultChannelId;
 
@@ -116,6 +121,46 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Server not configured for draft creation" },
       { status: 500 }
+    );
+  }
+
+  // Theme mode: no card-pool sync — the pool lives in the theme cubes, which the
+  // host adds inside the draft after creation. So a theme draft starts blank.
+  if (config?.mode === "theme") {
+    if (!name) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    }
+    const db = getDb();
+    const players = createPlayerService(db);
+    const player = players.findOrCreate(guildId, session.user.id, session.user.name ?? "Unknown");
+    const drafts = createDraftService(db);
+    const draft = drafts.create(
+      guildId,
+      resolvedChannelId,
+      name,
+      { ...config, allowedCubeIds: config.allowedCubeIds ?? [] },
+      session.user.id,
+      player.id,
+    );
+
+    void announcer.announce({
+      kind: "draft-created",
+      draftId: draft.id,
+      channelId: draft.channelId,
+      name: draft.name,
+      webSlug: draft.webSlug ?? "",
+    });
+
+    return NextResponse.json(
+      { id: draft.id, name: draft.name, status: draft.status, webSlug: draft.webSlug, warnings: [], errors: [] },
+      { status: 201 },
+    );
+  }
+
+  if (!name || (!config?.setNames?.length && !config?.customCardIds?.length)) {
+    return NextResponse.json(
+      { error: "name and a draft pool are required" },
+      { status: 400 }
     );
   }
 

@@ -1,0 +1,272 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { Plus, Unlink, Pencil, Search, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+interface AllowedCube {
+  id: number;
+  name: string;
+  archetype: string | null;
+  mainCount: number;
+  extraCount: number;
+}
+
+interface CubeDraftBuilderProps {
+  slug: string;
+  allowedCubes: AllowedCube[];
+  uniqueThemes: boolean;
+  onChanged: () => void;
+}
+
+export function CubeDraftBuilder({ slug, allowedCubes, uniqueThemes, onChanged }: CubeDraftBuilderProps) {
+  const [query, setQuery] = React.useState("");
+  const [suggestions, setSuggestions] = React.useState<string[]>([]);
+  const [blankName, setBlankName] = React.useState("");
+  const [library, setLibrary] = React.useState<AllowedCube[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [info, setInfo] = React.useState<string | null>(null);
+  const reqId = React.useRef(0);
+
+  // Existing library cubes that aren't already in this draft.
+  const attachedIds = React.useMemo(() => new Set(allowedCubes.map((c) => c.id)), [allowedCubes]);
+  const attachable = library.filter((c) => !attachedIds.has(c.id));
+
+  const loadLibrary = React.useCallback(() => {
+    fetch("/api/cubes")
+      .then((res) => (res.ok ? res.json() : { cubes: [] }))
+      .then((data: { cubes: AllowedCube[] }) => setLibrary(data.cubes ?? []))
+      .catch(() => {});
+  }, []);
+
+  React.useEffect(() => loadLibrary(), [loadLibrary]);
+
+  React.useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const myReq = ++reqId.current;
+    const t = setTimeout(() => {
+      fetch(`/api/archetypes?query=${encodeURIComponent(q)}`)
+        .then((res) => (res.ok ? res.json() : { archetypes: [] }))
+        .then((data: { archetypes: string[] }) => {
+          if (myReq === reqId.current) setSuggestions((data.archetypes ?? []).slice(0, 8));
+        })
+        .catch(() => {
+          if (myReq === reqId.current) setSuggestions([]);
+        });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const post = async (body: Record<string, unknown>, successInfo: string) => {
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const res = await fetch(`/api/drafts/${slug}/cubes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(
+          res.status === 502
+            ? `${data.error ?? "Couldn't reach the card database."} You can still add a blank cube and import passcodes in its editor.`
+            : data.error ?? "Failed to add cube",
+        );
+        return;
+      }
+      setInfo(successInfo);
+      setQuery("");
+      setBlankName("");
+      setSuggestions([]);
+      onChanged();
+      loadLibrary();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addArchetype = (name: string) => {
+    const archetype = name.trim();
+    if (!archetype) return;
+    void post({ kind: "archetype", archetype }, `Added "${archetype}" — seeding its cards…`);
+  };
+
+  const addBlank = () => {
+    if (!blankName.trim()) return;
+    void post({ kind: "blank", name: blankName.trim() }, `Added blank cube "${blankName.trim()}".`);
+  };
+
+  const attachExisting = (cubeId: number) => {
+    if (!cubeId) return;
+    const cube = library.find((c) => c.id === cubeId);
+    void post({ kind: "existing", cubeId }, `Attached "${cube?.name ?? "cube"}".`);
+  };
+
+  const detach = async (cubeId: number) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fetch(`/api/drafts/${slug}/cubes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cubeId }),
+      });
+      onChanged();
+      loadLibrary();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteCube = async (cubeId: number, name: string) => {
+    if (typeof window !== "undefined" && !window.confirm(`Delete "${name}" from your library for good? This can't be undone.`)) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      // Detach from this draft, then delete the cube from the library.
+      await fetch(`/api/drafts/${slug}/cubes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cubeId }),
+      });
+      await fetch(`/api/cubes/${cubeId}`, { method: "DELETE" });
+      onChanged();
+      loadLibrary();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-border bg-surface p-4">
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="font-display text-lg text-text-primary">Theme cubes</h2>
+        <span className="text-xs text-text-secondary">{allowedCubes.length} cube{allowedCubes.length === 1 ? "" : "s"}</span>
+      </div>
+      <p className="mb-3 text-sm text-text-secondary">
+        Add archetypes one at a time (each becomes its own editable cube), attach cubes you already built, or start a blank one.
+        {uniqueThemes ? " Max players = number of cubes." : ""}
+      </p>
+
+      {error && <div className="mb-3 rounded-lg border border-accent-cta/50 bg-accent-cta/10 px-3 py-2 text-sm text-accent-cta">{error}</div>}
+      {info && <div className="mb-3 rounded-lg border border-accent-primary/40 bg-accent-primary/10 px-3 py-2 text-sm text-accent-primary">{info}</div>}
+
+      {/* Archetype type-ahead */}
+      <div className="relative mb-3">
+        <label htmlFor="archetype-search" className="mb-1 flex items-center gap-1 text-sm font-medium text-text-primary">
+          <Search className="h-3.5 w-3.5" /> Search archetype
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="archetype-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="blue-eyes, dark magician, ..."
+            autoComplete="off"
+            className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
+          />
+          <Button type="button" variant="primary" size="sm" className="shrink-0 whitespace-nowrap" disabled={busy || query.trim().length === 0} onClick={() => addArchetype(query)}>
+            <Plus className="h-4 w-4" /> Add
+          </Button>
+        </div>
+        {suggestions.length > 0 && (
+          <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-bg-surface shadow-card">
+            {suggestions.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => addArchetype(name)}
+                className="block w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-elevated"
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Blank custom cube */}
+      <div className="mb-3 flex gap-2">
+        <input
+          value={blankName}
+          onChange={(e) => setBlankName(e.target.value)}
+          placeholder="Custom cube name (e.g. Stun)"
+          className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-primary focus:outline-none"
+        />
+        <Button type="button" variant="secondary" size="sm" className="shrink-0 whitespace-nowrap" disabled={busy || blankName.trim().length === 0} onClick={addBlank}>
+          <Plus className="h-4 w-4" /> Blank
+        </Button>
+      </div>
+
+      {/* Attach an existing library cube */}
+      {attachable.length > 0 && (
+        <div className="mb-4 flex gap-2">
+          <select
+            aria-label="Attach an existing cube"
+            value=""
+            onChange={(e) => attachExisting(Number(e.target.value))}
+            disabled={busy}
+            className="native-select w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+          >
+            <option value="">Attach from my cubes…</option>
+            {attachable.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.archetype ? ` (${c.archetype})` : ""} — {c.mainCount} main · {c.extraCount} extra
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Cube list */}
+      {allowedCubes.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-text-secondary">
+          No cubes yet. Search an archetype above or add a blank cube to start.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {allowedCubes.map((cube) => (
+            <li key={cube.id} className="flex items-center justify-between rounded-lg border border-border bg-bg-elevated/40 px-3 py-2 transition-colors hover:border-border/80">
+              <div className="min-w-0">
+                <p className="truncate font-display text-text-primary">
+                  {cube.name}
+                  {cube.archetype && cube.archetype !== cube.name && (
+                    <span className="ml-2 align-middle text-xs font-normal text-accent-primary">{cube.archetype}</span>
+                  )}
+                </p>
+                <p className="text-xs tabular-nums text-text-secondary">
+                  {cube.mainCount} main, {cube.extraCount} extra
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/cubes/${cube.id}?from=${encodeURIComponent(`/draft/${slug}`)}`}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
+                  title="Edit / view cube"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </Link>
+                <button type="button" disabled={busy} onClick={() => void detach(cube.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary motion-safe:active:translate-y-px disabled:opacity-50" title="Detach from this draft (keeps the cube in your library)">
+                  <Unlink className="h-3.5 w-3.5" /> Detach
+                </button>
+                <button type="button" disabled={busy} onClick={() => void deleteCube(cube.id, cube.name)} className="inline-flex items-center gap-1 rounded-lg border border-accent-cta/40 px-2 py-1 text-xs text-accent-cta transition-colors hover:bg-accent-cta/10 motion-safe:active:translate-y-px disabled:opacity-50" title="Delete cube from your library for good">
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}

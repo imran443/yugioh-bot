@@ -24,14 +24,17 @@ describe("shared database schema", () => {
       .map((row: any) => row.name);
 
     expect(tables).toEqual([
+      "archetypes",
       "card_catalog",
       "card_sets",
+      "cube_cards",
+      "cubes",
       "draft_cards",
       "draft_deal",
       "draft_packs",
       "draft_picks",
+      "draft_player_cube",
       "draft_players",
-      "draft_templates",
       "drafts",
       "guild_settings",
       "matches",
@@ -123,7 +126,47 @@ describe("shared database schema", () => {
       "image_url_small",
       "card_sets_json",
       "cached_at",
+      "archetype",
     ]);
+  });
+
+  it("adds an archetype column to card_catalog", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const cols = getTableInfo(db, "card_catalog").map((column) => column.name);
+    expect(cols).toContain("archetype");
+  });
+
+  it("creates cube tables", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const tables = (
+      db.prepare("select name from sqlite_master where type='table'").all() as Array<{ name: string }>
+    ).map((r) => r.name);
+    expect(tables).toEqual(
+      expect.arrayContaining(["cubes", "cube_cards", "draft_player_cube", "archetypes"]),
+    );
+    expect(tables).not.toContain("themes");
+    expect(tables).not.toContain("draft_templates");
+  });
+
+  it("enforces the cube_cards primary key and pool", () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    db.prepare(
+      "insert into cubes (guild_id, name, created_by_user_id, created_at, updated_at) values ('g','Blue-Eyes','u','t','t')",
+    ).run();
+    db.prepare(
+      "insert into card_catalog (ygoprodeck_id,name,type,frame_type,image_url,image_url_small,card_sets_json,cached_at) values (1,'a','t','normal','i','i','[]','t')",
+    ).run();
+    db.prepare(
+      "insert into cube_cards (cube_id, catalog_card_id, pool, max_copies) values (1,1,'main',3)",
+    ).run();
+    expect(() =>
+      db
+        .prepare("insert into cube_cards (cube_id, catalog_card_id, pool, max_copies) values (1,1,'main',3)")
+        .run(),
+    ).toThrow();
   });
 
   it("adds the card_sets table when migrating an older database", () => {
@@ -290,6 +333,7 @@ describe("shared database schema", () => {
       "def",
       "attribute",
       "level",
+      "archetype",
     ]);
   });
 

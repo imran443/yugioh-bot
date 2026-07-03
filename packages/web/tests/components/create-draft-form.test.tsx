@@ -58,21 +58,14 @@ describe("CreateDraftForm", () => {
         return Response.json({ channels: [] });
       }
 
-      if (String(input) === "/api/draft-templates") {
+      if (String(input) === "/api/cubes") {
         return Response.json({
-          templates: [
+          cubes: [
             {
               id: 1,
               name: "Goat Cube",
-              config: {
-                setNames: ["Metal Raiders"],
-                customCardIds: [46986414, 83764718],
-                packSize: 9,
-                packsPerPlayer: 4,
-                pickSeconds: 30,
-                alternatePassDirection: false,
-                randomizeSeats: true,
-              },
+              setNames: ["Metal Raiders"],
+              customCardIds: [46986414, 83764718],
             },
           ],
         });
@@ -100,7 +93,7 @@ describe("CreateDraftForm", () => {
   it("submits cardsPerPlayer, packSize, derived packsPerPlayer, and randomized seats", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === "/api/discord/channels") return Response.json({ channels: [] });
-      if (String(input) === "/api/draft-templates" && !init) return Response.json({ templates: [] });
+      if (String(input) === "/api/cubes" && !init) return Response.json({ cubes: [] });
       if (String(input) === "/api/drafts" && init?.method === "POST") {
         return Response.json({ webSlug: "cube" }, { status: 201 });
       }
@@ -154,12 +147,12 @@ describe("CreateDraftForm", () => {
         return Response.json({ channels: [] });
       }
 
-      if (String(input) === "/api/draft-templates" && !init) {
-        return Response.json({ templates: [] });
+      if (String(input) === "/api/cubes" && !init) {
+        return Response.json({ cubes: [] });
       }
 
-      if (String(input) === "/api/draft-templates" && init?.method === "POST") {
-        return Response.json({ template: { name: "Goat Cube" } }, { status: 201 });
+      if (String(input) === "/api/cubes" && init?.method === "POST") {
+        return Response.json({ cube: { id: 1, name: "Goat Cube", config: { setNames: [], customCardIds: [46986414, 83764718] } } }, { status: 201 });
       }
 
       return Response.json({}, { status: 404 });
@@ -175,7 +168,7 @@ describe("CreateDraftForm", () => {
     await waitFor(() => expect(screen.getByText(/saved goat cube/i)).toBeInTheDocument());
 
     const postCall = fetchMock.mock.calls.find(
-      ([input, init]) => String(input) === "/api/draft-templates" && init?.method === "POST",
+      ([input, init]) => String(input) === "/api/cubes" && init?.method === "POST",
     );
     const body = JSON.parse(String(postCall?.[1]?.body));
     expect(body).toMatchObject({

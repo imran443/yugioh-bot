@@ -8,8 +8,7 @@ import { migrate } from "../../src/db/schema.js";
 import { createPlayerRepository } from "../../src/repositories/players.js";
 import { createCardCatalogService } from "../../src/services/card-catalog.js";
 import { createDraftService } from "../../src/services/drafts.js";
-import { createDraftTemplateService } from "../../src/services/draft-templates.js";
-import { createTournamentService } from "@yugidraft/shared/services";
+import { createCubeService, createTournamentService } from "@yugidraft/shared/services";
 
 function setup() {
   const db = new Database(":memory:");
@@ -21,7 +20,7 @@ function setup() {
     tournaments: createTournamentService(db),
     drafts: createDraftService(db),
     cards: createCardCatalogService(db),
-    templates: createDraftTemplateService(db),
+    templates: createCubeService(db, createCardCatalogService(db)),
   };
 }
 

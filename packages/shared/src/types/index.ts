@@ -12,6 +12,26 @@ export interface DraftConfig {
   cubeCardIds?: number[];
   /** @deprecated legacy key, still read for drafts created before the rename */
   poolCardIds?: number[];
+
+  // ----- theme mode -----
+  /** Draft mode. Absent or "booster" => existing behavior. */
+  mode?: "booster" | "theme";
+  /** Cube ids the host allows for this draft (the "X" pool). */
+  allowedCubeIds?: number[];
+  /** How each player's theme is chosen. Default "player_pick". */
+  themeSelection?: "host_assigned" | "random" | "player_pick";
+  /** Optional explicit player -> theme map for host_assigned. */
+  themeAssignments?: Record<string, number>;
+  /** If true (default), every player gets a distinct cube, capping players at allowedCubeIds.length. */
+  uniqueThemes?: boolean;
+  /** Number of choices shown per pick. Admin-set; default 3, any X >= 2. */
+  themePackSize?: number;
+  /** Whether to run the Extra Deck draft phase at all. Default true. */
+  extraDeckEnabled?: boolean;
+  /** Extra Deck cards to draft in phase 2 (ignored when extraDeckEnabled is false). Default 15. */
+  extraDeckSize?: number;
+  /** If true, the (themePackSize - 1) unpicked cards are discarded each round; if false (default) they return. */
+  burnUnpicked?: boolean;
 }
 
 export interface Draft {
@@ -107,4 +127,30 @@ export interface Card {
   imageUrlSmall: string;
   cardSets: Array<{ set_name: string }>;
   cachedAt: string;
+  archetype?: string;
+}
+
+export type CubePool = "main" | "extra";
+
+export interface CubeCard {
+  catalogCardId: number;
+  pool: CubePool;
+  maxCopies: number;
+  source?: string;
+}
+
+export interface CubePools {
+  main: CubeCard[];
+  extra: CubeCard[];
+}
+
+export interface Cube {
+  id: number;
+  guildId: string;
+  name: string;
+  archetype: string | null;
+  banlist: string | null;
+  /** Pack/mode defaults + set/passcode pool sources (bot templates & set draws). */
+  config: DraftConfig;
+  createdByUserId: string;
 }
