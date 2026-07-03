@@ -8,12 +8,13 @@ import { Button } from "@/components/ui/button";
 import { CardHoverPopup } from "@/components/draft/card-hover-popup";
 import { CardArt } from "@/components/cards/card-art";
 import {
-  isMonster, isSpell, isTrap, isEffectMonster, isNormalMonster, getTypeBadgeClass, getTypeLabel,
+  isMonster, isSpell, isTrap, isEffectMonster, isNormalMonster, isExtraDeckMonster,
+  getTypeBadgeClass, getTypeLabel,
   tributeTierForLevel,
   type CardSummary, type TributeTier,
 } from "@/lib/card-types";
 
-type PoolFilter = "all" | "effect" | "normal" | "spell" | "trap";
+type PoolFilter = "all" | "effect" | "normal" | "extra" | "spell" | "trap";
 type PoolSort = "newest" | "oldest" | "name" | "type";
 type PoolTribute = "any" | TributeTier;
 
@@ -71,6 +72,7 @@ const FILTER_BUTTONS: Array<{ label: string; value: PoolFilter }> = [
   { label: "All", value: "all" },
   { label: "Effect Monsters", value: "effect" },
   { label: "Normal Monsters", value: "normal" },
+  { label: "Extra Deck", value: "extra" },
   { label: "Spells", value: "spell" },
   { label: "Traps", value: "trap" },
 ];
@@ -149,6 +151,7 @@ function CardPoolGridBase({
         activeFilter === "all" ||
         (activeFilter === "effect" && isEffectMonster(card)) ||
         (activeFilter === "normal" && isNormalMonster(card)) ||
+        (activeFilter === "extra" && isExtraDeckMonster(card)) ||
         (activeFilter === "spell" && isSpell(card.type)) ||
         (activeFilter === "trap" && isTrap(card.type));
       const matchTribute =
