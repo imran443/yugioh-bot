@@ -50,6 +50,20 @@ describe("CardPoolGrid", () => {
     expect(screen.queryByRole("button", { name: /preview monster reborn/i })).toBeNull();
   });
 
+  it("narrows by the Extra Deck filter, showing only extra-deck monsters", () => {
+    const withExtra: CardSummary[] = [
+      ...cards,
+      { id: 4, name: "Stardust Dragon", type: "Dragon / Synchro / Effect Monster", frameType: "synchro", effectText: "...", imageUrl: "u4", imageUrlSmall: "s4" },
+    ];
+    render(<CardPoolGrid cards={withExtra} />);
+    fireEvent.click(screen.getByRole("button", { name: /^extra deck$/i }));
+    expect(screen.getByRole("button", { name: /preview stardust dragon/i })).toBeTruthy();
+    // Main-deck monster, spell and trap are all hidden.
+    expect(screen.queryByRole("button", { name: /preview bujingi crane/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview monster reborn/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview mirror force/i })).toBeNull();
+  });
+
   it("narrows by tribute tier: No Trib shows only level 1-4 monsters", () => {
     render(<CardPoolGrid cards={leveledCards} />);
     fireEvent.click(screen.getByRole("button", { name: /^no trib$/i }));
