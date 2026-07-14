@@ -1,0 +1,13 @@
+{
+  "name": "@yugioh-discord-bot/duel-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:vendor": "node ../../scripts/check-neos-vendor.mjs",
+    "setup": "npm --prefix ../../vendor/neos-ts install",
+    "dev": "node ../../scripts/run-neos-dev.mjs",
+    "build:neos": "npm --prefix ../../vendor/neos-ts run build",
+    "smoke": "node ../../scripts/smoke-neos-runtime.mjs"
+  }
+}
