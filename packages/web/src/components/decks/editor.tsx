@@ -792,7 +792,7 @@ export function SavedDeckEditor({ deckId, pool }: { deckId?: string; pool?: Draf
 
   return (
     <SheetRoot className={styles.host} data-pool={pool ? "" : undefined} aria-hidden={isPhone && cardSheetOpen ? true : undefined}>
-      {pool ? <OwnsPageBar /> : null}
+      {pool ? <OwnsPageBar room /> : null}
       <div ref={editorRef} className={styles.de} data-tab={phoneTab}>
         <header className={styles["de-bar"]}>
           <Link href={backHref} className={styles["de-back"]} aria-label={pool ? "Back to the draft" : "Back to decks"}>

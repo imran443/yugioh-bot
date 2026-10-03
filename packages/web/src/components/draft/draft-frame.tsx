@@ -1,4 +1,5 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { BugFabLift } from "@/components/bug-report/fab-lift";
 import { OwnsPageBar, ShellMenuButton } from "@/components/layout/shell-bar";
 import { PageBar, SheetRoot, type PageBarProps } from "@/components/sheet";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,7 @@ export function DraftFrame({
 }: Pick<PageBarProps, "title" | "sub" | "back" | "actions" | "titleAs"> & { children: ReactNode; bodyClassName?: string }) {
   return (
     <SheetRoot className={styles.root}>
-      <OwnsPageBar />
+      <OwnsPageBar room />
       <PageBar {...bar} actions={<>{actions}<ShellMenuButton /></>} />
       <div className={cn(styles.body, styles.skin, bodyClassName)}>{children}</div>
     </SheetRoot>
@@ -40,14 +41,14 @@ export function DraftMain({ children, className }: { children: ReactNode; classN
 
 /**
  * The rail (340px, a left hairline) plus, under it, the action block: the one primary button of the page. Pass the button
- * as `actions`. On a phone the rail follows the main column and the actions stick to the bottom of the screen. Keep this a
+ * as `actions`. On a phone the rail follows the main column and the actions stick to the bottom of the screen and the Report bug button lifts above them. Keep this a
  * direct child of `DraftLayout`.
  */
 export function DraftRail({ children, className, actions, ...rest }: { children: ReactNode; className?: string; actions?: ReactNode } & ComponentPropsWithoutRef<"aside">) {
   return (
     <div className={styles.side}>
       <aside {...rest} className={cn(styles.rail, className)}>{children}</aside>
-      {actions != null && actions !== false && <div className={styles.actions}>{actions}</div>}
+      {actions != null && actions !== false && <BugFabLift className={styles.actions}>{actions}</BugFabLift>}
     </div>
   );
 }

@@ -270,7 +270,7 @@ button.de-flag:hover { text-decoration: underline; text-underline-offset: 3px; }
   .de-deck { padding: 0 12px 64px; gap: 12px; }
   .de[data-tab="cards"] .de-deck { display: none; }
   .de[data-tab="deck"] .de-body > [id="deck-editor-cards"] { display: none; }
-  .de-body > [id="deck-editor-cards"] { border: 0; margin: 0 12px 20px; }
+  .de-body > [id="deck-editor-cards"] { border: 0; margin: 0 12px; } /* the list's own 64px end padding already clears the Report bug button */
   .de-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
   .de-hand-g { grid-template-columns: repeat(6, minmax(0, 72px)); }
   .de-size { width: 92px; }

@@ -15,6 +15,12 @@ describe("OwnsPageBar", () => {
     const marker = container.querySelector("[data-shell-bar='own']");
     expect(marker).not.toBeNull();
     expect(marker).toHaveAttribute("hidden");
+    expect(marker).not.toHaveAttribute("data-shell-room");
+  });
+
+  it("says the page has its own room at the end when asked", () => {
+    const { container } = render(<OwnsPageBar room />);
+    expect(container.querySelector("[data-shell-bar='own']")).toHaveAttribute("data-shell-room", "own");
   });
 });
 

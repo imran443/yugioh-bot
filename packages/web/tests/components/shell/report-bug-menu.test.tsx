@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LinkStub, fontMock, ready, stubFetch } from "./helpers";
 
 vi.mock("next/font/google", () => fontMock());
@@ -56,5 +56,21 @@ describe("Report bug in the app shell", () => {
     expect(body.duelSlug).toBeUndefined();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Report a bug" })).toBeNull());
+  });
+
+  it("from the phone menu: the field has focus behind no one, and closing the report returns focus to the menu button", async () => {
+    render(<AppShell><p>page</p></AppShell>);
+    const menuButton = screen.getByRole("button", { name: "Open menu" });
+    fireEvent.click(menuButton);
+    const drawer = await screen.findByRole("dialog", { name: "Navigation" });
+    fireEvent.click(within(drawer).getByRole("button", { name: /account menu/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Report bug" }));
+    const report = await screen.findByRole("dialog", { name: "Report a bug" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByLabelText(/What went wrong\?/));
+    expect(report.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Report a bug" })).toBeNull());
+    expect(document.activeElement).toBe(menuButton);
   });
 });

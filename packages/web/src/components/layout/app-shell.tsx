@@ -44,6 +44,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const triggerRef = useRef<HTMLElement | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
+  const returnFocus = useRef(false);
   const pathname = usePathname();
   const account = useShellAccount();
   const live = useLiveNow(pathname);
@@ -104,16 +105,19 @@ function ShellFrame({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener("change", onChange);
   }, [drawerOpen]);
 
-  // The page behind the dialog can't be reached; focus returns to the menu button.
+  // The page behind the dialog can't be reached; focus returns to the menu button. When Report bug was chosen in the
+  // menu, the report dialog has focus by now (its effects run before this one), so the return waits until it closes.
   useEffect(() => {
     const frame = frameRef.current;
     if (frame) frame.inert = drawerOpen;
-    if (wasOpen.current && !drawerOpen) {
+    if (wasOpen.current && !drawerOpen) returnFocus.current = true;
+    wasOpen.current = drawerOpen;
+    if (returnFocus.current && !reportOpen) {
+      returnFocus.current = false;
       const target = triggerRef.current?.isConnected ? triggerRef.current : menuButtonRef.current;
       target?.focus();
     }
-    wasOpen.current = drawerOpen;
-  }, [drawerOpen]);
+  }, [drawerOpen, reportOpen]);
 
   return (
     <ShellContext.Provider value={shell}>

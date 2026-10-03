@@ -17,7 +17,7 @@ export function PageFrame({
 }: Pick<PageBarProps, "title" | "sub" | "back" | "actions" | "titleAs"> & { children: ReactNode; bodyClassName?: string }) {
   return (
     <SheetRoot className={styles.root}>
-      <OwnsPageBar />
+      <OwnsPageBar room />
       <PageBar {...bar} actions={<>{actions}<ShellMenuButton /></>} />
       <div className={bodyClassName ? `${styles.body} ${bodyClassName}` : styles.body}>{children}</div>
     </SheetRoot>

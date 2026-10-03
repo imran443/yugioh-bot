@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Bug } from "lucide-react";
 import { BugReportDialog } from "./bug-report-dialog";
 import { collectBugContext } from "./context";
+import { useBugFabLift } from "./fab-lift";
 import { getBugReportRoom, useBugReportHeaderHosted } from "./room-store";
 
 /** Where the button sits when the caller does not say: the bottom-left corner of the screen. */
@@ -19,6 +20,7 @@ const DEFAULT_PLACE = "fixed bottom-3 left-3 z-40";
 export function BugReportFab({ className = DEFAULT_PLACE }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const headerHosted = useBugReportHeaderHosted();
+  const lift = useBugFabLift();
   const collect = useCallback(() => collectBugContext(getBugReportRoom()), []);
   return (
     <>
@@ -27,8 +29,9 @@ export function BugReportFab({ className = DEFAULT_PLACE }: { className?: string
           type="button"
           aria-haspopup="dialog"
           data-bug-fab
+          style={lift > 0 ? { bottom: `calc(0.75rem + ${lift}px)` } : undefined}
           onClick={() => setOpen(true)}
-          className={`${className} inline-flex h-9 items-center gap-1.5 rounded-full bg-accent-cta px-3 text-sm font-semibold text-white shadow-card motion-safe:transition-[colors,transform] hover:bg-red-600 motion-safe:active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white max-[900px]:h-8 max-[900px]:px-2.5 max-[900px]:text-xs`}
+          className={`${className} inline-flex h-9 items-center gap-1.5 rounded-full bg-accent-cta px-3 text-sm font-semibold text-white shadow-card motion-safe:transition-[background-color,transform,bottom] hover:bg-red-600 motion-safe:active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white max-[900px]:h-8 max-[900px]:px-2.5 max-[900px]:text-xs`}
         >
           <Bug className="h-4 w-4" aria-hidden="true" />
           <span>Report bug</span>

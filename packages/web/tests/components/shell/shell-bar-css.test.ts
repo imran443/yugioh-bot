@@ -11,6 +11,15 @@ describe("page-owns-bar CSS", () => {
     expect(rule?.toString()).toMatch(/padding:\s*0/);
   });
 
+  it("adds no end padding for a page with its own room (draft, list pages, full-height deck editor)", () => {
+    const rule = root.nodes.find((n): n is Rule => n.type === "rule" && n.selector === '.frame:has([data-shell-room="own"]) .content');
+    expect(rule?.toString()).toMatch(/padding:\s*0;/);
+    const own = root.nodes.filter((n): n is Rule => n.type === "rule" && n.selector === '.frame:has([data-shell-bar="own"]) .content');
+    expect(own[0]?.toString()).toMatch(/padding:\s*0 0 64px/);
+    // The room rule comes later, so it wins at equal specificity.
+    expect(root.nodes.indexOf(rule!)).toBeGreaterThan(root.nodes.indexOf(own[0]!));
+  });
+
   it("hides the shell's phone bar inside the 820px block", () => {
     const media = root.nodes.find((n) => n.type === "atrule" && n.name === "media" && n.params === "(max-width: 820px)");
     const rule = media && "nodes" in media ? media.nodes?.find((n): n is Rule => n.type === "rule" && n.selector === '.frame:has([data-shell-bar="own"]) .topWrap') : undefined;

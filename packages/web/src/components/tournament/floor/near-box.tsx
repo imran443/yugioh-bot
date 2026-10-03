@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { BugFabLift } from "@/components/bug-report/fab-lift";
 import { DeckMark, DuelAction, SheetPortal, SvButton } from "@/components/sheet";
 import { SECTION_IDS, type PlayerRatings } from "../sheet-contracts";
 import type { Match, TournamentDetail } from "../types";
@@ -102,7 +103,7 @@ export function NearBox({ tournament, tournamentSlug, match, viewerId, isHost, r
   return (
     <div className={styles.nearbox} data-testid="near-box">
       {stakesLine}
-      {useBar ? <SheetPortal><div className={styles.actionBar}>{bar}</div></SheetPortal> : bar}
+      {useBar ? <SheetPortal><BugFabLift className={styles.actionBar}>{bar}</BugFabLift></SheetPortal> : bar}
       {note && <p className={styles.note}>{note}</p>}
       {deck}
       {actions.reporting && view.canReport && projection && (

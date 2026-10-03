@@ -566,6 +566,12 @@
   padding: 0 0 64px; /* the 64px at the end keeps the last row clear of the Report bug button */
 }
 
+/* A page with its own room at the end (OwnsPageBar room): its body pads 56px (48px on a phone), which clears the
+   button, or it is a full-height workspace that must not scroll. The shell adds nothing there. */
+.frame:has([data-shell-room="own"]) .content {
+  padding: 0;
+}
+
 /* ---- The phone menu button. Bare in the shell's own bar; bordered inside a page bar. ---- */
 .menuButton {
   position: relative;
