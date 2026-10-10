@@ -11,7 +11,7 @@ import type Database from "better-sqlite3";
 import { assertDuelForkAccess, assertOwnerReplaySourceAccess, resolveOwnerPlayer, ReplayAccessError } from "@yugidraft/shared/access/owner-access";
 import { createLocalCardDataStatus, type EngineDataManifest } from "./card-data-status.js";
 import { createGithubCardDataStatus } from "./github-card-data-status.js";
-import { createDuelSeriesService, createDuelService, createTournamentDuelService, DuelServiceError, TournamentDuelError, isCardFetchError, type DuelFinalSnapshots, type DuelPrivateState } from "@yugidraft/shared/services";
+import { createDuelSeriesService, createDuelService, createReplayForkService, createTournamentDuelService, DuelServiceError, TournamentDuelError, isCardFetchError, type DuelFinalSnapshots, type DuelPrivateState } from "@yugidraft/shared/services";
 import type {
   DuelAnswer,
   DuelCommand,
@@ -36,7 +36,7 @@ import type {
   ReplayErrorCode,
 } from "@yugidraft/shared/duels";
 import {
-  CardQueryError, duel1v1EngineForMode, isFirstChoice, isReplaySeed, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled,
+  CardQueryError, duel1v1EngineForMode, isFirstChoice, isReplayFork, isReplaySeed, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled,
   COIN_TIMING, COIN_CHAIN_BEAT_MAX_MS, MIN_DUEL_FX_SPEED, coinTossDurationMs,
   CHAIN_MODE_JOURNAL_LIMIT, CHAIN_MODE_PROMPT_PREFIX, chainModeOf, isDuelChainMode, normalizeDuelSettings, opponentSeatsOf, parseCardQuery, seatCountFor, teamOfSeat, DUEL_OPENING_PICK_MS, DUEL_RPS_MOVES,
 } from "@yugidraft/shared/duels";
@@ -368,9 +368,14 @@ export function createDuelHost(options: {
   const admissionEntries = (mode: DuelMode = "normal", format: DuelFormat = "1v1", engine: DuelEngineChoice = duel1v1EngineForMode(mode)) =>
     mergeCardBlockEntries(loadCardBlockList(undefined, options.dataDirectory), autoBlocks.entries(scriptEngineKind(mode, format, engine)));
   const recordScriptError = createScriptErrorRecorder(options.db, console.error, autoBlocks);
-  const spawn = (duelId?: number): DuelGameWorker => options.createWorker?.() ?? new GameWorker(
-    duelId === undefined ? undefined : (error) => recordScriptError(duelId, error),
-    (error) => console.error(JSON.stringify({ event: "card_script_fatal", duelId, ...error })),
+  const spawn = (duelId?: number, recordErrors: () => boolean = () => true): DuelGameWorker => options.createWorker?.() ?? new GameWorker(
+    duelId === undefined ? undefined : (error) => { if (recordErrors()) recordScriptError(duelId, error); },
+    (error) => {
+      if (!recordErrors()) return;
+      const fork = duelId !== undefined && options.db.prepare<[number], { kind: string }>("select kind from duels where id = ?").get(duelId)?.kind === "replay-fork";
+      console.error(JSON.stringify({ event: fork ? "replay_fork_script_fatal" : "card_script_fatal", duelId,
+        ...(fork ? { duelKind: "replay-fork" } : {}), ...error }));
+    },
   );
   const archiveAfterMs = options.archiveAfterMs ?? DEFAULT_ARCHIVE_AFTER_MS;
   const idleWorkerMs = options.idleWorkerMs ?? DEFAULT_IDLE_WORKER_MS;
@@ -525,6 +530,7 @@ export function createDuelHost(options: {
 
   /** Seats the host answers for: practice bots, plus seats that surrendered (they only pass). */
   function autoSeatsOf(session: DuelSession, entry: LiveGame | undefined): number[] {
+    if (isReplayFork(session)) return [];
     const seats = new Set<number>();
     for (const seat of session.seats) if (seat.isBot) seats.add(seat.seat);
     for (const seat of entry?.surrendered ?? []) seats.add(seat);
@@ -660,7 +666,7 @@ export function createDuelHost(options: {
   async function afterGameEnded(slug: string, guildId: string): Promise<void> {
     try {
       const session = service.get(slug, guildId);
-      if (!session.seriesId) return;
+      if (isReplayFork(session) || !session.seriesId) return;
       const info = series.get(session.seriesId, guildId);
       if (info.currentDuelSlug !== slug) return;
       if (info.status === "between_games") scheduleAdvance(info, guildId);
@@ -792,6 +798,10 @@ export function createDuelHost(options: {
     note?: string,
   ): Promise<void> {
     const state = service.privateState(slug, guildId);
+    if (isReplayFork(state.session)) {
+      service.recordCommand(slug, guildId, seat, note ? ({ ...command, note } as DuelCommand) : command, null);
+      return;
+    }
     const view = await readClockView(game, seatCountFor(state.session.format), games.get(slug)?.surrendered);
     const after = await game.view(null);
     const grace = freshCoinTossGraceMs(after, afterEventId);
@@ -826,7 +836,7 @@ export function createDuelHost(options: {
 
   /** Stop a long duel once no human can play. This is an interruption, not a game draw. */
   async function stopLongBotDuel(slug: string, guildId: string, session: DuelSession, entry: LiveGame | undefined, view: DuelEngineView): Promise<boolean> {
-    if (view.turn < BOT_ONLY_TURN_LIMIT) return false;
+    if (isReplayFork(session) || view.turn < BOT_ONLY_TURN_LIMIT) return false;
     const humanLiving = session.seats.some((seat) => {
       if (seat.isBot || entry?.surrendered.has(seat.seat)) return false;
       const state = view.seats.find((state) => state.seat === seat.seat);
@@ -889,6 +899,10 @@ export function createDuelHost(options: {
 
   /** Answer bot prompts now (unpaced) or hand them to the background loop (paced). */
   async function driveBot(slug: string, guildId: string, game: DuelGameWorker): Promise<void> {
+    if (isReplayFork(service.get(slug, guildId))) {
+      cancelBotLoop(slug);
+      return;
+    }
     if (!pacedBot) {
       await advancePracticeBot(slug, guildId, game);
       return;
@@ -1153,6 +1167,9 @@ export function createDuelHost(options: {
   }
 
   async function recover(slug: string, guildId: string): Promise<DuelGameWorker> {
+    const session = service.get(slug, guildId);
+    const fork = isReplayFork(session);
+    if (fork) assertDuelForkAccess(options.db, slug, { guildId, playerId: session.organizerPlayerId });
     const existing = games.get(slug);
     if (existing?.game.running) {
       existing.lastRequestAt = now();
@@ -1160,7 +1177,8 @@ export function createDuelHost(options: {
       return existing.game;
     }
     games.delete(slug);
-    const state = service.privateState(slug, guildId);
+    const state = fork ? createReplayForkService(options.db).privateState(slug, { guildId, playerId: session.organizerPlayerId })
+      : service.privateState(slug, guildId);
     if (state.session.status !== "active") throw new RequestError("This duel is not active", 409);
     if (!state.seed || !state.bundleVersion) throw new RequestError("Duel has not started", 409);
     if (state.bundleVersion !== pinnedVersionFor(state.session.format)) {
@@ -1188,12 +1206,13 @@ export function createDuelHost(options: {
       throw error;
     }
     let game: DuelGameWorker | undefined;
+    let recordRecoveryErrors = !fork;
     try {
       const result = await runJournalPrefix({
         source: journalSourceOf(state),
         resources: journalResourcesOf(resources),
         prefixCount: state.commands.length,
-        createWorker: () => (game = spawn(state.session.id)),
+        createWorker: () => (game = spawn(state.session.id, () => recordRecoveryErrors)),
       });
       game = result.worker;
     } catch (error) {
@@ -1211,11 +1230,12 @@ export function createDuelHost(options: {
       game,
       lastRequestAt: now(),
       guildId,
-      surrendered: new Set(state.setup?.surrenderedSeats ?? []),
-      policies: policiesOf(state.setup),
+      surrendered: new Set(fork ? [] : state.setup?.surrenderedSeats ?? []),
+      policies: fork ? new Map() : policiesOf(state.setup),
       traces: new Map(),
       ...(state.setup?.presetId ? { presetId: state.setup.presetId } : {}),
     });
+    recordRecoveryErrors = true;
     await driveBot(slug, guildId, game);
     return game;
   }
@@ -1328,7 +1348,7 @@ export function createDuelHost(options: {
 
   async function settleClock(slug: string, guildId: string, game?: DuelGameWorker, at = now()): Promise<void> {
     const state = service.privateState(slug, guildId);
-    if (state.session.status !== "active" || !state.clock) return;
+    if (isReplayFork(state.session) || state.session.status !== "active" || !state.clock) return;
     const clock = state.clock;
     if (!isClockDue(clock, at)) return;
 
@@ -1356,7 +1376,7 @@ export function createDuelHost(options: {
     const setup = room.session.format === "1v1" ? null : service.privateState(slug, guildId);
     // Retired commands identify old setup flags; they are not accepted for new surrender.
     const retiredTurnEndSeats = new Set((setup?.commands ?? []).filter((input) => eliminationAtTurnEnd(input.command.promptId)).map((input) => input.seat));
-    const legacyLossSeats = new Set((setup?.setup?.surrenderedSeats ?? []).filter((seat) => !retiredTurnEndSeats.has(seat)));
+    const legacyLossSeats = new Set((isReplayFork(room.session) ? [] : setup?.setup?.surrenderedSeats ?? []).filter((seat) => !retiredTurnEndSeats.has(seat)));
     const markLegacyLosses = (views: Iterable<DuelEngineView | null>) => {
       for (const view of views) for (const gone of legacyLossSeats) {
         const seat = view?.seats.find((seat) => seat.seat === gone);
@@ -2161,7 +2181,7 @@ export function createDuelHost(options: {
    * turn order is settled. Safe to call at any time; it does nothing when no opening runs.
    */
   async function driveOpening(slug: string, guildId: string): Promise<void> {
-    if (stopped) return;
+    if (stopped || isReplayFork(service.get(slug, guildId))) return;
     let state = service.openingState(slug, guildId);
     if (!state || service.get(slug, guildId).status !== "lobby") {
       clearOpeningTimer(slug);
@@ -2233,6 +2253,7 @@ export function createDuelHost(options: {
       return games.get(slug)?.game ?? null;
     }
     const { session } = await assertStartable(slug, guildId);
+    if (isReplayFork(session)) throw new RequestError("Replay forks use their own start and restart path", 409);
     const dice = session.format === "ffa3" || session.format === "ffa4";
     const rps = options.openingRps && session.format === "1v1" && (session.gameNumber ?? 1) === 1;
     if (!dice && !rps) return startGame(slug, guildId, actor);
@@ -2245,7 +2266,7 @@ export function createDuelHost(options: {
   async function startReadyGame(slug: string, guildId: string): Promise<boolean> {
     if (stopped) return false;
     const session = service.get(slug, guildId);
-    if (session.status !== "lobby" || !session.seriesId || !allSeatsReady(session)) return false;
+    if (isReplayFork(session) || session.status !== "lobby" || !session.seriesId || !allSeatsReady(session)) return false;
     await beginGame(slug, guildId, null);
     return true;
   }
@@ -2255,7 +2276,7 @@ export function createDuelHost(options: {
    * A deck problem goes back to the caller; an engine failure is retried by the tick sweep.
    */
   async function autoStart(slug: string, guildId: string, session: DuelSession): Promise<DuelSession> {
-    if (!session.seriesId || session.status !== "lobby" || !allSeatsReady(session)) return session;
+    if (isReplayFork(session) || !session.seriesId || session.status !== "lobby" || !allSeatsReady(session)) return session;
     try {
       await beginGame(slug, guildId, null);
     } catch (error) {
@@ -2307,6 +2328,12 @@ export function createDuelHost(options: {
       throw new RequestError("Authenticated guild and player are required", 400);
     }
     const actor = playerId as number;
+    if (body.as !== undefined) {
+      if (typeof body.slug !== "string" || !body.slug || !isReplayFork(service.room(body.slug, guildId, actor).session)
+        || !["view", "respond", "chain-mode", "cards"].includes(String(op))) {
+        throw new RequestError("Acting seats are only available in replay fork views and controls", 400);
+      }
+    }
     if (op === "engine-data-status") {
       try {
         const local = localCardDataStatus();
@@ -2417,6 +2444,10 @@ export function createDuelHost(options: {
     const slug = body.slug;
     if (op === "replay" || op === "owner-replay") return replayRequest(body, slug, guildId, actor);
     const room = service.room(slug, guildId, actor);
+    if (isReplayFork(room.session) && ["start", "ready", "unready", "deck", "validate-deck", "add-bot", "opening-pick", "opening-choose",
+      "series-first", "series-side", "series-ready", "series-unready"].includes(String(op))) {
+      throw new RequestError("Replay forks cannot use normal lobby or series operations", 409);
+    }
     if (op === "view") {
       // A timeout that no timer caught yet (a restart, a late timer) is applied here.
       if (room.session.status === "lobby" && room.opening) {
@@ -2595,7 +2626,7 @@ export function createDuelHost(options: {
       return project(slug, guildId, actor);
     }
     const live = games.get(slug)?.game ?? game;
-    if (games.get(slug)?.surrendered.has(seat)) throw new RequestError("You surrendered this duel", 409);
+    if (!isReplayFork(service.get(slug, guildId)) && games.get(slug)?.surrendered.has(seat)) throw new RequestError("You surrendered this duel", 409);
     const before: DuelEngineView = await live.view(seat);
     if (before.revision !== command.revision || before.prompt?.id !== command.promptId) {
       throw new RequestError("That choice is stale. Refresh the current duel state.", 409);
@@ -2641,7 +2672,7 @@ export function createDuelHost(options: {
     if (service.get(slug, guildId).status !== "active") return project(slug, guildId, actor);
     const entry = games.get(slug);
     const live = entry?.game ?? game;
-    if (entry?.surrendered.has(seat)) throw new RequestError("You surrendered this duel", 409);
+    if (!isReplayFork(service.get(slug, guildId)) && entry?.surrendered.has(seat)) throw new RequestError("You surrendered this duel", 409);
     if (entry?.presetId) throw new RequestError("Scenario tables have no response switch", 409);
     if (typeof live.setChainMode !== "function") throw new RequestError("This duel engine has no chain response switch", 409);
     // Settle the clock again at the moment the switch is decided (like respond does), before the view that decides
@@ -2650,10 +2681,10 @@ export function createDuelHost(options: {
     const decidedAt = now();
     await settleClock(slug, guildId, live, decidedAt);
     if (service.get(slug, guildId).status !== "active") return project(slug, guildId, actor);
-    if (games.get(slug)?.surrendered.has(seat)) throw new RequestError("You surrendered this duel", 409);
+    if (!isReplayFork(service.get(slug, guildId)) && games.get(slug)?.surrendered.has(seat)) throw new RequestError("You surrendered this duel", 409);
     const before: DuelEngineView = await live.view(seat);
     if (before.result) return project(slug, guildId, actor, live);
-    if (before.seats?.some((state) => state.seat === seat && (state.eliminated || state.pendingElimination))) {
+    if (before.seats?.some((state) => state.seat === seat && (state.eliminated || (!isReplayFork(service.get(slug, guildId)) && state.pendingElimination)))) {
       throw new RequestError("You are out of this duel", 409);
     }
     // The same mode again changes nothing and is not worth a journal line.
