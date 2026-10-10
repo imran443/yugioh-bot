@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   assertDuelForkAccess as assertStoredDuelForkAccess,
   assertOwnerReplaySourceAccess,
+  assertReplayForkAccess,
   resolveOwnerPlayer,
   ReplayAccessError,
   type ReplayDuelAccess,
@@ -60,4 +61,12 @@ export function assertDuelForkAccess(slug: string, actor: SignedInDuelActor): Re
     if (error instanceof ReplayAccessError) throw error;
     throw new ReplayAccessError(503);
   }
+}
+
+/** Dedicated lifecycle routes require a stored fork and its current creator. */
+export async function requireReplayForkActor(slug: string): Promise<DuelActor> {
+  const actor = await requireReplayOwnerActor();
+  if (!actor.ok) return actor;
+  try { assertReplayForkAccess(getDb(), slug, actor); return actor; }
+  catch (error) { return accessFailure(error instanceof ReplayAccessError ? error.status : 503); }
 }

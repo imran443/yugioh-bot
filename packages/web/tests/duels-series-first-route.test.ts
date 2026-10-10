@@ -84,7 +84,7 @@ describe("POST /api/duels/[slug]/series/first", () => {
     const res = await POST(...post(s.slug, { choice, ready: true }));
     expect(await res.json()).toEqual({ series, nextSlug: null });
     expect(hostCalls()).toHaveLength(1);
-    expect(sentPayload()).toEqual({ op: "series-first", slug: s.slug, guildId: "g1", playerId: expect.any(Number), choice });
+    expect(sentPayload()).toEqual({ op: "series-first", slug: s.slug, guildId: "g1", userId: fixtureUserId("u-host"), playerId: expect.any(Number), choice });
   });
 
   it("forwards a side change without Ready and preserves readiness", async () => {
@@ -97,7 +97,7 @@ describe("POST /api/duels/[slug]/series/first", () => {
     const res = await POST(request, { params: Promise.resolve({ slug: s.slug }) });
     expect(await res.json()).toEqual({ series });
     expect(hostCalls()).toHaveLength(1);
-    expect(sentPayload()).toEqual({ op: "series-side", slug: s.slug, guildId: "g1", playerId: expect.any(Number), deck });
+    expect(sentPayload()).toEqual({ op: "series-side", slug: s.slug, guildId: "g1", userId: fixtureUserId("u-host"), playerId: expect.any(Number), deck });
   });
 
   it.each([null, "game-2"])("only the Ready route requests readiness and returns nextSlug %s", async (nextSlug) => {
@@ -107,7 +107,7 @@ describe("POST /api/duels/[slug]/series/first", () => {
     const { POST } = await import("../app/api/duels/[slug]/series/ready/route");
     const res = await POST(...post(s.slug, {}));
     expect(await res.json()).toEqual({ series, nextSlug });
-    expect(sentPayload()).toEqual({ op: "series-ready", slug: s.slug, guildId: "g1", playerId: expect.any(Number) });
+    expect(sentPayload()).toEqual({ op: "series-ready", slug: s.slug, guildId: "g1", userId: fixtureUserId("u-host"), playerId: expect.any(Number) });
   });
 
   it("refuses a bad body without calling the host", async () => {

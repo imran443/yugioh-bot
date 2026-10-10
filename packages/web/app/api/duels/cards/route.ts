@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createCardCatalogService } from "@yugidraft/shared/services";
 import type { DeckCardInfo, DuelCardInfo } from "@yugidraft/shared/duels";
 import { getDb } from "@/lib/db";
-import { callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
+import { readDuelControl, callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
 
 export const runtime = "nodejs";
 
@@ -38,23 +38,28 @@ export async function GET(request: NextRequest) {
 
   const query = request.nextUrl.searchParams.get("q") ?? "";
   const slug = request.nextUrl.searchParams.get("slug") ?? undefined;
-  if (slug) {
-    try {
-      actor.duels.room(slug, actor.guildId, actor.playerId);
-    } catch (error) {
-      return duelErrorResponse(error);
-    }
+  let fork = false;
+  let control: ReturnType<typeof readDuelControl>;
+  try {
+    const room = slug ? actor.duels.room(slug, actor.guildId, actor.playerId) : undefined;
+    control = readDuelControl(request, room, "cards");
+    fork = room?.session.kind === "replay-fork";
   }
+  catch (error) { return duelErrorResponse(error); }
   const result = await callDuelHost({
     op: "cards",
     slug,
     guildId: actor.guildId,
-    playerId: actor.playerId,
+    playerId: actor.playerId, ...(actor.userId !== undefined ? { userId: actor.userId } : {}), ...control,
     query,
   });
   if (!result.ok) return result.response;
+  if (fork && slug) {
+    try { actor.duels.room(slug, actor.guildId, actor.playerId); }
+    catch (error) { return duelErrorResponse(error); }
+  }
   const data = result.data as { cards: DuelCardInfo[] };
-  return NextResponse.json({ ...data, cards: withCatalogCardText(data.cards) });
+  return NextResponse.json({ ...data, cards: withCatalogCardText(data.cards) }, { headers: { "cache-control": "private, no-store" } });
 }
 
 export async function POST(request: Request) {

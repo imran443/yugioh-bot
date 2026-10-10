@@ -1,6 +1,6 @@
 import { MULTI_CORE_UNAVAILABLE_MESSAGE, multiplayerSeatsBlockReason, multiplayerTablesEnabled, seatCountFor, type DuelTableCapabilities } from "@yugidraft/shared/duels";
 import { NextResponse } from "next/server";
-import { callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
+import { assertNormalDuelRequest, callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
 import { notifyDuelChange } from "@/lib/notify-duel";
 
 export const runtime = "nodejs";
@@ -9,6 +9,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const actor = await requireDuelActor();
   if (!actor.ok) return actor.response;
   const { slug } = await params;
+  try { assertNormalDuelRequest(request, actor.duels.room(slug, actor.guildId, actor.playerId)); }
+  catch (error) { return duelErrorResponse(error); }
 
   let body: { seat?: unknown };
   try {

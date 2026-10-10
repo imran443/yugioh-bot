@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { DuelDeck } from "@yugidraft/shared/duels";
-import { callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
+import { assertNormalDuelRequest, callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
 
 export const runtime = "nodejs";
 
@@ -9,7 +9,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!actor.ok) return actor.response;
   const { slug } = await params;
 
-  const inLobby = () => actor.duels.room(slug, actor.guildId, actor.playerId).session.status === "lobby";
+  const inLobby = () => {
+    const room = actor.duels.room(slug, actor.guildId, actor.playerId);
+    assertNormalDuelRequest(request, room);
+    return room.session.status === "lobby";
+  };
   const skipped = () => NextResponse.json({ skipped: true });
   try {
     if (!inLobby()) return skipped();
@@ -35,7 +39,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     op: "validate-deck",
     slug,
     guildId: actor.guildId,
-    playerId: actor.playerId,
+    playerId: actor.playerId, ...(actor.userId !== undefined ? { userId: actor.userId } : {}),
     deck,
   });
   // A check can finish after the room moves on. Its result is then obsolete in every format.

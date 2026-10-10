@@ -14,6 +14,7 @@ vi.mock("@/lib/duel-host", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/duel-host")>(), requireDuelActor, callDuelHost,
 }));
 vi.mock("@/lib/notify-duel", () => ({ notifyDuelChange }));
+vi.mock("@/lib/db", () => ({ getDb: () => db }));
 
 let db: Database.Database;
 let duels: ReturnType<typeof createDuelService>;

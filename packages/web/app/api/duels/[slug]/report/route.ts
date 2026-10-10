@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
-import { callDuelHost, duelErrorResponse, requireDuelActor, scenariosEnabled, scenariosOffResponse } from "@/lib/duel-host";
+import { readDuelControl, callDuelHost, duelErrorResponse, requireDuelActor, scenariosEnabled, scenariosOffResponse } from "@/lib/duel-host";
 
 export const runtime = "nodejs";
 
@@ -9,9 +9,14 @@ const MAX_NOTE = 4000;
 const MAX_ATTACHMENTS = 1_500_000;
 
 /** Tells the room whether to show the Report button. 404 when DUEL_SCENARIOS is off. No engine call. */
-export async function GET() {
+export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   if (!scenariosEnabled()) return scenariosOffResponse();
-  return NextResponse.json({ enabled: true });
+  const actor = await requireDuelActor();
+  if (!actor.ok) return actor.response;
+  const { slug } = await params;
+  try { readDuelControl(request, actor.duels.room(slug, actor.guildId, actor.playerId)); }
+  catch (error) { return duelErrorResponse(error); }
+  return NextResponse.json({ enabled: true }, { headers: { "cache-control": "private, no-store" } });
 }
 
 /**
@@ -36,15 +41,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: `note must be text of at most ${MAX_NOTE} characters` }, { status: 400 });
   }
 
+  let fork = false;
   try {
     // Same access rule as the room: throws when this player may not see the duel.
-    actor.duels.room(slug, actor.guildId, actor.playerId);
+    const room = actor.duels.room(slug, actor.guildId, actor.playerId);
+    readDuelControl(request, room);
+    fork = room?.session.kind === "replay-fork";
   } catch (error) {
     return duelErrorResponse(error);
   }
 
-  const result = await callDuelHost({ op: "report", slug, note, guildId: actor.guildId, playerId: actor.playerId });
+  const result = await callDuelHost({ op: "report", slug, note, guildId: actor.guildId, playerId: actor.playerId, ...(actor.userId !== undefined ? { userId: actor.userId } : {}) });
   if (!result.ok) return result.response;
+  if (fork) {
+    try { actor.duels.room(slug, actor.guildId, actor.playerId); }
+    catch (error) { return duelErrorResponse(error); }
+  }
   const data = result.data as { path?: unknown; dir?: unknown; folder?: unknown; partial?: unknown } | null;
   const path = [data?.path, data?.folder, data?.dir].find((v): v is string => typeof v === "string");
   if (!path) return NextResponse.json({ error: "The engine did not return a report folder" }, { status: 502 });

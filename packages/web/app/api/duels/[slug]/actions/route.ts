@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { DuelCommand } from "@yugidraft/shared/duels";
-import { callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
+import { readDuelControl, callDuelHost, duelErrorResponse, requireDuelActor } from "@/lib/duel-host";
 
 export const runtime = "nodejs";
 
@@ -9,8 +9,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!actor.ok) return actor.response;
   const { slug } = await params;
 
+  let fork = false;
+  let control: ReturnType<typeof readDuelControl>;
   try {
-    actor.duels.room(slug, actor.guildId, actor.playerId);
+    const room = actor.duels.room(slug, actor.guildId, actor.playerId);
+    control = readDuelControl(request, room, "action");
+    fork = room?.session.kind === "replay-fork";
   } catch (error) {
     return duelErrorResponse(error);
   }
@@ -26,9 +30,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     op: "respond",
     slug,
     guildId: actor.guildId,
-    playerId: actor.playerId,
+    playerId: actor.playerId, ...(actor.userId !== undefined ? { userId: actor.userId } : {}), ...control,
     command,
   });
   if (!result.ok) return result.response;
-  return NextResponse.json(result.data);
+  if (fork) {
+    try { actor.duels.room(slug, actor.guildId, actor.playerId); }
+    catch (error) { return duelErrorResponse(error); }
+  }
+  return NextResponse.json(result.data, { headers: { "cache-control": "private, no-store" } });
 }

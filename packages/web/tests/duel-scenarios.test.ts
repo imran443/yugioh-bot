@@ -35,7 +35,7 @@ describe("duel scenario routes", () => {
       const report = await import("../app/api/duels/[slug]/report/route");
       expect((await preset.GET()).status).toBe(404);
       expect((await preset.POST(post({ presetId: "a" }))).status).toBe(404);
-      expect((await report.GET()).status).toBe(404);
+      expect((await report.GET(new Request("http://x"), ctx)).status).toBe(404);
       expect((await report.POST(post({ note: "x" }), ctx)).status).toBe(404);
       expect(callDuelHost).not.toHaveBeenCalled();
     });
@@ -126,7 +126,7 @@ describe("duel scenario routes", () => {
 
     it("reports enabled on GET", async () => {
       const { GET } = await import("../app/api/duels/[slug]/report/route");
-      expect((await GET()).status).toBe(200);
+      expect((await GET(new Request("http://x"), ctx)).status).toBe(200);
     });
   });
 });
