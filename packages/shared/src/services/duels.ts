@@ -24,7 +24,7 @@ import type {
   ReplayJournalEntry,
 } from "../duels/index.js";
 import { DEFAULT_DUEL_KIND } from "../duels/duel-kind.js";
-import { isEngineIdentity } from "../duels/replay.js";
+import { isEngineIdentity, sameEngineIdentity } from "../duels/replay.js";
 import { isReplayForkSetup } from "../duels/replay-fork.js";
 import {
   clockWithServerNow,
@@ -437,9 +437,13 @@ function validateSetup(setup: unknown): DuelSetup {
     throw new DuelServiceError("Duel setup must be an object", 400);
   }
   const input = setup as Record<string, unknown>;
-  const extra = Object.keys(input).find((key) => key !== "scriptErrorMode" && key !== "firstTurnDraw" && key !== "startupScripts" && key !== "scenarioId" && key !== "surrenderedSeats" && key !== "presetId" && key !== "botPolicies" && key !== "engine");
+  const extra = Object.keys(input).find((key) => key !== "engineIdentity" && key !== "scriptErrorMode" && key !== "firstTurnDraw" && key !== "startupScripts" && key !== "scenarioId" && key !== "surrenderedSeats" && key !== "presetId" && key !== "botPolicies" && key !== "engine");
   if (extra) throw new DuelServiceError(`Unknown duel setup field: ${extra}`, 400);
   const out: DuelSetup = {};
+  if (input.engineIdentity !== undefined) {
+    if (!isEngineIdentity(input.engineIdentity)) throw new DuelServiceError("Invalid engine identity", 400);
+    out.engineIdentity = input.engineIdentity;
+  }
   if (input.scriptErrorMode !== undefined) {
     if (input.scriptErrorMode !== "tolerant" && input.scriptErrorMode !== "strict") throw new DuelServiceError("scriptErrorMode must be tolerant or strict", 400);
     out.scriptErrorMode = input.scriptErrorMode;
@@ -1488,7 +1492,15 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
 
     setSetup(slug, guildId, setup) {
       const row = loadDuelRow(slug, guildId);
-      updateSetup.run(setup === null ? null : JSON.stringify(validateSetup(setup)), row.id);
+      const checked = setup === null ? null : validateSetup(setup);
+      const recorded = parseSetup(row.setup_json)?.engineIdentity;
+      if (recorded && (!checked?.engineIdentity || !sameEngineIdentity(recorded, checked.engineIdentity))) {
+        throw new DuelServiceError("Recorded engine identity is immutable", 409);
+      }
+      if (!recorded && checked?.engineIdentity) {
+        throw new DuelServiceError("Engine identity can only be recorded at game start", 409);
+      }
+      updateSetup.run(checked === null ? null : JSON.stringify(checked), row.id);
     },
 
     dueClocks(now, limit) {

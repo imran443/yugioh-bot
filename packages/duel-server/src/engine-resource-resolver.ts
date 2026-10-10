@@ -98,7 +98,7 @@ export function resolveEngineResourcesForSource(
   const engine = source.setup.engine ?? (source.setup.startupScripts?.length ? "pinned" : "legacy");
   const resources = getCurrentEngineResources(dataDirectory, { mode: source.session.mode, format: source.session.format, engine });
   if (source.bundleVersion !== resources.bundleVersion || !sameEngineIdentity(source.engineIdentity, resources.identity)) {
-    throw new EngineResourceUnavailableError("the recorded engine resources or runtime rules do not match the current engine");
+    throw new EngineResourceUnavailableError("the engine changed or its recorded resources and runtime rules do not match");
   }
   return resources;
 }

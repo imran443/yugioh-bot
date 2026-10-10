@@ -6,8 +6,7 @@ import type { DuelWorkerResponse } from "./worker-protocol.js";
 import { EngineAnswerError } from "./prompts.js";
 import { EngineLoopError } from "./engine-loop-error.js";
 import { EngineResourceUnavailableError } from "./engine-resource-resolver.js";
-import type { EngineIdentity } from "@yugidraft/shared/duels";
-import type { DuelAnswer, DuelCardInfo, DuelChainMode, DuelDeck, DuelEngineChoice, DuelEngineView, DuelFormat, DuelMasterRule, DuelMode, DuelSettings, DuelScriptErrorMode } from "@yugidraft/shared/duels";
+import type { DuelAnswer, DuelCardInfo, DuelChainMode, DuelDeck, DuelEngineChoice, DuelEngineView, DuelFormat, DuelMasterRule, DuelMode, DuelSettings, DuelScriptErrorMode, EngineIdentity } from "@yugidraft/shared/duels";
 
 const PROMPT_LOG_LIMIT = 5_000;
 

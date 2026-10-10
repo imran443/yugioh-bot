@@ -12,6 +12,7 @@ import { createTestDuelHost as createDuelHost, finishTestDiceOpening } from "./s
 import { buildPracticeBotDeck } from "../src/practice-bot.js";
 import type { DuelGameWorker, GameOptions } from "../src/worker-client.js";
 import { engineDataDirectory as DATA } from "./engine-data-dir.js";
+import { getCurrentEngineResources } from "../src/engine-resource-resolver.js";
 
 // DUEL_1V1_ENGINE chooses the engine of a NEW 1v1 table. The engine a table started on is saved with it, so recover and replay
 // use that engine after the switch changes. Tables with 3 or 4 seats ignore the switch. A fake worker records what the host asks for.
@@ -282,5 +283,62 @@ describe("a saved 1v1 table keeps its engine", () => {
     const replayWorkers = t.workers.slice(before);
     expect(replayWorkers.length).toBeGreaterThan(0);
     for (const worker of replayWorkers) expect(worker.created?.engine).toBe("legacy");
+  });
+});
+
+describe("server-recorded engine identity", () => {
+  it.each((["normal", "domain"] as const).flatMap(mode =>
+    (["1v1", "tag", "ffa3", "ffa4"] as const).map(format => ({ mode, format })),
+  ))("records exact $mode $format resources at start", async ({ mode, format }) => {
+    const t = await table(format, mode);
+    const input = { op: "start", ...t.organizer, engineIdentity: { wasmHash: "forged" } };
+    expect((await post(t.host, input)).status).toBe(200);
+    const current = getCurrentEngineResources(DATA, { mode, format, engine: "legacy" });
+    expect(setupOf(t.duels, t.session.slug)?.engineIdentity).toEqual(current.identity);
+    expect(t.workers[0]!.created).toMatchObject({ engineIdentity: current.identity,
+      ...(current.multiScriptsDirectory ? { multiScriptsDirectory: current.multiScriptsDirectory } : {}) });
+    expect(t.duels.privateState(t.session.slug, "g1").bundleVersion).toBe(current.bundleVersion);
+  });
+
+  it("refuses an old replay source and keeps its saved final board", async () => {
+    const t = await table("1v1");
+    t.duels.activate(t.session.slug, "g1", t.player, ["1", "2", "3", "4"], MANIFEST.bundleVersion, null, { engine: "legacy" });
+    const board = await new FakeWorker().view(null);
+    t.duels.interrupt(t.session.slug, "g1", "Saved end", { public: board, seats: [board, board] });
+    const before = t.db.prepare("select * from duels where id = ?").get(t.session.id);
+    const replay = await post(t.host, { op: "replay", ...t.organizer });
+    expect(replay).toMatchObject({ status: 409, data: { code: "ENGINE_UNAVAILABLE_FOR_SOURCE" } });
+    expect(t.workers).toHaveLength(0);
+    expect(t.db.prepare("select * from duels where id = ?").get(t.session.id)).toEqual(before);
+    expect(setupOf(t.duels, t.session.slug)?.engineIdentity).toBeUndefined();
+    expect(t.duels.room(t.session.slug, "g1", t.player).engine).toMatchObject({ revision: board.revision, seats: board.seats });
+  });
+
+  it("checks recorded identity before returning a cached replay", async () => {
+    const t = await table("1v1");
+    expect((await post(t.host, { op: "start", ...t.organizer })).status).toBe(200);
+    expect((await post(t.host, { op: "surrender", ...t.organizer })).status).toBe(200);
+    expect((await post(t.host, { op: "replay", ...t.organizer })).status).toBe(200);
+    const saved = setupOf(t.duels, t.session.slug)!;
+    // Simulate a source recorded with a different runtime. Service APIs cannot change the identity.
+    t.db.prepare("update duels set setup_json = ? where id = ?").run(JSON.stringify({ ...saved,
+      engineIdentity: { ...saved.engineIdentity!, hostRuleVersion: "previous-rules" } }), t.session.id);
+    const workers = t.workers.length;
+    const before = t.db.prepare("select * from duels where id = ?").get(t.session.id);
+    expect(await post(t.host, { op: "replay", ...t.organizer })).toMatchObject({ status: 409, data: { code: "ENGINE_UNAVAILABLE_FOR_SOURCE" } });
+    expect(t.workers).toHaveLength(workers);
+    expect(t.db.prepare("select * from duels where id = ?").get(t.session.id)).toEqual(before);
+  });
+
+  it("refuses recovery on a changed recorded wrapper", async () => {
+    const t = await table("1v1");
+    const current = getCurrentEngineResources(DATA, { mode: "normal", engine: "legacy" });
+    t.duels.activate(t.session.slug, "g1", t.player, ["1", "2", "3", "4"], current.bundleVersion, null, {
+      engine: "legacy", firstTurnDraw: false, scriptErrorMode: "tolerant",
+      engineIdentity: { ...current.identity, wrapperHash: "0".repeat(64) },
+    });
+    expect(await post(t.host, { op: "view", ...t.organizer })).toMatchObject({ status: 409, data: { code: "ENGINE_UNAVAILABLE_FOR_SOURCE" } });
+    expect(t.workers).toHaveLength(0);
+    expect(t.duels.get(t.session.slug, "g1").status).toBe("interrupted");
   });
 });
