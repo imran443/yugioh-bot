@@ -125,6 +125,7 @@ const PLANS: Record<string, Plan> = {
   "mind-crush-ffa4-pick": { wants: [{ verb: "activate", card: "Mind Crush" }], opponent: 1, announce: "Sangan" },
   "tag-lp-solemn-partner": { wants: [{ verb: "summon", card: "Celtic Guardian" }] },
   "tag-jinzo-blocks-traps": { wants: [{ verb: "summon", card: "Celtic Guardian" }] },
+  "negation-veiler-ffa4": { wants: [{ verb: "activate", card: "Pot of Greed" }, { verb: "activate", card: "Pot of Greed" }] },
   "ffa4-chain-order-heavy-storm": { wants: [{ verb: "activate", card: "Heavy Storm" }] },
   "ffa4-surrender-in-chain": { wants: [{ verb: "activate", card: "Heavy Storm" }] },
   "ffa3-table-battle": { wants: [{ verb: "activate", card: "Raigeki" }] },
