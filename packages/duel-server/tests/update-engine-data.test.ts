@@ -15,6 +15,7 @@ import { reconcile, scanText } from "../scripts/scan-multiplayer-scripts.js";
 import { withCardUpdate } from "../scripts/engine-data-card-report.js";
 import * as smoke from "../scripts/prerelease-script-smoke.js";
 import * as probe from "../scripts/probe-engine-data.js";
+import * as history from "../scripts/prerelease-history.js";
 
 const oldPins: Pins = { scripts: "a".repeat(40), database: "b".repeat(40), strings: "c".repeat(40) };
 const nextPins: Pins = { scripts: "d".repeat(40), database: "e".repeat(40), strings: "f".repeat(40) };
@@ -41,7 +42,88 @@ async function fixture() {
   return { root, files };
 }
 
+async function loadedDataFixture(change: string) {
+  const { root } = await fixture();
+  const manifest = join(root, "packages/duel-server/domain-core/multi-scripts/MANIFEST.json");
+  await mkdir(dirname(manifest), { recursive: true });
+  await writeFile(manifest, '{"cards":[]}');
+  const corpus = join(root, "corpus");
+  await mkdir(join(corpus, "official"), { recursive: true });
+  await writeFile(join(corpus, "official/c1.lua"), "-- playable");
+  await writeFile(join(corpus, "utility.lua"), "-- helper");
+  const archive = execFileSync("tar", ["-czf", "-", "-C", root, "corpus"]);
+  const inputs: Array<Map<string, Buffer>> = [];
+  for (const candidate of [false, true]) {
+    const databases = new Map<string, Buffer>();
+    const makeDatabase = async (file: string, rows: Array<[number, string]>) => {
+      const path = join(root, `${candidate}-${file}`), db = new Database(path);
+      db.exec("CREATE TABLE datas(id INTEGER PRIMARY KEY,ot INTEGER,alias INTEGER,type INTEGER); CREATE TABLE texts(id INTEGER PRIMARY KEY,name TEXT,desc TEXT)");
+      for (const [code, name] of rows) {
+        db.prepare("INSERT INTO datas VALUES(?,3,0,33)").run(code);
+        db.prepare("INSERT INTO texts VALUES(?,?,'Effect')").run(code, name);
+      }
+      db.close(); databases.set(file, await readFile(path));
+    };
+    await makeDatabase("cards.cdb", [[1, "Playable"], ...(change === "ambiguous-old" ? [[2, "Second identity"] as [number, string]] : [])]);
+    if (change === "graduation" && !candidate) await makeDatabase("prerelease-betb.cdb", [[100000001, "Graduating card"]]);
+    if (["graduation", "new-release"].includes(change) && candidate) await makeDatabase("release-betb.cdb", [[2, "Graduating card"]]);
+    if (change === "ambiguous-old" && !candidate) {
+      await makeDatabase("prerelease-betb.cdb", [[100000001, "Playable"]]);
+      await makeDatabase("prerelease-conflict.cdb", [[100000001, "Second identity"]]);
+    }
+    if (change === "pending-set") await makeDatabase("prerelease-betb.cdb", [[100000001, "Preview"]]);
+    inputs.push(databases);
+  }
+  if (change === "graduation") {
+    const preparation = join(root, "packages/duel-server/scripts/prepare-data.ts");
+    await writeFile(preparation, (await readFile(preparation, "utf8")) + `\nconst history = { prereleaseHistoryStart: "${"1".repeat(40)}" };\n`);
+    vi.spyOn(history, "prereleaseHistory").mockResolvedValue({
+      cards: [{ code: 100000001, name: "Graduating card", type: 33 }], transitions: [],
+    });
+  }
+  const request = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input), candidate = Object.values(nextPins).some(sha => url.includes(sha));
+    if (url.includes("/compare/")) return Response.json({ ahead_by: 1, behind_by: 0, status: "ahead" });
+    if (url.includes("/git/trees/")) return Response.json({ truncated: false, tree: url.includes("BabelCDB")
+      ? [...inputs[candidate ? 1 : 0]!.keys()].map(path => ({ path, type: "blob", sha: path }))
+      : [{ path: "official/c1.lua", type: "blob", sha: "unchanged" },
+        { path: "utility.lua", type: "blob", sha: candidate && change === "utility" ? "changed-helper" : "helper" }] });
+    if (url.endsWith(".cdb")) {
+      const bytes = inputs[candidate ? 1 : 0]!.get(url.split("/").pop()!);
+      if (bytes) return new Response(new Uint8Array(bytes));
+    }
+    if (url.endsWith("/strings.conf")) return new Response("strings");
+    if (url.includes("codeload.github.com")) return new Response(new Uint8Array(archive));
+    if (url.includes("ygoprodeck")) return Response.json(url.includes("cardsets.php")
+      ? [{ set_name: "Beyond the Brave", set_code: "BETB", tcg_date: "2026-10-08" }] : { data: [] });
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  return { root, request };
+}
+
 describe("engine data update", () => {
+  it.each(["graduation", "new-release", "utility", "ambiguous-old"])("opens the end-to-end gate for %s", async change => {
+    const { root, request } = await loadedDataFixture(change);
+    const overrides = change === "utility" ? { ...oldPins, scripts: nextPins.scripts } : nextPins;
+    const result = await runUpdate({ root, overrides, request, validate: false });
+    expect(result.changed).toBe(true);
+    expect(await readPins(root)).toEqual(overrides);
+    expect(result.files).toContain("packages/duel-server/scripts/prepare-data.ts");
+    expect(githubOutput(result)).toContain("changed=true");
+    if (change === "graduation") {
+      expect(result.relevance).toMatchObject({ newCards: 1, removedCards: 1, remapsChanged: true });
+      expect(result.cardChanges?.graduated).toMatchObject([{ oldCode: 100000001, code: 2 }]);
+    } else if (change === "new-release") {
+      expect(result.relevance).toMatchObject({ newCards: 1, changedCards: 0 });
+      expect(await readFile(result.reportPath, "utf8")).toContain("Added release databases: `release-betb.cdb`");
+    } else if (change === "utility") {
+      expect(result.relevance).toMatchObject({ newCards: 0, changedCards: 0, removedCards: 0,
+        changedScripts: ["utility.lua"], stringsChanged: false, remapsChanged: false });
+    } else {
+      expect(result.relevance).toMatchObject({ comparisonAvailable: false, newCards: null, changedCards: null });
+      expect(await readFile(result.reportPath, "utf8")).toContain("Ambiguous prerelease passcode");
+    }
+  });
   it.each(["irrelevant", "rush-row", "rush-orphan", "card-text", "script", "strings"])("gates moved pins using loaded data (%s)", async change => {
     const { root } = await fixture();
     const manifestPath = join(root, "packages/duel-server/domain-core/multi-scripts/MANIFEST.json");
