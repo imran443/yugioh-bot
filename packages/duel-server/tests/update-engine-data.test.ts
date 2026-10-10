@@ -138,6 +138,28 @@ describe("engine data update", () => {
     expect(result.matchingPrHead).toBe(change === "identical" ? prHead : undefined);
   });
 
+  it("continues the update when the open PR comparison API fails", async () => {
+    const { root, request: upstream } = await loadedDataFixture("utility");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const request = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://api.github.com/repos/test/repo/pulls?")) {
+        return Response.json([{ head: { sha: "2".repeat(40) } }]);
+      }
+      if (url.startsWith("https://api.github.com/repos/test/repo/contents/")) {
+        return new Response("Service unavailable", { status: 503 });
+      }
+      return upstream(input);
+    });
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false, repository: "test/repo" });
+    expect(result.changed).toBe(true);
+    expect(result.matchingPrHead).toBeUndefined();
+    expect(await readPins(root)).toEqual(nextPins);
+    expect(result.files).toContain("packages/duel-server/scripts/prepare-data.ts");
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining("Open PR comparison failed"),
+      expect.objectContaining({ message: expect.stringContaining("Download failed (503)") }));
+  });
+
   it.each([false, true])("includes released upstream previews in the job summary when pins moved=%s", async moved => {
     const { root, request } = await loadedDataFixture("pending-set");
     const result = await runUpdate({ root, overrides: moved ? nextPins : oldPins, request, validate: false, report: ".status/report.md" });

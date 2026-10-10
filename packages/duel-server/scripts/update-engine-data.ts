@@ -214,32 +214,37 @@ export async function runUpdate(options: Options = {}) {
     let matchingPrHead: string | undefined;
     if (options.repository) {
       if (!/^[\w.-]+\/[\w.-]+$/.test(options.repository)) throw new Error("Repository must be owner/repository");
-      const repositoryApi = `https://api.github.com/repos/${options.repository}`;
-      const query = new URLSearchParams({ state: "open", head: `${options.repository.split("/")[0]}:${options.branch ?? "chore/engine-data-update"}`,
-        base: options.base ?? "main", per_page: "1" });
-      const prs = await (await download(`${repositoryApi}/pulls?${query}`)).json() as Array<{ head: { sha: string } }>;
-      const head = prs[0]?.head.sha;
-      if (head) {
-        if (!/^[a-f0-9]{40}$/.test(head)) throw new Error("Invalid open PR head SHA");
-        const source = await (await download(`${repositoryApi}/contents/${preparePath}?ref=${head}`)).json() as { encoding: string; content: string };
-        if (source.encoding !== "base64" || typeof source.content !== "string") throw new Error("Open PR pin source unavailable");
-        const pins = pinsFromSource(Buffer.from(source.content, "base64").toString("utf8"));
-        const [prTree, prDatabase, prStrings] = await Promise.all([
-          pins.scripts === next.scripts ? newTree : pins.scripts === old.scripts ? oldTree : treeAt(pins.scripts),
-          pins.database === next.database ? database : pins.database === old.database ? oldDatabase
-            : downloadReleasedCardData(pins.database, join(temporary, "pr-data"), download, { historyStart }).catch((error: unknown) => {
-              if (!(error instanceof CardRemapValidationError)) throw error;
-              return null;
-            }),
-          pins.strings === next.strings ? nextStrings : pins.strings === old.strings ? oldStrings : stringsAt(pins.strings),
-        ]);
-        const prRelevance = compareLoadedData(prDatabase ? { cards: readCardRows(prDatabase.path),
-          scripts: loadedScriptTree(prTree, prDatabase.scriptCodes, prDatabase.rushCodes), strings: sha256(prStrings), remaps: prDatabase.remaps } : null,
-          { cards: readCardRows(database.path), scripts: candidateScripts, strings: sha256(nextStrings), remaps: database.remaps });
-        if (!prRelevance.relevant) matchingPrHead = head;
-        report.push("", "## Open pull request comparison", "", matchingPrHead
-          ? `The open bot PR at \`${head}\` already has the same loaded data. Publication will skip the push and CI dispatch if its head is still unchanged; human-commit protection still applies.`
-          : "The candidate differs from the open PR, or its previous data is unavailable. Publication protections still apply.");
+      try {
+        const repositoryApi = `https://api.github.com/repos/${options.repository}`;
+        const query = new URLSearchParams({ state: "open", head: `${options.repository.split("/")[0]}:${options.branch ?? "chore/engine-data-update"}`,
+          base: options.base ?? "main", per_page: "1" });
+        const prs = await (await download(`${repositoryApi}/pulls?${query}`)).json() as Array<{ head: { sha: string } }>;
+        const head = prs[0]?.head.sha;
+        if (head) {
+          if (!/^[a-f0-9]{40}$/.test(head)) throw new Error("Invalid open PR head SHA");
+          const source = await (await download(`${repositoryApi}/contents/${preparePath}?ref=${head}`)).json() as { encoding: string; content: string };
+          if (source.encoding !== "base64" || typeof source.content !== "string") throw new Error("Open PR pin source unavailable");
+          const pins = pinsFromSource(Buffer.from(source.content, "base64").toString("utf8"));
+          const [prTree, prDatabase, prStrings] = await Promise.all([
+            pins.scripts === next.scripts ? newTree : pins.scripts === old.scripts ? oldTree : treeAt(pins.scripts),
+            pins.database === next.database ? database : pins.database === old.database ? oldDatabase
+              : downloadReleasedCardData(pins.database, join(temporary, "pr-data"), download, { historyStart }).catch((error: unknown) => {
+                if (!(error instanceof CardRemapValidationError)) throw error;
+                return null;
+              }),
+            pins.strings === next.strings ? nextStrings : pins.strings === old.strings ? oldStrings : stringsAt(pins.strings),
+          ]);
+          const prRelevance = compareLoadedData(prDatabase ? { cards: readCardRows(prDatabase.path),
+            scripts: loadedScriptTree(prTree, prDatabase.scriptCodes, prDatabase.rushCodes), strings: sha256(prStrings), remaps: prDatabase.remaps } : null,
+            { cards: readCardRows(database.path), scripts: candidateScripts, strings: sha256(nextStrings), remaps: database.remaps });
+          if (!prRelevance.relevant) matchingPrHead = head;
+          report.push("", "## Open pull request comparison", "", matchingPrHead
+            ? `The open bot PR at \`${head}\` already has the same loaded data. Publication will skip the push and CI dispatch if its head is still unchanged; human-commit protection still applies.`
+            : "The candidate differs from the open PR, or its previous data is unavailable. Publication protections still apply.");
+        }
+      } catch (error) {
+        matchingPrHead = undefined;
+        console.warn("Open PR comparison failed; continuing with update:", error);
       }
     }
     const playableCodes = new Set([...(oldDatabase?.scriptCodes ?? []), ...database.scriptCodes]);
