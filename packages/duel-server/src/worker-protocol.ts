@@ -1,9 +1,15 @@
 import type { DuelScriptError, DuelScriptFatalError } from "./script-errors.js";
 import type { EngineCoreInfo, EngineDiagnostic, EngineStartupScript } from "./engine.js";
 import type { PromptTraceEntry } from "./prompt-trace.js";
-import type { DuelAnswer, DuelCardInfo, DuelChainMode, DuelDeck, DuelEngineChoice, DuelEngineView, DuelErrorCode, DuelFormat, DuelMasterRule, DuelMode, DuelSettings, DuelScriptErrorMode } from "@yugidraft/shared/duels";
+import type { DuelAnswer, DuelCardInfo, DuelChainMode, DuelDeck, DuelEngineChoice, DuelEngineView, DuelErrorCode, DuelFormat, DuelMasterRule, DuelMode, DuelSettings, DuelScriptErrorMode, EngineIdentity } from "@yugidraft/shared/duels";
+
+/** Bump when worker transport, command decoding or prompt semantics change. */
+export const ENGINE_PROTOCOL_VERSION = "duel-worker-1";
 
 export interface DuelWorkerCreateOptions {
+  engineIdentity?: EngineIdentity;
+  multiScriptsDirectory?: string;
+  firstTurnDraw?: boolean;
   scriptErrorMode?: DuelScriptErrorMode;
   mode: DuelMode;
   decks: DuelDeck[];
@@ -35,4 +41,4 @@ export type DuelWorkerRequest =
 
 export type DuelWorkerResponse =
   | { id: number; ok: true; value?: DuelEngineView | DuelCardInfo[] | EngineDiagnostic[] | boolean; info?: EngineCoreInfo; promptTrace?: PromptTraceEntry; scriptErrors?: DuelScriptError[]; fatalScriptErrors?: DuelScriptFatalError[] }
-  | { id: number; ok: false; error: string; answerError?: true; engineLoop?: true; code?: DuelErrorCode; scriptErrors?: DuelScriptError[]; fatalScriptErrors?: DuelScriptFatalError[] };
+  | { id: number; ok: false; error: string; answerError?: true; engineLoop?: true; code?: DuelErrorCode | "ENGINE_UNAVAILABLE_FOR_SOURCE"; scriptErrors?: DuelScriptError[]; fatalScriptErrors?: DuelScriptFatalError[] };

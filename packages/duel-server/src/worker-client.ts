@@ -5,11 +5,15 @@ import type { EngineCoreInfo, EngineDiagnostic, EngineStartupScript } from "./en
 import type { DuelWorkerResponse } from "./worker-protocol.js";
 import { EngineAnswerError } from "./prompts.js";
 import { EngineLoopError } from "./engine-loop-error.js";
+import { EngineResourceUnavailableError } from "./engine-resource-resolver.js";
+import type { EngineIdentity } from "@yugidraft/shared/duels";
 import type { DuelAnswer, DuelCardInfo, DuelChainMode, DuelDeck, DuelEngineChoice, DuelEngineView, DuelFormat, DuelMasterRule, DuelMode, DuelSettings, DuelScriptErrorMode } from "@yugidraft/shared/duels";
 
 const PROMPT_LOG_LIMIT = 5_000;
 
 export interface GameOptions {
+  engineIdentity?: EngineIdentity;
+  multiScriptsDirectory?: string;
   scriptErrorMode?: DuelScriptErrorMode;
   mode: DuelMode;
   decks: DuelDeck[];
@@ -101,7 +105,9 @@ export class GameWorker implements DuelGameWorker {
       if (!request) return;
       this.pending.delete(message.id);
       if (message.ok) request.resolve(message.value);
-      else request.reject(message.engineLoop ? new EngineLoopError() : message.answerError || message.code
+      else request.reject(message.code === "ENGINE_UNAVAILABLE_FOR_SOURCE"
+        ? new EngineResourceUnavailableError("the worker cannot use the recorded engine resources")
+        : message.engineLoop ? new EngineLoopError() : message.answerError || message.code
         ? new EngineAnswerError(message.error, message.code)
         : new Error(message.error ?? "Engine rejected the request"));
     });
