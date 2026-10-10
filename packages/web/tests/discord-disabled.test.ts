@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { migrate } from "@yugidraft/shared/db";
-import { createDraftLobbyService, createDraftService, createTournamentService } from "@yugidraft/shared/services";
+import { createDuelService, createDraftLobbyService, createDraftService, createTournamentService } from "@yugidraft/shared/services";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureUserId, fixtureDiscordId, seedFixtureUsers } from "./fixtures/identity";
 
@@ -251,7 +251,8 @@ describe.each([undefined, "0", "true", "1"])("Discord flag %s", flag => {
 
   it("short circuits both invite helpers while off", async () => {
     const { sendDuelInvite, announceDuelInvite } = await import("../src/lib/announce-bot");
-    const invite = { slug: "room", guildId: "g1", opponentDiscordUserId: "123", challengerName: "A", duelName: "Room", bestOf: 1 as const, ranked: false, tournamentName: null };
+    const duel = createDuelService(db).create({ guildId: "g1", organizerPlayerId: a, name: "Invite fixture", mode: "normal" });
+    const invite = { slug: duel.slug, guildId: "g1", opponentDiscordUserId: "123", challengerName: "A", duelName: "Room", bestOf: 1 as const, ranked: false, tournamentName: null };
     expect(await sendDuelInvite(invite)).toBe(enabled);
     expect(announceDuelInvite(invite)).toBe(enabled ? undefined : false);
     expect(announce).toHaveBeenCalledTimes(enabled ? 2 : 0);

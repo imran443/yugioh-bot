@@ -22,7 +22,7 @@ function server() {
       for (const socket of sockets) if (socket.rooms.has(room)) socket.emit(event, payload);
     } }),
   });
-  registerDuelEventHandlers(transport as unknown as TypedServer, { secret: SECRET });
+  registerDuelEventHandlers(transport as unknown as TypedServer, { secret: SECRET, canReadDuel: () => true });
   function connect(): Client {
     const socket = Object.assign(new EventEmitter(), {
       id: `s${sockets.length}`, data: {} as SocketData, rooms: new Set<string>(),

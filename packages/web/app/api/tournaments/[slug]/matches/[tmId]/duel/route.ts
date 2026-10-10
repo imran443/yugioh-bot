@@ -1,6 +1,6 @@
 import { requireWebAccess } from "@/lib/web-access";
 import { NextResponse } from "next/server";
-import { createDuelSeriesService, findTournamentReadAccess } from "@yugidraft/shared/services";
+import { assertDuelInviteTarget, createDuelSeriesService, findTournamentReadAccess } from "@yugidraft/shared/services";
 import { env } from "@/lib/env";
 import { duelUrl, announceDuelInvite } from "@/lib/announce-bot";
 import { getDb } from "@/lib/db";
@@ -79,6 +79,7 @@ export async function POST(
       actorPlayerId: actor.playerId,
     });
 
+    assertDuelInviteTarget(db, { duelId: duel.id, slug: duel.slug, guildId: actor.guildId, url: duelUrl(duel.slug, request) });
     await notifyDuelChange(duel.slug, actor.guildId);
     void broadcaster.tournament({ kind: "match-updated", slug });
 

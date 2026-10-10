@@ -41,7 +41,7 @@ async function setupTestServer(): Promise<Setup> {
   const httpServer = createServer();
   const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(httpServer, presenceHeartbeat);
   registerEventHandlers(io, new DraftRoomManager(), { secret: SECRET, canReadDraft: () => true });
-  registerDuelEventHandlers(io, { secret: SECRET });
+  registerDuelEventHandlers(io, { secret: SECRET, canReadDuel: () => true });
   return new Promise<Setup>((resolve, reject) => {
     httpServer.once("error", reject);
     httpServer.listen(0, () => {

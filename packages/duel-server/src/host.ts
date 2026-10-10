@@ -11,7 +11,7 @@ import type Database from "better-sqlite3";
 import { assertDuelForkAccess, assertOwnerReplaySourceAccess, resolveOwnerPlayer, ReplayAccessError } from "@yugidraft/shared/access/owner-access";
 import { createLocalCardDataStatus, type EngineDataManifest } from "./card-data-status.js";
 import { createGithubCardDataStatus } from "./github-card-data-status.js";
-import { createDuelSeriesService, createDuelService, createReplayForkService, createTournamentDuelService, DuelServiceError, TournamentDuelError, isCardFetchError, type DuelFinalSnapshots, type DuelPrivateState } from "@yugidraft/shared/services";
+import { findDuelEventTarget, createDuelSeriesService, createDuelService, createReplayForkService, createTournamentDuelService, DuelServiceError, TournamentDuelError, isCardFetchError, type DuelFinalSnapshots, type DuelPrivateState } from "@yugidraft/shared/services";
 import type {
   DuelAnswer,
   DuelCommand,
@@ -600,7 +600,9 @@ export function createDuelHost(options: {
 
   async function emitChange(slug: string, guildId: string): Promise<void> {
     try {
-      await options.onChange?.(slug, guildId);
+      const target = findDuelEventTarget(options.db, slug, guildId);
+      if (!target) return;
+      await options.onChange?.(target.slug, target.guildId);
     } catch (error) {
       console.warn("[duel] onChange failed", error);
     }

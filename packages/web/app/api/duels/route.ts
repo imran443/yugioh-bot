@@ -1,6 +1,6 @@
 import { isDuelFormat, MULTI_CORE_UNAVAILABLE_MESSAGE, multiDomainBlockReason, multiplayerTablesBlockReason, multiplayerTablesEnabled, type DuelTableCapabilities } from "@yugidraft/shared/duels";
 import { NextRequest, NextResponse } from "next/server";
-import { createDuelSeriesService } from "@yugidraft/shared/services";
+import { assertDuelInviteTarget, createDuelSeriesService } from "@yugidraft/shared/services";
 import { env } from "@/lib/env";
 import { duelUrl, sendDuelInvite } from "@/lib/announce-bot";
 import { getDb } from "@/lib/db";
@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
         settings: body.settings,
         name: name || undefined,
       });
+      assertDuelInviteTarget(getDb(), { duelId: duel.id, slug: duel.slug, guildId: actor.guildId, url: duelUrl(duel.slug, request) });
       await notifyDuelChange(duel.slug, actor.guildId).catch(() => undefined);
       if (env.discordBotEnabled) {
         try {

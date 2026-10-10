@@ -102,6 +102,7 @@ describe("announce server new routes", () => {
       },
     });
     const payload = {
+      duelId: 1, slug: "abc",
       guildId: "g",
       opponentDiscordUserId: "900000000000000111",
       challengerName: "Yugi",
