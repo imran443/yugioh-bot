@@ -273,3 +273,20 @@
   justify-content: center;
   padding: 0 12px;
 }
+
+/* ---------- replay mode: the transport slot (ReplayShellMode) ---------- */
+/* Wide screen with the floating HUD: the transport hangs above the station track, at the right edge of the bottom pills. */
+.replayCorner {
+  width: min(380px, 34vw);
+  min-width: 0;
+  margin: 0 0 8px auto;
+  pointer-events: auto;
+}
+/* Narrow screen: a full-width row above the turn track. */
+.replayBar {
+  position: relative;
+  z-index: var(--duel-z-prompt);
+  flex: none;
+  min-width: 0;
+  padding: 4px 8px 0;
+}

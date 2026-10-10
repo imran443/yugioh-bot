@@ -33,7 +33,8 @@ import { AimArrow } from "../table/aim-arrow";
 import { useAimFlow } from "../table/use-aim-flow";
 import { useTableUi } from "../table/use-table-ui";
 import { tableZoneAnchor } from "../table/zone-find";
-import { SEAT_TONE_HEX, type TableController } from "../table/types";
+import { carriedCamera, useReadOnlyReplayController, useReplayCarry, type ReplayCarryRef } from "../table/replay-mode";
+import { SEAT_TONE_HEX, type ReplayShellMode, type TableController } from "../table/types";
 import { lastEventId, lockForEvents } from "./fx-lock";
 import { resolveTagExtras, tagCameraYields, tagInputSuspended, type TagShellPreviewProps } from "./live-tag";
 import { initialRoofCamera, roofReducer } from "./roof-camera";
@@ -59,6 +60,8 @@ export type TagShellProps = TagShellPreviewProps & {
   preview?: boolean;
 };
 
+type TagShellRootProps = TagShellProps & { replayCarry?: ReplayCarryRef };
+
 /** A preview lock has no end: a time this far off never comes before the page reloads (and fits a timer). */
 const OPEN_LOCK_MS = 1_000_000_000;
 
@@ -71,16 +74,33 @@ const NO_KEYS = new Set<string>();
  * (table UI, aim flow, reveal gate, pick continuation), and keeps the engine in the room: it only gets a controller.
  */
 export function TagShell(props: TagShellProps) {
+  return props.replay ? <ReplayTagShell {...props} replay={props.replay} /> : <TagShellRoot {...props} />;
+}
+
+/**
+ * The Rooftop in replay mode (see `ReplayShellMode`). The controller is made read-only here, whatever the caller passes.
+ * A new reset key remounts the table, so the loss history, the effect cursor and any camera lock of the old frame go;
+ * the carry ref hands the next mount the camera the viewer chose and the panel they had open.
+ */
+function ReplayTagShell(props: TagShellProps & { replay: ReplayShellMode }) {
+  const carry = useReplayCarry();
+  const controller = useReadOnlyReplayController(props.controller);
+  // Created here, not in the keyed root, so a seek does not reload the viewer's preferences.
+  const own = useDuelPreferences();
+  return <TagShellRoot key={props.replay.resetKey} {...props} controller={controller} preferences={props.preferences ?? own} replayCarry={carry} />;
+}
+
+function TagShellRoot(props: TagShellRootProps) {
   return props.preferences ? <TagShellBody {...props} preferences={props.preferences} /> : <TagShellOwnPreferences {...props} />;
 }
 
 /** A shell with no room above it (a preview): it keeps its own preferences, created once. */
-function TagShellOwnPreferences(props: TagShellProps) {
+function TagShellOwnPreferences(props: TagShellRootProps) {
   const preferences = useDuelPreferences();
   return <TagShellBody {...props} preferences={preferences} />;
 }
 
-function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
+function TagShellBody(props: TagShellRootProps & { preferences: DuelPreferences }) {
   const {
     preferences,
     controller: supplied,
@@ -99,8 +119,11 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
     inputSuspended = false,
     boardRef: roomBoardRef,
     preview = false,
-    chainMode = null,
+    chainMode: chainModeProp = null,
+    replay,
+    replayCarry,
   } = props;
+  const chainMode = replay ? null : chainModeProp;
   const { teamNames, mode } = resolveTagExtras(props, supplied);
 
   // A hidden panel prompt (see fieldWaitsForReveal) must not be answered from the field, and nothing glows for it yet.
@@ -112,7 +135,7 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
     return hidden ? { ...gated, legalKeys: NO_KEYS } : gated;
   }, [roomBusy, supplied]);
   const localPick = usePickContinuation(pickContinuation ? null : given.prompt, given.engine.revision);
-  const pick = pickContinuation ?? localPick;
+  const pick = replay ? localPick : pickContinuation ?? localPick;
   const onAnswer = useCallback<TableController["onAnswer"]>((answer) => {
     if (given.busy || !given.canAct || !given.prompt) return;
     if (!pickContinuation) pick.noteAnswer(given.prompt, answer);
@@ -123,8 +146,8 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
   // A wide screen swaps the bars and side columns for the floating HUD (table/hud-layer.tsx). The Card pane is a flyout
   // there: a hover must not fill it, only a click or Inspect does, so the list pane stays the starting one.
   const hud = !narrow;
-  const hudState = useHudPane({ camera: true });
-  const ui = useTableUi(tracked, { initialPane: hud ? "log" : undefined, hud, onOpenCard: hudState.openCard, onPinCard: hudState.pinCard });
+  const hudState = useHudPane({ camera: true, initialPane: replayCarry?.current.hudPane });
+  const ui = useTableUi(tracked, { initialPane: replayCarry?.current.sidePane ?? (hud ? "log" : undefined), hud, onOpenCard: hudState.openCard, onPinCard: hudState.pinCard });
   const rowPreview = useRowPreview(tracked.prompt?.id ?? null);
   const base = ui.controller;
   const { engine, room, viewerSeat, nameOf, prompt } = base;
@@ -166,15 +189,28 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
     reducedMotion: controller.reducedMotion,
     board: boardRef,
   });
-  const showResult = !hideResult && resultReady && hasResult;
+  const showResult = !replay && !hideResult && resultReady && hasResult;
 
   // ---------- roof camera ----------
   const [camera, dispatchCamera] = useReducer(roofReducer, undefined, () =>
     initialRoofCamera({
       anchorSeat: layout.anchorSeat,
-      camera: { ...initialCamera, ...(initialLock ? { lock: { reason: initialLock, untilMs: performance.now() + OPEN_LOCK_MS } } : {}) },
+      camera: replayCarry?.current.camera ?? { ...initialCamera, ...(initialLock && !replay ? { lock: { reason: initialLock, untilMs: performance.now() + OPEN_LOCK_MS } } : {}) },
     }),
   );
+  // A replay seek remounts the table: remember what the viewer chose, so the next mount starts from it (no lock).
+  useEffect(() => {
+    if (!replayCarry) return;
+    // While an FX lock holds the overview, the camera the viewer chose is the one it will return to.
+    const chosen = camera.lock && camera.resume ? { ...camera, mode: camera.resume.mode, focusSeat: camera.resume.focusSeat, lookSeat: camera.resume.lookSeat, fly: camera.resume.fly } : camera;
+    replayCarry.current.camera = carriedCamera(chosen);
+  }, [replayCarry, camera]);
+  useEffect(() => {
+    if (replayCarry) replayCarry.current.hudPane = hudState.pane;
+  }, [replayCarry, hudState.pane]);
+  useEffect(() => {
+    if (replayCarry) replayCarry.current.sidePane = ui.pane;
+  }, [replayCarry, ui.pane]);
 
   // The FX lock follows engine events newer than the last one handled. With reduced motion, or while the connection is
   // down (the FX replay nothing), no lock starts but the cursor still moves, so old events never lock the camera later.
@@ -300,8 +336,9 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
       controller={controller}
       ui={ui}
       preferences={preferences}
-      connection={connection}
-      settingsTools={settingsTools}
+      connection={replay ? undefined : connection}
+      settingsTools={replay ? undefined : settingsTools}
+      replay={replay != null}
       sheetOpen={sheetOpen}
       onSheetOpenChange={setSheetOpen}
       tray={tray}
@@ -335,14 +372,15 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
         nameOf={nameOf}
         teamNames={teamNames}
         preferences={preferences}
-        connection={connection}
-        headerTools={headerTools}
-        onExit={hasResult && resultReady ? () => actions?.onExit?.() : undefined}
-        onShowResult={hasResult && hideResult ? () => setHideResult(false) : undefined}
-        hud={hud ? { baton: <TagBaton engine={engine} nameOf={nameOf} toneOf={toneOf} />, clock: hudClockBank(room.clock, session, controller.reducedMotion, (seat) => tagSeatCode("tag", seat)) } : undefined}
+        connection={replay ? undefined : connection}
+        headerTools={replay ? undefined : headerTools}
+        replay={replay ? { tools: replay.tools } : undefined}
+        onExit={!replay && hasResult && resultReady ? () => actions?.onExit?.() : undefined}
+        onShowResult={!replay && hasResult && hideResult ? () => setHideResult(false) : undefined}
+        hud={hud ? { baton: <TagBaton engine={engine} nameOf={nameOf} toneOf={toneOf} />, clock: replay ? null : hudClockBank(room.clock, session, controller.reducedMotion, (seat) => tagSeatCode("tag", seat)) } : undefined}
       />
-      {hud ? null : clockStrip(room.clock, session, controller.reducedMotion)}
-      {room.series && !showResult ? (
+      {hud || replay ? null : clockStrip(room.clock, session, controller.reducedMotion)}
+      {room.series && !showResult && !replay ? (
         <SeriesBanner
           room={room}
           slug={session.slug}
@@ -462,6 +500,7 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
 
       {hud ? (
         <div className={`${hudStyles.bottom} ${styles.tagBottom}`} data-testid="hud-bottom" data-tag-track>
+          {replay ? <div className={styles.replayCorner} data-testid="replay-transport">{replay.transport}</div> : null}
           <StationTrack
             {...trackProps}
             phases="hub"
@@ -471,14 +510,17 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
           />
         </div>
       ) : (
-        <TagTrack
-          engine={engine}
-          nameOf={nameOf}
-          prompt={prompt}
-          toneOf={toneOf}
-        >
-          <StationTrack {...trackProps} clock={null} />
-        </TagTrack>
+        <>
+          {replay ? <div className={styles.replayBar} data-testid="replay-transport">{replay.transport}</div> : null}
+          <TagTrack
+            engine={engine}
+            nameOf={nameOf}
+            prompt={prompt}
+            toneOf={toneOf}
+          >
+            <StationTrack {...trackProps} clock={null} />
+          </TagTrack>
+        </>
       )}
       {narrow ? side : null}
 
@@ -521,7 +563,7 @@ function TagShellBody(props: TagShellProps & { preferences: DuelPreferences }) {
           onNavigate={(next) => actions?.onNavigate?.(next)}
         />
       ) : null}
-      {modals}
+      {replay ? null : modals}
     </div>
   );
 }
