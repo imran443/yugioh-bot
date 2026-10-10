@@ -99,7 +99,7 @@ function sourceMatches(current: DuelPrivateState, source: ReplaySource): boolean
     && sameJson(a.settings, b.settings) && sameJson(a.seats, b.seats)
     && sameJson(current.seed, source.seed) && current.bundleVersion === source.bundleVersion
     && sameJson(current.decks, source.decks) && sameJson(current.commands, source.commands)
-    && sameJson(sourceSetup(current), source.setup)
+    && sameJson(sourceSetup(current) ?? {}, source.setup ?? {})
     && sameJson(current.setup?.engineIdentity ?? null, source.engineIdentity);
 }
 

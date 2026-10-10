@@ -205,6 +205,17 @@ describe("atomic replay fork storage", () => {
     expect(app.forks.retry({ ...app.retry, actor })?.session.id).toBe(second.session.id);
   });
 
+  it.each([undefined, {}])("accepts an old source with no saved setup and runner setup %j", setup => {
+    const app = fixture();
+    app.db.prepare("update duels set setup_json = null where id = ?").run(app.source.session.id);
+    app.input.source.setup = setup;
+    app.input.source.engineIdentity = null;
+    const { session } = app.forks.create(app.input);
+    expect(app.forks.privateState(session.slug, app.actor).setup).toEqual({
+      replayFork: { ownerUserId: app.actor.userId, control: "all-manual", origin: app.input.origin },
+    });
+  });
+
   it.each(["seed", "deck", "commands", "rules", "setup", "identity", "status"])("rejects a source changed after detached validation: %s", field => {
     const app = fixture(), before = app.db.prepare("select count(*) as n from duels").get();
     if (field === "seed") app.db.prepare("update duels set seed_json = '[\"5\",\"6\",\"7\",\"8\"]' where id = ?").run(app.source.session.id);
