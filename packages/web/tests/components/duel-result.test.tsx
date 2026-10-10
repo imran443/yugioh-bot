@@ -63,6 +63,7 @@ function makeRoom(options: RoomOptions): DuelRoom {
     session: {
       id: 1,
       slug: "abc",
+      kind: "play",
       name: "Table",
       guildId: "g",
       organizerPlayerId: 1,

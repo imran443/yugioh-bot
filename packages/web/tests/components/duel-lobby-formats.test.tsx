@@ -31,7 +31,7 @@ afterEach(() => {
 function room(format: DuelFormat, seats: Array<{ seat: number; ready?: boolean; isBot?: boolean }>, mySeat: number | null = 0): DuelRoom {
   return {
     session: {
-      id: 1, slug: "t", name: "Table", guildId: "g", organizerPlayerId: 10, mode: "normal", format, masterRule: 5,
+      id: 1, slug: "t", kind: "play", name: "Table", guildId: "g", organizerPlayerId: 10, mode: "normal", format, masterRule: 5,
       status: "lobby", settings: defaultDuelSettings("normal"),
       seats: seats.map((s) => ({
         seat: s.seat, playerId: s.isBot ? null : s.seat === 0 ? 10 : 20 + s.seat, displayName: s.isBot ? "Bot" : `P${s.seat}`,

@@ -139,6 +139,7 @@ export function fixtureRoom(o: {
     session: {
       id: 1,
       slug: `table-preview-${o.format}`,
+      kind: "play",
       name: `Table preview (${o.format})`,
       guildId: "preview",
       organizerPlayerId: 1,

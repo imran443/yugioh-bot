@@ -19,7 +19,11 @@ import type {
   DuelSession,
   DuelSettings,
   DuelStatus,
+  EngineIdentity,
+  ReplayForkSetup,
+  ReplayJournalEntry,
 } from "../duels/index.js";
+import { DEFAULT_DUEL_KIND } from "../duels/duel-kind.js";
 import {
   clockWithServerNow,
   DEFAULT_DUEL_FORMAT,
@@ -94,8 +98,12 @@ export class DuelServiceError extends Error {
   }
 }
 
-/** Scenario setup kept with the private state so a recover can rebuild the board. */
+/** Private recorded setup, kept so recovery and replay can rebuild the same engine state. */
 export interface DuelSetup {
+  /** Recorded at game start; persistence/validation is added by B5. Never derive an old game's identity at export. */
+  engineIdentity?: EngineIdentity;
+  /** Creator and copied origin; persistence/immutable-kind validation is added by B3. Never include in public sessions. */
+  replayFork?: ReplayForkSetup;
   /** Resolved policy at start; older journals use tolerant recovery. */
   scriptErrorMode?: DuelScriptErrorMode;
   /** The resolved FIRST_TURN_DRAW flag at start. Recovery and replay must keep this rule. */
@@ -120,7 +128,7 @@ export interface DuelPrivateState {
   decks: DuelDeck[];
   seed: string[] | null;
   bundleVersion: string | null;
-  commands: Array<{ seat: number; command: DuelCommand }>;
+  commands: ReplayJournalEntry[];
   clock: DuelClockState | null;
   setup?: DuelSetup;
 }
@@ -560,8 +568,8 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
       order by s.seat
     `,
   );
-  const selectCommands = db.prepare<[number], { seat: number; command_json: string }>(
-    "select seat, command_json from duel_commands where duel_id = ? order by seq",
+  const selectCommands = db.prepare<[number], { seq: number; seat: number; command_json: string }>(
+    "select seq, seat, command_json from duel_commands where duel_id = ? order by seq",
   );
   const selectPlayerGuild = db.prepare<[number, string], { ok: number }>(
     "select 1 as ok from players where id = ? and guild_id = ?",
@@ -704,6 +712,8 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
     return {
       id: row.id,
       slug: row.web_slug,
+      // P0 projects existing rows only. B3 must replace this with validated persisted kind/setup.
+      kind: DEFAULT_DUEL_KIND,
       name: row.name,
       guildId: row.guild_id,
       organizerPlayerId: row.organizer_player_id,
@@ -1376,6 +1386,7 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
         seed: parseSeed(row.seed_json),
         bundleVersion: row.bundle_version,
         commands: selectCommands.all(row.id).map((entry) => ({
+          seq: entry.seq,
           seat: entry.seat,
           command: JSON.parse(entry.command_json) as DuelCommand,
         })),

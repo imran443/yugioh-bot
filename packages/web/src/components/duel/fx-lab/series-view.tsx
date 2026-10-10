@@ -88,6 +88,7 @@ export function labSeriesRoom(board: LabBoard, spec: LabSeries): DuelRoom {
     session: {
       id: 1,
       slug: "fx-lab",
+      kind: "play",
       name: "FX lab",
       guildId: "lab",
       organizerPlayerId: 1,
