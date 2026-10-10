@@ -100,12 +100,14 @@ it("denies a source in another guild", async () => {
   expect((await get(true)).status).toBe(404); expect(state.fetch).not.toHaveBeenCalled();
 });
 it("denies other owners and normal users who request a known fork slug", async () => {
-  state.db!.exec("alter table duels add column kind text not null default 'play'");
   const setup = { replayFork: { ownerUserId: 101, control: "all-manual", origin: {
     sourceSlug: "source-fixture", sourceVersion: "source-v1", frameId: "frame-0", step: 0, prefixCount: 0,
     prefixHash: "a".repeat(64), sourceSeats: [{ seat: 0, displayName: null }, { seat: 1, displayName: null }],
   } } };
-  state.db!.prepare("update duels set kind = 'replay-fork', setup_json = ? where web_slug = ?").run(JSON.stringify(setup), slug);
+  slug = "fork-fixture";
+  state.db!.prepare(`insert into duels(guild_id,web_slug,name,organizer_player_id,mode,status,kind,setup_json)
+    values('test-guild',?,'Fork fixture',61,'normal','active','replay-fork',?)`)
+    .run(slug, JSON.stringify(setup));
   for (const id of [102, 103, 201]) {
     signIn(id); expect((await get(false, "version=2")).status).toBe(404); expect((await get(true)).status).toBe(404);
   }

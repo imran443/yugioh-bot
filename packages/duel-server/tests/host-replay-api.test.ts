@@ -140,11 +140,13 @@ it("fails closed when owner access is revoked during a detached build", async ()
   expect(result.body).not.toHaveProperty("frames"); expect(workers.every(w => !w.running)).toBe(true);
 });
 it("guards a known fork slug for both normal and privileged replay reads", async () => {
-  db.exec("alter table duels add column kind text not null default 'play'");
   const setup = { ...replaySource().setup, replayFork: { ownerUserId: 101, control: "all-manual",
     origin: { sourceSlug: "source-fixture", sourceVersion: "source-v1", frameId: "frame-0", step: 0, prefixCount: 0,
       prefixHash: "a".repeat(64), sourceSeats: [{ seat: 0, displayName: null }, { seat: 1, displayName: null }] } } };
-  db.prepare("update duels set kind = 'replay-fork', setup_json = ? where web_slug = ?").run(JSON.stringify(setup), slug);
+  slug = "fork-fixture";
+  db.prepare(`insert into duels(guild_id,web_slug,name,organizer_player_id,mode,status,kind,setup_json)
+    values(?,?,'Fork fixture',?,'normal','active','replay-fork',?)`)
+    .run(owner.guildId, slug, owner.playerId, JSON.stringify(setup));
   for (const playerId of [62, 63, 64]) for (const op of ["replay", "owner-replay"]) {
     const denied = await post({ op, playerId, version: 2 }); expect(denied.response.status).toBe(404);
   }

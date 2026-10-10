@@ -22,21 +22,21 @@ beforeEach(() => {
   state.auth.mockReset();
   state.db = new Database(":memory:");
   migrate(state.db);
-  state.db.exec("alter table duels add column kind text not null default 'play'");
   for (const [playerId, userId] of [[61, 101], [62, 102], [63, 103], [64, 201]]) {
     seedIdentity(state.db, { guildId: owner.guildId, playerId, userId, name: "Test actor" });
   }
   const duels = createDuelService(state.db);
   const input = { guildId: owner.guildId, name: "Private bug-report source", mode: "normal" as const, settings: { visibility: "private" } };
   sourceSlug = duels.create({ ...input, organizerPlayerId: 64 }).slug;
-  forkSlug = duels.create({ ...input, organizerPlayerId: owner.playerId }).slug;
+  forkSlug = "fork-fixture";
   const setup = { replayFork: {
     ownerUserId: owner.userId, control: "all-manual",
     origin: { sourceSlug, sourceVersion: "version-fixture", frameId: "frame-0", step: 0, prefixCount: 0,
       prefixHash: "a".repeat(64), sourceSeats: [{ seat: 0, displayName: "A" }, { seat: 1, displayName: "B" }] },
   } };
-  state.db.prepare("update duels set kind = 'replay-fork', setup_json = ? where web_slug = ?")
-    .run(JSON.stringify(setup), forkSlug);
+  state.db.prepare(`insert into duels(guild_id,web_slug,name,organizer_player_id,mode,status,kind,setup_json)
+    values(?,?,'Fork fixture',?,'normal','active','replay-fork',?)`)
+    .run(owner.guildId, forkSlug, owner.playerId, JSON.stringify(setup));
   vi.stubEnv("DISCORD_GUILD_ID", owner.guildId);
   vi.stubEnv("OWNER_USER_IDS", "101,102");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected external I/O"); }));
