@@ -168,7 +168,7 @@ jobs:
           docker pull "$EMSDK_IMAGE"
           npx tsx packages/duel-server/scripts/build-domain-core.ts
           npx tsx packages/duel-server/scripts/build-domain-core.ts standard
-          # The Domain core of the legacy 1v1 engine (the approved legacy pin), next to the merged one. 1v1 duels start on it by default.
+          # The approved legacy Domain core. Domain defaults to legacy; Standard defaults to DUEL_STANDARD_1V1_ENGINE=pinned.
           npx tsx packages/duel-server/scripts/build-domain-core.ts legacy-domain
 
       - name: Save pinned duel-engine bundle

@@ -31,7 +31,7 @@ import type {
   DuelScriptErrorMode,
 } from "@yugidraft/shared/duels";
 import {
-  CardQueryError, duel1v1Engine, isFirstChoice, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled,
+  CardQueryError, duel1v1EngineForMode, isFirstChoice, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled,
   COIN_TIMING, COIN_CHAIN_BEAT_MAX_MS, MIN_DUEL_FX_SPEED, coinTossDurationMs,
   CHAIN_MODE_JOURNAL_LIMIT, CHAIN_MODE_PROMPT_PREFIX, chainModeOf, isDuelChainMode, normalizeDuelSettings, opponentSeatsOf, parseCardQuery, seatCountFor, teamOfSeat, DUEL_OPENING_PICK_MS, DUEL_RPS_MOVES,
 } from "@yugidraft/shared/duels";
@@ -356,7 +356,7 @@ export function createDuelHost(options: {
       }
       return hashes.get(key)!;
     }, now: options.now });
-  const admissionEntries = (mode: DuelMode = "normal", format: DuelFormat = "1v1", engine: DuelEngineChoice = duel1v1Engine()) =>
+  const admissionEntries = (mode: DuelMode = "normal", format: DuelFormat = "1v1", engine: DuelEngineChoice = duel1v1EngineForMode(mode)) =>
     mergeCardBlockEntries(loadCardBlockList(undefined, options.dataDirectory), autoBlocks.entries(scriptEngineKind(mode, format, engine)));
   const recordScriptError = createScriptErrorRecorder(options.db, console.error, autoBlocks);
   const spawn = (duelId?: number): DuelGameWorker => options.createWorker?.() ?? new GameWorker(
@@ -466,10 +466,10 @@ export function createDuelHost(options: {
     return created;
   }
 
-  /** The engine a new 1v1 table starts on: `DUEL_1V1_ENGINE`, read now. Scenario tables need the merged engine. Other formats have none. */
-  function engineForNewTable(format: DuelFormat, hasStartupScripts = false): DuelEngineChoice | undefined {
+  /** Read the global and Standard switches at start. Scenarios need pinned; other formats have no choice. */
+  function engineForNewTable(format: DuelFormat, mode: DuelMode, hasStartupScripts = false): DuelEngineChoice | undefined {
     if (format !== "1v1") return undefined;
-    return hasStartupScripts ? "pinned" : duel1v1Engine();
+    return hasStartupScripts ? "pinned" : duel1v1EngineForMode(mode);
   }
 
   /**
@@ -1593,7 +1593,7 @@ export function createDuelHost(options: {
       const state = service.privateState(slug, guildId);
       const settings = state.session.settings;
       const scripts = (copts.startupScripts ?? []).map((script) => script.content);
-      const engine = engineForNewTable(preset.format, true);
+      const engine = engineForNewTable(preset.format, copts.mode, true);
       const firstTurnDraw = firstTurnDrawFor(state.session.mode, state.session.masterRule, preset.format);
       const scriptErrorMode = scriptErrorModeFromEnv();
       const botPolicies: Record<string, string> = {};
@@ -2076,7 +2076,7 @@ export function createDuelHost(options: {
     const { state, settings, seatCount } = await assertStartable(slug, guildId);
     const bytes = randomBytes(32);
     const seed = [0, 8, 16, 24].map((offset) => bytes.readBigUInt64LE(offset).toString());
-    const engine = engineForNewTable(state.session.format);
+    const engine = engineForNewTable(state.session.format, state.session.mode);
     const firstTurnDraw = firstTurnDrawFor(state.session.mode, state.session.masterRule, state.session.format);
     const scriptErrorMode = scriptErrorModeFromEnv();
     const game = spawn(state.session.id);

@@ -264,10 +264,11 @@ adding a matching helper or override input. The database format is now
 
 Every fresh preparation registers **every retained prerelease passcode**, including
 unchanged scripts and alternate artworks, on installed npm `ocgcore-wasm@0.1.2`.
-This minimum-core gate is deliberate: new 1v1 tables still default to the legacy
-Standard path (`src/legacy/engine.ts`), which loads the npm core without an external
-WASM binary. All engines share the preview pool. Checking only the newer pinned
-Standard/Domain/multiplayer cores would admit scripts that break default tables.
+This minimum-core gate supports native legacy runs and Standard rollback through
+`DUEL_STANDARD_1V1_ENGINE=legacy`. The legacy Standard path (`src/legacy/engine.ts`)
+loads the npm core without an external WASM binary. Compose defaults Standard to
+`pinned`. All engines share the preview pool. Checking only the newer pinned
+Standard/Domain/multiplayer cores would admit scripts that break legacy tables.
 The newer cores reuse the npm wrapper but supply different WASM bytes. The
 `prerelease-engine.test.ts` initialization matrix separately covers retained
 previews on legacy/pinned 1v1, Tag, FFA3 and FFA4 in Standard and Domain modes.

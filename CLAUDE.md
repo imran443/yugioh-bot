@@ -92,7 +92,7 @@ a second staging VM is advised for the alpha. See `docs/deployment/staging.md` a
 
 ### Duel resources and Docker
 
-- Engines: new 1v1 tables run on the legacy engine by default (`DUEL_1V1_ENGINE=legacy|pinned`, read when a table starts; `legacy` is main's pre-n-seat engine in `src/legacy/`, `pinned` is the merged one). Tag, FFA3 and FFA4 tables always run on the multi cores (`ocgcore.multi.wasm`, `ocgcore.multi-domain.wasm`). See `docs/deployment/duel-engine-switch.md`.
+- Engines: Compose defaults new Standard 1v1 games to `DUEL_STANDARD_1V1_ENGINE=pinned`; Domain keeps `DUEL_1V1_ENGINE=legacy`. Native runs with no Standard override use the global choice (default `legacy`). Each game reads the switches at its start and saves its engine for recover/replay. Set the Standard override to `legacy` and recreate `duel` to roll back; an empty Compose value means `pinned`. Tag, FFA3 and FFA4 always use the multi cores (`ocgcore.multi.wasm`, `ocgcore.multi-domain.wasm`). See `docs/deployment/duel-engine-switch.md`.
 - `MULTIPLAYER_TABLES` gates Tag/FFA tables. The code default is off, but Compose defaults it to on (`1`); set it on both `duel` and `web`, and `0` closes new multi tables.
 - The multi cores and the legacy Domain core are separate builds (`build-domain-core.ts multi|multi-domain|legacy-domain`), not part of `duel:prepare` or the package TypeScript build.
 - `duel:prepare` downloads pinned card data, strings, and Lua scripts into `DUEL_DATA_DIR` (default root `data/duel-engine`). `scripts/build-domain-core.ts` in `packages/duel-server` separately builds the patched Domain Format WASM bundle with the pinned Emscripten Docker image; `DOMAIN_CORE_BUILD=local` uses a local `em++` toolchain. Neither step is part of the package's TypeScript build.

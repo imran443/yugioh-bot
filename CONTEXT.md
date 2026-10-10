@@ -67,7 +67,7 @@ A Domain-only monster in its own zone, set apart from the Main Deck. It can be r
 A scripted starting board for hand scenarios and e2e runs (`packages/duel-server/src/presets/`). The `list-presets` and `start-preset` host operations exist only when `DUEL_SCENARIOS=1`. Not a Master Rule preset.
 
 **Engine**:
-The wasm core that runs a **Table**. 1v1 tables use the **legacy** engine (default) or the **pinned** merged engine (`DUEL_1V1_ENGINE`). Tag and FFA tables always use a **multi core** (`ocgcore.multi.wasm`, or `ocgcore.multi-domain.wasm` for Domain). A 1v1 table saves its engine, so recover and replay use it after `DUEL_1V1_ENGINE` changes. See `docs/deployment/duel-engine-switch.md`.
+The wasm core that runs a **Table**. Compose defaults Standard 1v1 to the **pinned** merged engine (`DUEL_STANDARD_1V1_ENGINE=pinned`) and Domain 1v1 to **legacy** (`DUEL_1V1_ENGINE=legacy`). Native runs with no Standard override use the global choice, which defaults to legacy. Each game of a series reads the switch at its start. A 1v1 game saves its engine, so recover and replay use it after either switch changes. Tag and FFA tables always use a **multi core** (`ocgcore.multi.wasm`, or `ocgcore.multi-domain.wasm` for Domain). See `docs/deployment/duel-engine-switch.md`.
 
 ### Notifications
 

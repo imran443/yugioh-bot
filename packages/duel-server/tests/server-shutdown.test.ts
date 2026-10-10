@@ -80,7 +80,10 @@ beforeEach(() => {
   previousListeners = new Map(signals.map(signal => [signal, process.rawListeners(signal)]));
   vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
   vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.stubEnv("DUEL_1V1_ENGINE", "");
+  vi.stubEnv("DUEL_STANDARD_1V1_ENGINE", "");
 });
 
 afterEach(async () => {
@@ -96,6 +99,35 @@ afterEach(async () => {
     }
   }
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
+
+describe("duel server startup", () => {
+  it.each([
+    ["", "", "legacy", "legacy"],
+    ["legacy", "pinned", "pinned", "legacy"],
+    ["pinned", "legacy", "legacy", "pinned"],
+    [" PINNED ", " Legacy ", "legacy", "pinned"],
+  ])("logs the active engines with global=%j and Standard=%j", async (global, override, standard, domain) => {
+    vi.stubEnv("DUEL_1V1_ENGINE", global);
+    vi.stubEnv("DUEL_STANDARD_1V1_ENGINE", override);
+    await start();
+    expect(console.log).toHaveBeenCalledWith(`[duel] 1v1 engines: Standard=${standard}, Domain=${domain}`);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["DUEL_1V1_ENGINE", "pinnned", "legacy", "legacy"],
+    ["DUEL_STANDARD_1V1_ENGINE", "pinnned", "pinned", "pinned"],
+  ])("warns about invalid %s and logs the fallback engines", async (key, value, standard, domain) => {
+    vi.stubEnv("DUEL_1V1_ENGINE", "pinned");
+    vi.stubEnv(key, value);
+    await start();
+    expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+      `[duel] Invalid ${key}=${JSON.stringify(value)}; expected legacy or pinned. Using the fallback.`,
+    );
+    expect(console.log).toHaveBeenCalledWith(`[duel] 1v1 engines: Standard=${standard}, Domain=${domain}`);
+  });
 });
 
 describe("duel server shutdown", () => {

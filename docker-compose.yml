@@ -45,9 +45,11 @@ services:
       - DUEL_IDLE_WORKER_MS=${DUEL_IDLE_WORKER_MS:-300000}
       # Tag, 3-player and 4-player tables. Off by default: only 1v1 tables start. The web service needs the same value.
       - MULTIPLAYER_TABLES=${MULTIPLAYER_TABLES:-1}
-      # The engine that new 1v1 duels start on. legacy is the engine production ran before the n-seat work (the default).
+      # The global 1v1 choice; Domain uses legacy by default. Standard has its own choice below.
       # pinned is the merged engine. A duel keeps the engine it started on. Tables with 3 or 4 seats always use the multi core.
       - DUEL_1V1_ENGINE=${DUEL_1V1_ENGINE:-legacy}
+      # Standard defaults to pinned, including an empty value. Set legacy to roll back.
+      - DUEL_STANDARD_1V1_ENGINE=${DUEL_STANDARD_1V1_ENGINE:-pinned}
       # Card script runtime failures report and continue; strict is an operational override.
       - DUEL_SCRIPT_ERRORS=${DUEL_SCRIPT_ERRORS:-tolerant}
       - DUEL_SCRIPT_ERROR_BLOCK_DUELS=${DUEL_SCRIPT_ERROR_BLOCK_DUELS:-3}

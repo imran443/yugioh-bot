@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase, applyEngineCardRemaps } from "@yugidraft/shared/db";
 import { createBroadcaster, httpTransport } from "@yugidraft/shared/notify";
+import { DUEL_1V1_ENGINE_ENV, DUEL_STANDARD_1V1_ENGINE_ENV, duel1v1EngineForMode, isDuelEngineChoice } from "@yugidraft/shared/duels";
 import { loadCardDatabase } from "./cards.js";
 import { verifyEngineBundle } from "./engine-bundle.js";
 import { createDuelHost } from "./host.js";
@@ -12,6 +13,14 @@ import { createIssueSource } from "./presets/issue-source.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 config({ path: resolve(root, ".env") });
+for (const key of [DUEL_1V1_ENGINE_ENV, DUEL_STANDARD_1V1_ENGINE_ENV]) {
+  const value = process.env[key];
+  const normalized = value?.trim().toLowerCase();
+  if (normalized && !isDuelEngineChoice(normalized)) {
+    console.warn(`[duel] Invalid ${key}=${JSON.stringify(value)}; expected legacy or pinned. Using the fallback.`);
+  }
+}
+console.log(`[duel] 1v1 engines: Standard=${duel1v1EngineForMode("normal")}, Domain=${duel1v1EngineForMode("domain")}`);
 const dataDirectory = resolve(root, process.env.DUEL_DATA_DIR ?? "data/duel-engine");
 verifyEngineBundle(dataDirectory);
 const db = openDatabase(resolve(root, process.env.DATABASE_PATH ?? "data/bot.sqlite"));

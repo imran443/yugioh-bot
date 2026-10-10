@@ -514,6 +514,31 @@ describe("series advance", () => {
     expect(app.duels.privateState(nextSlug, GUILD).decks[1]).toEqual(sided);
   });
 
+  it.each([
+    ["legacy", "pinned"],
+    ["pinned", "legacy"],
+  ] as const)("game 2 reads the Standard switch again after game 1 used %s and the switch changes to %s", async (firstEngine, nextEngine) => {
+    vi.useFakeTimers();
+    vi.stubEnv("DUEL_1V1_ENGINE", "legacy");
+    vi.stubEnv("DUEL_STANDARD_1V1_ENGINE", firstEngine);
+    const app = setup();
+    const { host, workers } = openHost(app);
+    const { duel, series } = await startChallenge(app, host, 3);
+    expect(workers[0]!.createdOptions?.engine).toBe(firstEngine);
+    expect(app.duels.privateState(duel.slug, GUILD).setup?.engine).toBe(firstEngine);
+    await endGame(host, workers[0]!, duel.slug, app.p1, 0);
+
+    vi.stubEnv("DUEL_STANDARD_1V1_ENGINE", nextEngine);
+    expect((await post(host, { op: "series-ready", slug: duel.slug, playerId: app.p1 })).status).toBe(200);
+    const ready = await post(host, { op: "series-ready", slug: duel.slug, playerId: app.p2 });
+    expect(ready.status).toBe(200);
+    expect(workers).toHaveLength(2);
+    expect(app.series.get(series.id, GUILD).gameNumber).toBe(2);
+    expect(workers[1]!.createdOptions?.engine).toBe(nextEngine);
+    expect(app.duels.privateState(ready.data.nextSlug, GUILD).setup?.engine).toBe(nextEngine);
+    expect(app.duels.privateState(duel.slug, GUILD).setup?.engine).toBe(firstEngine);
+  });
+
   it("series-ready advances when both players are ready and points a late caller at the new game", async () => {
     vi.useFakeTimers();
     const app = setup();

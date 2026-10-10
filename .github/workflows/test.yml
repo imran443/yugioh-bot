@@ -5,8 +5,9 @@ name: Test
 #   cores        build or restore the engine bundle (standard, domain and multi cores). Shared by the next jobs.
 #   unit         typecheck and the tests that need no core (shared, bot, web, duel-server unit, e2e unit).
 #   engine       real-engine tests with DUEL_REQUIRE_CORES=1: a missing core is a failure, never a silent skip.
-#   engine-legacy  1v1 host/worker gates with DUEL_1V1_ENGINE=legacy (the production default), plus main's engine tests
+#   engine-legacy  1v1 host/worker gates with DUEL_1V1_ENGINE=legacy, plus main's engine tests
 #                run against the legacy engine (tests/legacy-main). The engine job runs the merged engine ("pinned").
+#                Production Compose defaults Standard to DUEL_STANDARD_1V1_ENGINE=pinned; Domain keeps the global legacy default.
 #   native       ASan/UBSan build of the multi core and the committed native checks (npm run test:native).
 #   rule-coverage  every rule of ADR-0002 has a covering test (--strict).
 #   nduel-nightly  scheduled: the nduel fuzz (n2, n3, n4, tag) with --check-future, and the golden hash check.
