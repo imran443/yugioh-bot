@@ -96,7 +96,8 @@ export interface HistoryTile {
   turnSeat?: number | null;
   /** Phase label when this happened; empty when unknown. */
   phase: string;
-  chain?: { index: number; size: number; status: ChainStatus };
+  /** `targets`: who the link targets, as the engine words it for this viewer ("Black Luster Soldier ...", "a face-down card"). */
+  chain?: { index: number; size: number; status: ChainStatus; targets?: string };
   /** attack only */
   target?: { seat: number | null; card: HistoryCard | null; direct: boolean };
   hits: HistoryHit[];
@@ -432,9 +433,16 @@ export function ingestHistory(state: HistoryState, events: readonly DuelEvent[],
       case "toss":
         // Keep outcomes out of the rail until the toss layer can release them after landing.
         break;
-      case "target":
-        // Coordinates update the board markers; activation already owns the history tile.
+      case "target": {
+        // Coordinates update the board markers; activation already owns the history tile. Its words go on that tile,
+        // so a target the engine picked without asking is still read in the history.
+        // "1 card" is the engine's count fallback when no name was read; it says nothing the tile does not.
+        const phrase = (event.targets?.length ?? 0) > 0 ? /^Chain Link \d+ targets (.+)$/.exec(event.text ?? "")?.[1] : undefined;
+        const named = phrase && !/^\d+ cards?$/.test(phrase) ? phrase : undefined;
+        const key = chain?.keys[event.chainIndex ?? 1];
+        if (named && key != null) patch(key, (t) => (t.chain ? { ...t, chain: { ...t.chain, targets: named } } : t));
         break;
+      }
       case "summon":
       case "set": {
         const card = event.card ?? null;

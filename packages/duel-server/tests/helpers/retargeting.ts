@@ -7,11 +7,12 @@ import { loadCardDatabase } from "../../src/cards.js";
 import { engineDataDirectory } from "../engine-data-dir.js";
 
 /** Stock scripts: Dianaira clears Reborn at CL1; Shift retargets Book of Moon from CL2. */
-export async function retargetMessages(scenario: "dianaira" | "shift" = "dianaira", noteScript?: string): Promise<{ messages: OcgMessage[]; notes: string[] }> {
+export async function retargetMessages(scenario: "dianaira" | "shift" = "dianaira", noteScript?: string): Promise<{ messages: OcgMessage[]; notes: string[]; targetNotes: string[] }> {
   const cards = loadCardDatabase(engineDataDirectory);
   const core = await createCore({ sync: true });
   const errors: string[] = [];
   const notes: string[] = [];
+  const targetNotes: string[] = [];
   const handle = core.createDuel({
     flags: OcgDuelMode.MODE_MR5, seed: [1n, 2n, 3n, 4n],
     team1: { startingLP: 8000, startingDrawCount: 0, drawCountPerTurn: 0 },
@@ -19,6 +20,7 @@ export async function retargetMessages(scenario: "dianaira" | "shift" = "dianair
     cardReader: cards.cardData, scriptReader: cards.readScript,
     errorHandler: (_type, text) => {
       if (text.startsWith("YGD:CHAIN_TARGET:")) notes.push(text);
+      else if (text.startsWith("YGD:TARGET_CARD:")) targetNotes.push(text);
       else errors.push(text);
     },
   });
@@ -56,7 +58,7 @@ export async function retargetMessages(scenario: "dianaira" | "shift" = "dianair
       messages.push(...batch);
       if (batch.some((message) => message.type === OcgMessageType.CHAIN_END)) {
         assert.deepEqual(errors, []);
-        return { messages, notes };
+        return { messages, notes, targetNotes };
       }
       assert.notEqual(status, OcgProcessResult.END, "duel ended before the retargeting chain");
       if (status !== OcgProcessResult.WAITING) continue;

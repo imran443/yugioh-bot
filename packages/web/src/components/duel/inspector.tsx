@@ -137,9 +137,13 @@ function InfoBody({ card: liveCard }: { card: DuelCard | DuelCardInfo }) {
   );
 }
 
-/** The extra lines of a board card: its equip link, counters and Xyz materials. The Card flyout and the pinned peek both show them. */
+/** The extra line of a face-up board card whose effects are negated (the server sets `negated`). */
+export const NEGATED_LINE = "Effects negated";
+
+/** The extra lines of a board card: negation, its equip link, counters and Xyz materials. The Card flyout and the pinned peek both show them. */
 export function cardExtraLines(card: DuelCard, equipLinks?: EquipLinks): string[] {
   const extras: string[] = [];
+  if (card.negated === true) extras.push(NEGATED_LINE);
   const equipText = equipLinks ? equipSentence(roleOfCard(equipLinks, card)) : null;
   if (equipText) extras.push(equipText);
   if (card.counters?.length) {
@@ -241,9 +245,19 @@ export function CardInspector({
       ) : null}
       {extras.length > 0 ? (
         <ul className={styles.metaList} style={textStyle}>
-          {extras.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
+          {extras.map((line) =>
+            line === NEGATED_LINE ? (
+              <li key={line} className={styles.negatedLine} data-negated="true" data-testid="inspector-negated">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <circle cx="12" cy="12" r="8.6" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                {line}
+              </li>
+            ) : (
+              <li key={line}>{line}</li>
+            ),
+          )}
         </ul>
       ) : null}
     </>

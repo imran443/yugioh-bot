@@ -211,6 +211,11 @@ export interface DuelCard {
   linkRating?: number;
   linkMarker?: number;
   counters?: Array<{ type: number; count: number }>;
+  /**
+   * True on a face-up monster or Spell/Trap on the field whose effects are negated (the core's STATUS_DISABLED:
+   * a negating effect or a continuous one such as Skill Drain). Absent otherwise. A face-down card never carries it.
+   */
+  negated?: boolean;
   materials?: DuelCard[];
   /**
    * Set on a card that is equipped to a monster (an Equip Spell, a Union monster, or any card the

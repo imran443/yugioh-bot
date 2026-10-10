@@ -71,6 +71,8 @@ export type ZoneExpect =
       /** Current ATK, including continuous effects and negation. */
       attack?: number;
       defense?: number;
+      /** The negated mark of the view: true = effects negated, false = not (the field is absent when false). */
+      negated?: boolean;
       /** Exact counters on the card: counter type to count. {} means no counters. */
       counters?: Record<number, number>;
     };
@@ -134,6 +136,7 @@ export type Step =
   | { op: "expectNoEvent"; event: EventMatch }
   | { op: "expectLog"; lines: string[] }
   | { op: "expectNoLog"; text: string }
+  | { op: "expectLogSeen"; viewer: DuelistId | "spectator"; has?: string[]; lacks?: string[] }
   | { op: "expectResolved"; order: CardRef[] }
   | { op: "expectChain"; links: CardRef[] }
   | { op: "expectPrompt"; prompt: PromptExpect }
@@ -213,6 +216,8 @@ export const expectNoEvent = (event: EventMatch): Step => ({ op: "expectNoEvent"
 export const expectLog = (...lines: string[]): Step => ({ op: "expectLog", lines });
 /** No line of the duel log contains this text. */
 export const expectNoLog = (text: string): Step => ({ op: "expectNoLog", text });
+/** What one viewer's duel log holds: every `has` text appears in some line, no `lacks` text appears. A seat sees its own private lines, the spectator only public ones. */
+export const expectLogSeen = (viewer: DuelistId | "spectator", seen: { has?: string[]; lacks?: string[] }): Step => ({ op: "expectLogSeen", viewer, ...seen });
 /** The chain links resolved in exactly this order (every chain-resolving event so far). */
 export const expectResolved = (...order: CardRef[]): Step => ({ op: "expectResolved", order });
 /** The chain stack now, from link 1 up. */

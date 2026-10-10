@@ -62,8 +62,9 @@ function Marks({ legal, selected }: { legal: boolean; selected: boolean }) {
 }
 
 /** A zone name with its state in words: the purple ring and mark are visual only. */
-function stateLabel(label: string, state: { disabled?: boolean; legal: boolean; selected: boolean }): string {
+function stateLabel(label: string, state: { disabled?: boolean; negated?: boolean; legal: boolean; selected: boolean }): string {
   const parts = [label];
+  if (state.negated) parts.push("effects negated");
   if (state.disabled) parts.push("disabled");
   if (state.legal) parts.push(state.selected ? "selectable, selected" : "selectable");
   return parts.join(", ");
@@ -91,10 +92,12 @@ function CardCell({
   const selected = anyIn(keys, callbacks.selectedKeys);
   const defense = card != null && card.location === LOCATION_MZONE && isDefense(card.position);
   // The ring and mark are drawn only: the state is also in the name so a screen reader hears it.
-  const name = stateLabel(label, { disabled, legal, selected });
+  const negated = card?.negated === true;
+  const name = stateLabel(label, { disabled, negated, legal, selected });
   return (
     <div className={styles.cell} data-zones={keys.join(" ")} data-kind={kind} data-legal={legal ? "true" : "false"}
       data-selected={selected ? "true" : "false"} data-occupied={card ? "true" : "false"} data-defense={defense ? "true" : "false"}
+      data-negated={negated ? "true" : undefined}
       data-disabled={disabled ? "true" : "false"} data-testid={testId}>
       <button type="button" className={styles.cellHit} aria-label={name} aria-pressed={selected}
         aria-disabled={disabled && !card ? true : undefined}

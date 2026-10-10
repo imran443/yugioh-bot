@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { X } from "lucide-react";
 import type { DuelCard, DuelCardInfo } from "@yugidraft/shared/duels";
 import { cardTextStyle, useCardTextSize } from "../card-text-size";
+import { NEGATED_LINE } from "../inspector";
 import { cardArtUrl, cardDetailsText, cardStatsText, isDefenseAt, isHiddenCard } from "../constants";
 import styles from "./grid-hud.module.css";
 import { coveredArea, measureObstacles, obstaclesKey, peekPlaces, type Box, type Place } from "./peek-layout";
@@ -266,9 +267,16 @@ export function GridHoverPreview({ card, owner, reducedMotion, pinned = false, e
             <i aria-hidden="true" />Owner <b>{owner.name}</b>{position ? ` · ${position}` : ""}
           </p>
         ) : position ? <p className={styles.previewOwner}>{position}</p> : null}
-        {frozen && extras.length > 0 ? (
+        {extras.length > 0 ? (
           <ul className={styles.previewExtras} data-testid="hover-preview-extras">
-            {extras.map((line) => <li key={line}>{line}</li>)}
+            {extras.map((line) =>
+              line === NEGATED_LINE ? (
+                <li key={line} className={styles.previewNegated} data-negated="true" data-testid="inspector-negated">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.6" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  {line}
+                </li>
+              ) : <li key={line}>{line}</li>,
+            )}
           </ul>
         ) : null}
       </div>

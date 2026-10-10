@@ -41,9 +41,12 @@ import {
   drainDeferredDestroys,
   moveReveals,
   nextBattleStep,
+  linkTargetPhrase,
+  nameLinkTargets,
   noteChainTargetLog,
   noteDestroyLog,
   noteReveal,
+  noteTargetCardLog,
   observeChainTargetEvents,
   observeDuelEvent,
   observeMoveEvents,
@@ -51,6 +54,7 @@ import {
   phaseName,
   projectView,
   resetEventBatch,
+  targetEventText,
   type DomainSeatState,
   type LogEntry,
   type StoredChainLink,
@@ -239,7 +243,7 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
     return content;
   };
   const errorHandler = (type: number, text: string) => {
-    if (noteDestroyLog(eventContext, text) || noteChainTargetLog(eventContext, text)) return;
+    if (noteDestroyLog(eventContext, text) || noteChainTargetLog(eventContext, text) || noteTargetCardLog(eventContext, text)) return;
     scriptErrors.note(type, text); // LEGACY-1V1: runtime card failures may continue
   };
   const team = {
@@ -409,6 +413,38 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
       : destroyedLogText(cards, line!.code);
   };
 
+  // The seat whose single legal target the engine just chose for it (an automatic answer), until the target message arrives.
+  let autoPickSeat: number | null = null;
+  // Target lines whose names have not all arrived: the core can deliver a card's note in a later process call than the
+  // target message, so the lines are written now and their text is completed by settleTargetNames.
+  const unnamedTargets: Array<{ link: StoredChainLink; event: StoredDuelEvent; lines: Array<{ entry: LogEntry; text: (phrase: string) => string }> }> = [];
+  /** The log lines of a chain link's target: the public line, and a private note when the player had no choice. */
+  const logChainTarget = (event: StoredDuelEvent) => {
+    const link = event.chainIndex != null ? chainMemory.find((entry) => entry.index === event.chainIndex) : undefined;
+    if (!link) return;
+    const source = cards.get(link.code)?.name ?? `Card ${link.code}`;
+    const lines: Array<{ entry: LogEntry; text: (phrase: string) => string }> = [];
+    const add = (text: (phrase: string) => string, audience: "all" | number) => {
+      lines.push({ entry: appendLog(text(linkTargetPhrase(link)), audience), text });
+    };
+    add((phrase) => `Chain Link ${link.index}: ${source} targets ${phrase}`, "all");
+    if (autoPickSeat != null) {
+      add((phrase) => `Only legal target: ${phrase}`, autoPickSeat);
+      autoPickSeat = null;
+    }
+    if (!nameLinkTargets(eventContext, link, cards)) unnamedTargets.push({ link, event, lines });
+  };
+  const settleTargetNames = () => {
+    for (let index = unnamedTargets.length - 1; index >= 0; index -= 1) {
+      const pending = unnamedTargets[index]!;
+      if (!nameLinkTargets(eventContext, pending.link, cards)) continue;
+      pending.event.text = targetEventText(pending.link);
+      const phrase = linkTargetPhrase(pending.link);
+      for (const line of pending.lines) line.entry.text = line.text(phrase);
+      unnamedTargets.splice(index, 1);
+    }
+  };
+
   const recordEvent = (message: OcgMessage) => {
     // Moves first: a card's move precedes the summon/set/activate/destroy event it belongs to.
     for (const move of observeMoveEvents(message, cards, eventContext, nextEventId)) pushEvent(move);
@@ -431,7 +467,10 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
       // Write the result at this message's position, with the assigned FX id for client-side holds.
       if (stored.kind === "toss") appendLog(stored.text).eventId = stored.id;
     }
-    for (const target of observeChainTargetEvents(message, chainMemory, nextEventId, eventContext)) pushEvent(target);
+    for (const target of observeChainTargetEvents(message, chainMemory, nextEventId, eventContext, cards)) {
+      pushEvent(target);
+      logChainTarget(target);
+    }
   };
 
   const pushEvent = (stored: StoredDuelEvent) => {
@@ -591,6 +630,8 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
     // Native materials move before position/place selection, so those prompts continue the same summon.
     const continuingSummon = pending?.message.type === OcgMessageType.SELECT_POSITION || pending?.message.type === OcgMessageType.SELECT_PLACE;
     resetEventBatch(eventContext, continuingSummon);
+    unnamedTargets.length = 0;
+    autoPickSeat = null;
     leftFieldLines.length = 0;
     let processCalls = 0;
     while (!result) {
@@ -605,6 +646,8 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
         recordEvent(message);
       }
       flushDeferredDestroys();
+      settleTargetNames();
+      autoPickSeat = null;
       const toleratedError = scriptErrors.drain().some(error => error.scriptErrorMode !== "strict");
       if (toleratedError && !scriptErrorEventSent) {
         scriptErrorEventSent = true;
@@ -659,6 +702,8 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
       } // LEGACY-1V1: display data must not stop a duel
       const automated = autoResponse(next, { stopAtEveryWindow: options.settings?.stopAtEveryWindow, chainMode: chainModes[next.seat], phase }); // LEGACY-1V1: per-seat chain mode
       if (automated) {
+        // The player had no choice: the core offered exactly one card to target. Say so once the target message arrives.
+        autoPickSeat = next.message.type === OcgMessageType.SELECT_CARD && next.message.min === 1 && next.message.max === 1 && next.prompt.options.length === 1 ? next.seat : null;
         respond(next, automated); // LEGACY-1V1: public chosen chain options
         continue;
       }

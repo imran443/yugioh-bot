@@ -18,6 +18,7 @@ import {
 import { raceLabel, type CardDatabase } from "../cards.js";
 import { fillPlaceholders, locationLabel } from "../text.js";
 import { HandIdentities } from "../hand-identities.js";
+import { chainTargetPhrase, parseTargetCardNote, publicTargetLabel, TARGET_CARD_NOTE_LUA, TARGET_CARD_NOTE_PREFIX, type TargetCardNote } from "../target-names.js"; // LEGACY-1V1: shared target naming
 
 export const LOCATION_DECKMASTER = 0x4000;
 export const DOMAIN_LEAVE_TAX_STEP = 500;
@@ -107,12 +108,26 @@ const QUERY_FLAGS = (
   OcgQueryFlags.EQUIP_CARD |
   OcgQueryFlags.COUNTERS |
   OcgQueryFlags.OWNER |
+  OcgQueryFlags.STATUS |
   OcgQueryFlags.IS_PUBLIC |
   OcgQueryFlags.LSCALE |
   OcgQueryFlags.RSCALE |
   OcgQueryFlags.LINK |
   OcgQueryFlags.IS_HIDDEN
 ) as OcgQueryFlagsValue;
+
+/** ygopro-core STATUS_DISABLED: the card's effects are negated (by an effect, a Chain Link or a continuous field effect). */
+const STATUS_DISABLED = 0x0001;
+
+/**
+ * True for a face-up monster or Spell/Trap on the field whose effects are negated right now. Face-down cards,
+ * and cards off the field, never report it, so the flag leaks nothing about a Set card.
+ */
+export function isNegatedOnField(location: number, position: number, status: number | undefined): boolean {
+  if (status == null || (status & STATUS_DISABLED) === 0) return false;
+  if (location !== OcgLocation.MZONE && location !== OcgLocation.SZONE) return false;
+  return (position & OcgPosition.FACEUP) !== 0;
+}
 
 export function isFacedownPosition(position: number | undefined): boolean {
   return position != null && (position & OcgPosition.FACEDOWN) !== 0;
@@ -187,6 +202,7 @@ function queryToCard(
     counters: counters && counters.length > 0 ? counters : undefined,
     materials,
   };
+  if (isNegatedOnField(location, position, query.status)) card.negated = true;
   if (query.rank) card.rank = query.rank;
   if (query.link) {
     card.linkRating = query.link.rating;
@@ -278,6 +294,8 @@ export interface StoredChainLink {
   description?: string;
   zone: DuelZoneRef;
   targets: DuelZoneRef[];
+  /** Public label of each target by zone key (`controller:location:sequence`): a name, "a face-down card" or "a card". */
+  targetLabels?: Record<string, string>;
   chosenOptions?: DuelChainLink["chosenOptions"]; // LEGACY-1V1: public chosen chain options
 }
 
@@ -402,7 +420,7 @@ Duel.ChangeTargetCard=function(index,targets)
   end
   Debug.Message("${CHAIN_TARGET_NOTE_PREFIX}"..index..";"..table.concat(zones,","))
 end
-`;
+${TARGET_CARD_NOTE_LUA}`;
 
 /** Startup script that reports destroyed cards. Registers one global continuous effect and changes no game state. */
 export const DESTROY_NOTE_SCRIPT = `
@@ -446,6 +464,8 @@ export interface EventContext {
   destroyNotes: string[];
   /** Coordinates and changed link numbers omitted from the core's BECOME_TARGET messages. */
   chainTargetNotes: Array<{ index: number; targets: DuelZoneRef[] }>;
+  /** Cards printed by the startup script as they became targets, not yet matched to a BECOME_TARGET message. */
+  targetNotes: TargetCardNote[];
   /** The chain link currently resolving (CHAIN_SOLVING .. CHAIN_SOLVED); the fallback source of an effect destroy. */
   resolving: { index: number; code: number; seat: number; type: number } | null;
   /** Field departures seen before their destruction note arrived. */
@@ -472,7 +492,7 @@ interface TrackedMove {
 }
 
 export function createEventContext(): EventContext {
-  return { battle: false, summonTribute: false, destroyNotes: [], chainTargetNotes: [], resolving: null, pendingMoves: [], moves: [], handSize: [0, 0], handIdentities: new HandIdentities(), arrivals: new Map(), pendulumSummon: false, materialReasons: 0 };
+  return { battle: false, summonTribute: false, destroyNotes: [], chainTargetNotes: [], targetNotes: [], resolving: null, pendingMoves: [], moves: [], handSize: [0, 0], handIdentities: new HandIdentities(), arrivals: new Map(), pendulumSummon: false, materialReasons: 0 };
 }
 
 /** Internal notes arrive during core processing, before its buffered messages are consumed. */
@@ -487,6 +507,14 @@ export function noteChainTargetLog(ctx: EventContext, text: string): boolean {
   if (Number.isInteger(index) && index > 0 && rawTargets != null && targets.every((zone) =>
     (zone.controller === 0 || zone.controller === 1) && Number.isInteger(zone.location) && zone.location >= 0 &&
     Number.isInteger(zone.sequence) && zone.sequence >= 0)) ctx.chainTargetNotes.push({ index, targets });
+  return true;
+}
+
+/** Internal notes arrive during core processing, before its buffered messages are consumed. */
+export function noteTargetCardLog(ctx: EventContext, text: string): boolean {
+  if (!text.startsWith(TARGET_CARD_NOTE_PREFIX)) return false;
+  const note = parseTargetCardNote(text);
+  if (note) ctx.targetNotes.push(note);
   return true;
 }
 
@@ -640,6 +668,7 @@ export function drainDeferredDestroys(ctx: EventContext, cards: CardDatabase, fi
 export function resetEventBatch(ctx: EventContext, continuingSummon = false): void {
   ctx.destroyNotes.length = 0;
   ctx.chainTargetNotes.length = 0;
+  ctx.targetNotes.length = 0;
   ctx.pendingMoves.length = 0;
   ctx.moves.length = 0;
   if (!continuingSummon) clearSummonMaterials(ctx);
@@ -754,9 +783,42 @@ export function observeConfirmEvents(message: OcgMessage, cards: CardDatabase, c
   });
 }
 
+function zoneKeyOf(zone: DuelZoneRef): string {
+  return `${zone.controller}:${zone.location}:${zone.sequence}`;
+}
+
+/** The targets of a link as a phrase for the log: names of public cards, "a face-down card", or the count. */
+export function linkTargetPhrase(link: StoredChainLink): string {
+  return chainTargetPhrase(link.targets.map((zone) => link.targetLabels?.[zoneKeyOf(zone)]), link.targets.length);
+}
+
+/**
+ * Give each target of a link its public label from the notes the startup script printed (target-names.ts). The core
+ * may deliver a note in a later process call than the BECOME_TARGET message, so the engine calls this again after
+ * every call until it returns true (every target named). Only what the table can see is named.
+ */
+export function nameLinkTargets(ctx: EventContext, link: StoredChainLink, cards: CardDatabase): boolean {
+  let complete = true;
+  for (const zone of link.targets) {
+    const key = zoneKeyOf(zone);
+    if (link.targetLabels?.[key] != null) continue;
+    const at = ctx.targetNotes.findIndex((entry) => sameZone(entry, zone));
+    if (at < 0) {
+      complete = false;
+      continue;
+    }
+    const note = ctx.targetNotes.splice(at, 1)[0]!;
+    (link.targetLabels ??= {})[key] = publicTargetLabel({ location: note.location, position: note.position, name: cards.get(note.code)?.name });
+  }
+  return complete;
+}
+
+export function targetEventText(link: StoredChainLink): string {
+  return `Chain Link ${link.index} targets ${linkTargetPhrase(link)}`;
+}
+
 function targetEvent(link: StoredChainLink, id: number): StoredDuelEvent {
-  const count = link.targets.length;
-  const text = `Chain Link ${link.index} targets ${count} card${count === 1 ? "" : "s"}`;
+  const text = targetEventText(link);
   return { id, kind: "target", seat: link.seat, chainIndex: link.index,
     targets: link.targets.map(zoneOf), text, publicText: text, revealCardTo: "all" };
 }
@@ -765,18 +827,22 @@ function targetEvent(link: StoredChainLink, id: number): StoredDuelEvent {
  * ChangeTargetCard notes identify changes to earlier links; CHAIN_SOLVING is the fallback.
  * Keep this memory across waits; queries expose the source of each link but omit its targets.
  * Target updates contain only coordinates, so they cannot bypass the board's identity redaction. */
-export function observeChainTargetEvents(message: OcgMessage, chain: StoredChainLink[], id: number, ctx?: EventContext): StoredDuelEvent[] {
+export function observeChainTargetEvents(message: OcgMessage, chain: StoredChainLink[], id: number, ctx?: EventContext, cards?: CardDatabase): StoredDuelEvent[] {
   if (message.type === OcgMessageType.BECOME_TARGET) {
     const noteIndex = ctx?.resolving ? ctx.chainTargetNotes.findIndex((note) =>
       note.targets.length === message.cards.length && note.targets.every((zone) => message.cards.some((card) => sameZone(zone, card)))) : -1;
     const note = noteIndex >= 0 ? ctx!.chainTargetNotes.splice(noteIndex, 1)[0] : undefined;
     const link = ctx?.resolving ? chain[(note?.index ?? ctx.resolving.index) - 1] : chain.at(-1);
     if (!link) return [];
-    if (ctx?.resolving) link.targets = [];
+    if (ctx?.resolving) {
+      link.targets = [];
+      link.targetLabels = undefined;
+    }
     for (const card of message.cards) {
       const zone = zoneOf(card);
       if (!link.targets.some((target) => sameZone(target, zone))) link.targets.push(zone);
     }
+    if (ctx && cards) nameLinkTargets(ctx, link, cards);
     return [targetEvent(link, id)];
   }
 

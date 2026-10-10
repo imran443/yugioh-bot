@@ -617,3 +617,26 @@ describe("history: turn-start phases", () => {
     expect(view.groups[0].rows.map((row) => row.type)).toEqual(["entry"]);
   });
 });
+
+describe("history entries: chain link targets", () => {
+  const veiler: DuelEvent[] = [
+    { id: 1, kind: "activate", seat: 0, card: info(1, "Pot of Greed"), chainIndex: 1, text: "" },
+    { id: 2, kind: "activate", seat: 1, card: info(2, "Effect Veiler"), chainIndex: 2, text: "" },
+    { id: 3, kind: "target", seat: 1, chainIndex: 2, text: "Chain Link 2 targets Black Luster Soldier", targets: [zone(0, MZONE, 0)] },
+  ];
+
+  it("words the target of a link on its own entry, as a sentence and as a tag", () => {
+    const list = entries(veiler);
+    const link = list.find((entry) => entry.sentence.includes("Effect Veiler"))!;
+    expect(link.sentence).toContain("Chain link 2 of 2. Targeting Black Luster Soldier.");
+    expect(link.tags).toContainEqual({ label: "Targets Black Luster Soldier", tone: "chain", plain: true });
+    expect(list.find((entry) => entry.sentence.includes("Pot of Greed"))!.tags.some((tag) => tag.label.startsWith("Targets"))).toBe(false);
+  });
+
+  it("keeps the wording the engine gave for a hidden target and ignores an event that clears the targets", () => {
+    const hidden = entries([...veiler.slice(0, 2), { ...veiler[2]!, text: "Chain Link 2 targets a face-down card" }]);
+    expect(hidden.find((entry) => entry.sentence.includes("Effect Veiler"))!.sentence).toContain("Targeting a face-down card.");
+    const cleared = entries([...veiler, { id: 4, kind: "target", seat: 1, chainIndex: 2, text: "Chain Link 2 targets 0 cards", targets: [] }]);
+    expect(cleared.find((entry) => entry.sentence.includes("Effect Veiler"))!.sentence).toContain("Targeting Black Luster Soldier.");
+  });
+});

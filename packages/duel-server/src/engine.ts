@@ -39,10 +39,13 @@ import {
   isNoDuelist,
   moveReveals,
   nextBattleStep,
+  linkTargetPhrase,
+  nameLinkTargets,
   noteChainTargetLog,
   noteDestroyLog,
   noteDirectAttackTarget,
   noteReveal,
+  noteTargetCardLog,
   observeChainTargetEvents,
   observeDuelEvent,
   observeMoveEvents,
@@ -51,6 +54,7 @@ import {
   playerLabel,
   projectView,
   resetEventBatch,
+  targetEventText,
   type DomainSeatState,
   type LogEntry,
   type StoredChainLink,
@@ -389,7 +393,7 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
   let completingAttackPick = false;
   const errorHandler = (type: number, text: string) => {
     if (readAttackTargetQuery(text, attackTargetQuery)) return;
-    if (noteDestroyLog(eventContext, text) || noteChainTargetLog(eventContext, text)) return;
+    if (noteDestroyLog(eventContext, text) || noteChainTargetLog(eventContext, text) || noteTargetCardLog(eventContext, text)) return;
     scriptErrors.note(type, text);
   };
   const team = {
@@ -623,6 +627,38 @@ ${Array.from({ length: seatCount }, (_, seat) => `        Duel.ShuffleDeck(${sea
       : destroyedLogText(cards, line!.code, line!.zone.controller, format);
   };
 
+  // The seat whose single legal target the engine just chose for it (an automatic answer), until the target message arrives.
+  let autoPickSeat: number | null = null;
+  // Target lines whose names have not all arrived: the core can deliver a card's note in a later process call than the
+  // target message, so the lines are written now and their text is completed by settleTargetNames.
+  const unnamedTargets: Array<{ link: StoredChainLink; event: StoredDuelEvent; lines: Array<{ entry: LogEntry; text: (phrase: string) => string }> }> = [];
+  /** The log lines of a chain link's target: the public line, and a private note when the player had no choice. */
+  const logChainTarget = (event: StoredDuelEvent) => {
+    const link = event.chainIndex != null ? chainMemory.find((entry) => entry.index === event.chainIndex) : undefined;
+    if (!link) return;
+    const source = cards.get(link.code)?.name ?? `Card ${link.code}`;
+    const lines: Array<{ entry: LogEntry; text: (phrase: string) => string }> = [];
+    const add = (text: (phrase: string) => string, audience: "all" | number) => {
+      lines.push({ entry: appendLog(text(linkTargetPhrase(link)), audience), text });
+    };
+    add((phrase) => `Chain Link ${link.index}: ${source} targets ${phrase}`, "all");
+    if (autoPickSeat != null) {
+      add((phrase) => `Only legal target: ${phrase}`, autoPickSeat);
+      autoPickSeat = null;
+    }
+    if (!nameLinkTargets(eventContext, link, cards)) unnamedTargets.push({ link, event, lines });
+  };
+  const settleTargetNames = () => {
+    for (let index = unnamedTargets.length - 1; index >= 0; index -= 1) {
+      const pending = unnamedTargets[index]!;
+      if (!nameLinkTargets(eventContext, pending.link, cards)) continue;
+      pending.event.text = targetEventText(pending.link);
+      const phrase = linkTargetPhrase(pending.link);
+      for (const line of pending.lines) line.entry.text = line.text(phrase);
+      unnamedTargets.splice(index, 1);
+    }
+  };
+
   const recordEvent = (message: OcgMessage) => {
     // Moves first: a card's move precedes the summon/set/activate/destroy event it belongs to.
     for (const move of observeMoveEvents(message, cards, eventContext, nextEventId)) pushEvent(move);
@@ -645,7 +681,10 @@ ${Array.from({ length: seatCount }, (_, seat) => `        Duel.ShuffleDeck(${sea
       // Write the result at this message's position, with the assigned FX id for client-side holds.
       if (stored.kind === "toss") appendLog(stored.text).eventId = stored.id;
     }
-    for (const target of observeChainTargetEvents(message, chainMemory, nextEventId, eventContext)) pushEvent(target);
+    for (const target of observeChainTargetEvents(message, chainMemory, nextEventId, eventContext, cards)) {
+      pushEvent(target);
+      logChainTarget(target);
+    }
   };
 
   const pushEvent = (stored: StoredDuelEvent) => {
@@ -971,6 +1010,8 @@ ${Array.from({ length: seatCount }, (_, seat) => `        Duel.ShuffleDeck(${sea
     // Native materials move before position/place selection, so those prompts continue the same summon.
     const continuingSummon = pending?.message.type === OcgMessageType.SELECT_POSITION || pending?.message.type === OcgMessageType.SELECT_PLACE;
     resetEventBatch(eventContext, continuingSummon);
+    unnamedTargets.length = 0;
+    autoPickSeat = null;
     leftFieldLines.length = 0;
     let processCalls = 0;
     while (!result) {
@@ -1000,6 +1041,8 @@ ${Array.from({ length: seatCount }, (_, seat) => `        Duel.ShuffleDeck(${sea
         }
       }
       flushDeferredDestroys();
+      settleTargetNames();
+      autoPickSeat = null;
       const toleratedError = scriptErrors.drain().some(error => error.scriptErrorMode !== "strict");
       if (toleratedError && !scriptErrorEventSent) {
         scriptErrorEventSent = true;
@@ -1073,6 +1116,8 @@ ${Array.from({ length: seatCount }, (_, seat) => `        Duel.ShuffleDeck(${sea
       const automated = emptyAttackTargetResponse(next) ?? (next.attackTargetPick || completingAttackPick && (waiting.type === OcgMessageType.SELECT_CARD || waiting.type === OcgMessageType.SELECT_OPTION)
         ? null : autoResponse(next, { stopAtEveryWindow: options.settings?.stopAtEveryWindow, chainMode: chainModes[next.seat], phase }));
       if (automated) {
+        // The player had no choice: the core offered exactly one card to target. Say so once the target message arrives.
+        autoPickSeat = next.message.type === OcgMessageType.SELECT_CARD && next.message.min === 1 && next.message.max === 1 && next.prompt.options.length === 1 ? next.seat : null;
         respond(next, automated);
         continue;
       }

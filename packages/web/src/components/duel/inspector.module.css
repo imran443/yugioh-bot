@@ -146,6 +146,24 @@
   border-top: 1px solid var(--duel-rule-lo, rgb(181 153 99 / 0.17));
 }
 
+/* "Effects negated": the slashed circle of the card mark, in text colour, before the words. */
+.negatedLine {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--duel-unit, 1px));
+  color: var(--duel-ink, #efe7d5);
+}
+
+.negatedLine svg {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
 .pileTitle {
   margin: 0;
   padding-bottom: calc(6 * var(--duel-unit, 1px));

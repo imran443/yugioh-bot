@@ -7,7 +7,7 @@ import { ChainTower, DOCK_PANES, DOCK_PANES_CAMERA, GridDock, GridFlyout, useHud
 import { GridMasterToken } from "./grid-master";
 import { LOCATION_HAND } from "../constants";
 import type { EquipLinks } from "../equip-links";
-import { cardExtraLines } from "../inspector";
+import { cardExtraLines, NEGATED_LINE } from "../inspector";
 import { GridHoverPreview } from "./grid-preview";
 import type { DuelActivateHandler, InspectTarget } from "./types";
 
@@ -249,7 +249,12 @@ export interface HudLayerProps {
 
 export function HudLayer({ hud, panels, chain, chainOpen, nameOf, seatTones, logUnread, master, otherMaster = null, onInspect, preview, equipLinks, previewHidden, reducedMotion }: HudLayerProps) {
   const pinnedBoard = preview?.pinned === true && "location" in preview.card ? preview.card : null;
-  const extras = useMemo(() => (pinnedBoard ? cardExtraLines(pinnedBoard, equipLinks) : []), [pinnedBoard, equipLinks]);
+  // A hovered board card says only what the art already shows (negated); a pinned one adds its equip, counter and material lines.
+  const hoveredBoard = preview != null && !preview.pinned && "location" in preview.card ? preview.card : null;
+  const extras = useMemo(
+    () => (pinnedBoard ? cardExtraLines(pinnedBoard, equipLinks) : hoveredBoard?.negated === true ? [NEGATED_LINE] : []),
+    [pinnedBoard, hoveredBoard, equipLinks],
+  );
   // The X button: the pin goes. With the keyboard, focus returns to the card that was clicked (a mouse click would only bring the hover peek back).
   const { close, pinAnchor } = hud;
   const closePin = useCallback((byKeyboard: boolean) => {
