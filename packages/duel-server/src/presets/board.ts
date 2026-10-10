@@ -86,6 +86,8 @@ export interface BoardSpec {
    * when the duel starts, so a scenario can run the fallback of the overlay that an older core without the function would take.
    */
   withoutCoreFunctions?: string[];
+  /** Test only: ordinary Spell/Trap placements of monsters become Continuous Spells. Pendulum Zones retain their type. */
+  monstersAsContinuousSpells?: boolean;
   p0?: DuelistSetup;
   p1?: DuelistSetup;
   p2?: DuelistSetup;
@@ -166,6 +168,16 @@ export function compileBoard(board: BoardSpec, dir?: string): CompiledBoard {
       if (index > 4) throw new Error(`${id}.spells has ${index + 1} slots. Spell and Trap Zones are 0-4. Use field / pendulum for the others.`);
       const s = spec(entry);
       add(s.card, "LOCATION_SZONE", index, luaPos(s.pos, false), true);
+      if (board.monstersAsContinuousSpells) lua.push(`do
+        local c=Duel.GetFieldCard(${seat},LOCATION_SZONE,${index})
+        if c and c:IsOriginalType(TYPE_MONSTER) then
+          local e=Effect.CreateEffect(c)
+          e:SetType(EFFECT_TYPE_SINGLE); e:SetCode(EFFECT_CHANGE_TYPE)
+          e:SetProperty(EFFECT_FLAG_CANNOT_DISABLE)
+          e:SetValue(TYPE_SPELL|TYPE_CONTINUOUS); e:SetReset(RESET_EVENT|(RESETS_STANDARD&~RESET_TURN_SET))
+          c:RegisterEffect(e)
+        end
+      end`);
     });
     if (setup.field) {
       const s = spec(setup.field);

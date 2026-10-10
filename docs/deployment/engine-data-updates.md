@@ -613,3 +613,47 @@ unchanged dependency bytes keep the block. Fixes to a recorded helper, overlay-o
 transform fixes also say **auto block will lift** for their engine scope. Manual blocks still win. The snapshot is
 advisory and can become stale before deployment. Existing live-duel drain and replay
 loss warnings for bundle updates still apply; admission auto blocks do not alter them.
+
+## New card engine smoke hook
+
+After candidate preparation and pinned-core assembly, the weekly data PR should run the new card engine smoke test. The prepare-time preview check loads `initial_effect`; this command also plays short duels and resolves offered effects. Add this hook after `npm run duel:prepare` and the Standard/Domain core builds, before the PR report is published. The workflow file is maintained separately.
+
+Use Node 22 and the candidate job's `DUEL_DATA_DIR`. Keep the previous and candidate bundles in separate job-local directories. Compare both installed bundles when available:
+
+```bash
+prlimit --core=0 -- npx tsx packages/duel-server/scripts/new-card-smoke.ts \
+  --from-bundle "$PREVIOUS_DUEL_DATA_DIR" --to-bundle "$DUEL_DATA_DIR" \
+  --jobs 4 --shard "$SMOKE_SHARD" --output ".status/new-card-smoke-${SMOKE_SHARD%/*}"
+```
+
+Use a CI matrix with `SMOKE_SHARD=1/4`, `2/4`, `3/4`, and `4/4` for a normal update of about 150 changed cards plus the 150-card helper sample. Four shards average 75 cards each, leaving headroom around the target of 90 cards per shard. For larger selections, increase the matrix count to approximately `ceil(card_count / 90)` and allow for hash distribution. Each passcode belongs to exactly one shard by a stable SHA-256 hash; every shard must use the same selection and shard count. Publish every shard report and aggregate its counts.
+
+The default card list includes new rows, changed card text or stats, and changed resolved Lua scripts. A shared helper change adds a fixed sample of up to 150 unchanged cards across card types (seed 20261010). Tokens are excluded from the comparison. Removed cards have no candidate engine path and are not tested. Alternate artwork passcodes and retained previews are included.
+
+If the previous bundle is unavailable, use repository Git refs that contain the old and candidate data pins:
+
+```bash
+prlimit --core=0 -- npx tsx packages/duel-server/scripts/new-card-smoke.ts \
+  --from-pin origin/main --to-pin HEAD --jobs 4 --shard "$SMOKE_SHARD" --output ".status/new-card-smoke-${SMOKE_SHARD%/*}"
+```
+
+`--from-pin` and `--to-pin` also accept JSON pin files with `scripts`, `database`, and `strings` fields, or bundle manifests with those fields in `sources`. The candidate pins must match the prepared bundle. The command downloads the old pinned rows and scripts into a temporary system comparison directory, then deletes them. With no card-selection flags, it compares `origin/main` pins to the prepared bundle's pins. No changed cards produces an empty report.
+
+For an explicit set or card list (run both `1/2` and `2/2` for the full BETB set, with distinct output prefixes):
+
+```bash
+prlimit --core=0 -- npx tsx packages/duel-server/scripts/new-card-smoke.ts \
+  --set BETB --multi-angelechy --jobs 4 --shard 1/2 --output .status/betb-smoke-1
+prlimit --core=0 -- npx tsx packages/duel-server/scripts/new-card-smoke.ts \
+  --cards 101402090,101402095 --output .status/angelechy-smoke
+```
+
+`--set` reads product membership from the pinned release and prerelease CDB source files listed in the bundle manifest. It does not use the archetype numbers in `datas.setcode`. For BETB, exclude the two token rows and retain all four alternate artworks: this yields 84 released rows plus 16 preview rows, including all seven Angelechy cards. Do not select only official scripts. A source passcode absent from the prepared bundle stops the command, so preparation exclusions cannot hide missing set coverage.
+
+The runner uses `compileBoard`, deterministic scripted choices, and the pinned engine host. It starts the card in hand, field, GY, banishment, Deck, or Extra Deck, with set and Pendulum setups where applicable. Xyz field setups have materials. Support boards have monsters, simple responses, and cards in the Deck/GY; legal archetype companions in the Deck, GY, and Extra Deck help meet basic conditions. Text that places monsters as Continuous Spells adds Spell & Trap Zone setups; threshold effects get a board with up to five such cards. Domain boards use a legal generic Deck Master. The runner tries distinct offered effects and card-bound operation modes. It retries uncovered modes in fresh duels. Printed "●" groups are compared with the runtime branches of their uniquely matched parent effects, so unrelated helper choices cannot cover a missing printed branch. Ambiguous matches retain the total lower bound and add a WARN reason. Coverage stays separate for each core and format. Each completed case replays its accepted answers and compares every viewer's state. The checks cover Lua errors, host exceptions, unanswered prompts, repeated states, card conservation, integer LP, viewer privacy, and turn/response order. Card counts are checked after pending summon placement because the query API cannot show materials in transit.
+
+The default pool has four processes (maximum eight), a 30-second case watchdog, a 60-second card budget per requested format, and a nine-minute suite limit shared with card selection. The answer limit is 120 per seat (240 for 1v1); the turn limit is one full table rotation plus one turn. A timed-out case is stopped and queued until all ordinary workers have exited. Retry that exact setup and seed once alone before reporting FAIL; a successful confirmation resumes the remaining setups without rerunning completed cases. The confirmation shares the suite deadline and gets a fresh card budget. If a time budget prevents the confirmation from completing, retain the case as FAIL with "case timeout not confirmed" and exit 1. Coverage retries never repeat a completed setup/seed pair. A synchronous Lua/core stall is stopped by its process watchdog; the next card starts in a fresh process. The optional `--multi-cards` or `--multi-angelechy` flags add FFA3 and FFA4 in Standard and Domain for only those cards. Install `ocgcore.multi.wasm`, `ocgcore.multi-domain.wasm`, and the prepared multiplayer overlay first. The Angelechy Castellan FFA4 side-opponent geometry ruling remains open; a smoke PASS does not close that case.
+
+Publish both `.status/new-card-smoke-<i>.json` and `.status/new-card-smoke-<i>.md` for every one-based shard index `<i>` as PR artifacts and include the Markdown counts/table in the weekly report. JSON retains every case, seed, core hash, offered/attempted effects, failure reason, execution limits, and CLI arguments. Replay an exact case with `--cards PASSCODE --case CASE_ID --seed CASE_SEED`, using its case ID and seed from JSON and the same bundle and limits. FFA case IDs automatically select the multiplayer cores. Exit `1` means at least one FAIL, even if the report is also incomplete; exit `2` means an input, download, or infrastructure error; exit `3` means an incomplete time budget with no FAIL; PASS/WARN exits `0`. The hook should block a candidate on exits `1` and `2`, report exit `3` without blocking, and retain its report even on a nonzero exit. WARN means a registered effect or declared operation branch has not resolved in every requested core/format; review it and add an exact ruling scenario when needed. The tool does not update manual blocks or production telemetry. A PASS requires all registered activated effects and declared selection branches to finish on a resolved chain in each requested core/format. Passive effects and rulings require separate tests.
+
+Case watchdog failures, unconfirmed case timeouts, and engine errors exit 1. Aggregate card/suite deadlines list unfinished passcodes and exit 3 only when there is no FAIL or unconfirmed case timeout; untested cards are never labeled FAIL.

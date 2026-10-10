@@ -72,7 +72,7 @@ const result =
         [
           "run",
           "--rm",
-          "--ulimit", "core=1:1",
+          "--ulimit", "core=0:0",
           ...(process.getuid && process.getgid ? ["--user", `${process.getuid()}:${process.getgid()}`] : []),
           "-v",
           `${worktree}:/src`,
