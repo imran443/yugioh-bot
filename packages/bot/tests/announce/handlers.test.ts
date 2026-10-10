@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { migrate } from "../../src/db/schema.js";
 import { createDraftService, createGuildSettingsService, createMatchService } from "@yugidraft/shared/services";
 import { ChannelType } from "discord.js";
+import { forkEventFixture } from "../helpers/replay-fork-events.js";
 import { createAnnounceHandlers } from "../../src/announce/handlers.js";
 
 beforeEach(() => vi.stubEnv("DISCORD_BOT_ENABLED", "1"));
@@ -252,8 +253,11 @@ describe("announce handlers", () => {
   });
 
   describe("duel invite DM", () => {
+    const databases: Database.Database[] = [];
+    afterEach(() => { for (const db of databases.splice(0)) db.close(); });
     const invite = {
-      guildId: "g1",
+      duelId: 1, slug: "abc",
+      guildId: "fork-events-test",
       opponentDiscordUserId: "900000000000000111",
       challengerName: "Yugi",
       duelName: "Yugi vs Kaiba",
@@ -264,9 +268,11 @@ describe("announce handlers", () => {
     };
 
     function build(users: unknown) {
+      const { db, source } = forkEventFixture(); databases.push(db);
+      db.prepare("update duels set web_slug='abc' where id=?").run(source.id);
       return createAnnounceHandlers({
         client: { channels: { fetch: vi.fn() }, users } as any,
-        db: { prepare: vi.fn() } as any,
+        db,
         guildSettings: {} as any,
         drafts: {} as any,
         messenger: {} as any,

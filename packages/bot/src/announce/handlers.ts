@@ -1,7 +1,7 @@
 import { ChannelType, type Client } from "discord.js";
 import type Database from "better-sqlite3";
 import type { DraftMessenger } from "../commands/handlers.js";
-import { createDraftLobbyService, isTestBotDiscordId, type DraftLobbyService } from "@yugidraft/shared/services";
+import { assertDuelInviteTarget, createDraftLobbyService, isTestBotDiscordId, type DraftLobbyService } from "@yugidraft/shared/services";
 import type { DraftService } from "../services/drafts.js";
 import type { AnnounceHandlers } from "./server.js";
 import type { GuildSettingsService } from "@yugidraft/shared/services";
@@ -166,7 +166,9 @@ export function createAnnounceHandlers({
       await announceTournamentCompleted(client, db, guildSettings, tournamentId);
     },
 
-    async onDuelInvite({ opponentDiscordUserId, challengerName, duelName, bestOf, ranked, tournamentName, url }) {
+    async onDuelInvite(payload) {
+      assertDuelInviteTarget(db, payload);
+      const { opponentDiscordUserId, challengerName, duelName, bestOf, ranked, tournamentName, url } = payload;
       // A closed DM or an unknown user must not fail the announce call.
       try {
         const user = await client.users.fetch(opponentDiscordUserId);

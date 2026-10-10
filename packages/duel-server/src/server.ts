@@ -1,3 +1,4 @@
+import { findDuelEventTarget } from "@yugidraft/shared/services";
 import { config } from "dotenv";
 import { createServer, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
@@ -45,7 +46,9 @@ const host = createDuelHost({
   presetIssues,
   searchCards: (query) => cards.search(query),
   onChange: async (slug, guildId) => {
-    await wsTransport.post("/internal/duel/changed", JSON.stringify({ slug, guildId }));
+    const target = findDuelEventTarget(db, slug, guildId);
+    if (!target) return;
+    await wsTransport.post("/internal/duel/changed", JSON.stringify({ slug: target.slug, guildId: target.guildId }));
   },
   notifyTournament: async ({ kind, slug }) => {
     await broadcaster.tournament({ kind, slug });

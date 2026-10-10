@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({ actor: vi.fn(), host: vi.fn(), room: vi.fn() }
 vi.mock("@/lib/duel-host", () => ({ requireDuelActor: mocks.actor, callDuelHost: mocks.host,
   redactDuelResult: (data: unknown) => data,
   duelErrorResponse: () => NextResponse.json({ error: "Forbidden" }, { status: 403 }) }));
+vi.mock("@/lib/replay-fork-access", () => ({ assertDuelForkAccess: () => ({ kind: "play" }) }));
 vi.mock("@/lib/env", () => ({ env: { wsInternalSecret: "spectator-token-test" } }));
 import { GET as roomGet } from "../app/api/duels/[slug]/route";
 import { GET as connectionGet } from "../app/api/duels/[slug]/connection/route";

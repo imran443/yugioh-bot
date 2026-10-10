@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import type { AnnouncePayload } from "@yugidraft/shared/notify";
+import { isDuelInviteReference, type AnnouncePayload } from "@yugidraft/shared/notify";
 import { verifyAnnounceSignature } from "./auth.js";
 
 export type { AnnouncePayload };
@@ -49,6 +49,9 @@ export function createAnnounceServer(opts: {
     }
     let parsed: unknown;
     try { parsed = JSON.parse(body); } catch { return new Response("Bad JSON", { status: 400 }); }
+    if (url.pathname === "/internal/announce/duel-invite" && !isDuelInviteReference(parsed)) {
+      return new Response("Bad duel reference", { status: 400 });
+    }
     try {
       await routes[url.pathname](parsed);
       return new Response(null, { status: 204 });
