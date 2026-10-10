@@ -104,7 +104,7 @@ describe("createInternalHttpHandler", () => {
 
   it("emits public duel:changed to the guild-scoped room", async () => {
     const { io, to, emit } = makeIo();
-    const handle = createInternalHttpHandler({ io: io as unknown as TypedServer, secret: SECRET });
+    const handle = createInternalHttpHandler({ io: io as unknown as TypedServer, secret: SECRET, beforeDuelBroadcast: () => true });
     const res = await handle(
       makeRequest("/internal/duel/changed", {
         slug: "abc",
@@ -162,4 +162,13 @@ describe("createInternalHttpHandler", () => {
       expect(emit).not.toHaveBeenCalled();
     });
   });
+});
+
+it("refuses duel broadcasts without a database guard or when the guard fails", async () => {
+  const { io, emit } = makeIo();
+  const request = () => makeRequest("/internal/duel/changed", { slug: "fork", guildId: "g" });
+  expect((await createInternalHttpHandler({ io: io as any, secret: SECRET })(request())).status).toBe(503);
+  expect((await createInternalHttpHandler({ io: io as any, secret: SECRET, beforeDuelBroadcast: () => false })(request())).status).toBe(404);
+  expect((await createInternalHttpHandler({ io: io as any, secret: SECRET, beforeDuelBroadcast: () => { throw new Error("Unavailable"); } })(request())).status).toBe(503);
+  expect(emit).not.toHaveBeenCalled();
 });

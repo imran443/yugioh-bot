@@ -103,6 +103,8 @@ type BroadcastOptions = {
   secret: string;
   beforeDraftBroadcast?: (slug: string) => void;
   beforeTournamentBroadcast?: (slug: string) => void;
+  /** Check the stored target and prune unauthorized subscriptions before duel events. */
+  beforeDuelBroadcast?: (slug: string, guildId: string) => boolean;
 };
 
 export function createInternalHttpHandler(opts: BroadcastOptions) {
@@ -216,6 +218,10 @@ export function createInternalHttpHandler(opts: BroadcastOptions) {
       case "/internal/duel/changed": {
         const data = parseDuelChanged(parsed);
         if (!data) return new Response("Bad payload", { status: 400 });
+        if (!opts.beforeDuelBroadcast) return new Response("Duel access unavailable", { status: 503 });
+        try {
+          if (!opts.beforeDuelBroadcast(data.slug, data.guildId)) return new Response("Not found", { status: 404 });
+        } catch { return new Response("Duel access unavailable", { status: 503 }); }
         opts.io.to(`duel:${data.guildId}:${data.slug}`).emit("duel:changed", { slug: data.slug });
         return new Response(null, { status: 204 });
       }

@@ -7,7 +7,7 @@ import { registerDuelEventHandlers } from "./duel-events.js";
 import { presenceHeartbeat } from "./socket-options.js";
 import { listenInternalHttp } from "./internal-http.js";
 import type { TypedServer } from "./events.js";
-import { createDraftAccessReader, createTournamentAccessReader } from "@yugidraft/shared/services";
+import { createDraftAccessReader, createTournamentAccessReader, createDuelAccessReader } from "@yugidraft/shared/services";
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
 const WS_PORT = Number(process.env.WS_PORT ?? 3001);
@@ -23,6 +23,8 @@ const io: TypedServer = new Server(httpServer, {
 const roomManager = new DraftRoomManager();
 const draftAccess = createDraftAccessReader();
 const tournamentAccess = createTournamentAccessReader();
+const duelAccess = createDuelAccessReader();
+httpServer.on("close", () => duelAccess.close());
 httpServer.on("close", () => tournamentAccess.close());
 httpServer.on("close", () => draftAccess.close());
 const draftEvents = registerEventHandlers(io, roomManager, {
@@ -30,7 +32,7 @@ const draftEvents = registerEventHandlers(io, roomManager, {
   canReadDraft: draftAccess.canReadDraft,
   canReadTournament: tournamentAccess.canReadTournament,
 });
-registerDuelEventHandlers(io, { secret: WS_INTERNAL_SECRET });
+const duelEvents = registerDuelEventHandlers(io, { secret: WS_INTERNAL_SECRET, canReadDuel: duelAccess.canReadDuel });
 
 httpServer.listen(WS_PORT, () => {
   console.log(`[ws] Socket.IO server listening on port ${WS_PORT}`);
@@ -42,6 +44,10 @@ if (WS_INTERNAL_SECRET) {
     io, secret: WS_INTERNAL_SECRET, port: WS_INTERNAL_PORT,
     beforeDraftBroadcast: draftEvents.pruneDraftRoom,
     beforeTournamentBroadcast: draftEvents.pruneTournamentRoom,
+    beforeDuelBroadcast: (slug, guildId) => {
+      duelEvents.pruneDuelRoom(slug, guildId);
+      return duelAccess.findDuelEventTarget(slug, guildId) !== null;
+    },
   });
 } else {
   console.warn("[ws] WS_INTERNAL_SECRET not set - broadcast endpoint disabled");

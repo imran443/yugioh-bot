@@ -1,9 +1,9 @@
-import { verifyDuelConnectionToken } from "@yugidraft/shared/ws";
+import { verifyDuelConnectionToken, type DuelConnectionTokenClaims } from "@yugidraft/shared/ws";
 import type { TypedServer, TypedSocket } from "./events.js";
 
-type Occupant = { playerId: number; seat: number | null; observe: boolean; visible: boolean };
+type Occupant = { socket: TypedSocket; observe: boolean; visible: boolean };
 
-export function registerDuelEventHandlers(io: TypedServer, opts: { secret: string }): void {
+export function registerDuelEventHandlers(io: TypedServer, opts: { secret: string; canReadDuel: (claims: DuelConnectionTokenClaims) => boolean }) {
   const occupancy = new Map<string, Map<string, Occupant>>();
   const expiryTimers = new Map<string, NodeJS.Timeout>();
 
@@ -13,15 +13,17 @@ export function registerDuelEventHandlers(io: TypedServer, opts: { secret: strin
     const members = occupancy.get(roomKey);
     if (members) {
       for (const member of members.values()) {
-        if (member.observe || !member.visible) continue;
-        if (member.seat === null) spectators.add(member.playerId);
-        else seats.add(member.seat);
+        const claims = member.socket.data.duel;
+        if (!claims || member.observe || !member.visible) continue;
+        if (claims.seat === null) spectators.add(claims.playerId);
+        else seats.add(claims.seat);
       }
     }
     return { onlineSeats: [...seats].sort((a, b) => a - b), spectatorCount: spectators.size };
   }
 
-  function emitPresence(roomKey: string, slug: string): void {
+  function emitPresence(roomKey: string, slug: string, guildId: string): void {
+    pruneDuelRoom(slug, guildId);
     const snapshot = presenceSnapshot(roomKey);
     io.to(roomKey).emit("duel:presence", {
       slug,
@@ -30,7 +32,7 @@ export function registerDuelEventHandlers(io: TypedServer, opts: { secret: strin
     });
   }
 
-  function detachSocket(socket: TypedSocket, reason: "leave" | "expired"): void {
+  function detachSocket(socket: TypedSocket, reason: "leave" | "expired", announce = true): void {
     const timer = expiryTimers.get(socket.id);
     if (timer) {
       clearTimeout(timer);
@@ -47,7 +49,21 @@ export function registerDuelEventHandlers(io: TypedServer, opts: { secret: strin
     if (reason === "expired") {
       socket.emit("duel:subscription-expired", { slug: membership.slug });
     }
-    emitPresence(roomKey, membership.slug);
+    if (announce) emitPresence(roomKey, membership.slug, membership.guildId);
+  }
+
+  function authorized(claims: DuelConnectionTokenClaims): boolean {
+    try { return claims.expiresAt > Date.now() && opts.canReadDuel(claims); } catch { return false; }
+  }
+
+  /** Remove revoked or expired identities before any room event can reach them. */
+  function pruneDuelRoom(slug: string, guildId: string): void {
+    const members = occupancy.get(`duel:${guildId}:${slug}`);
+    if (!members) return;
+    for (const member of [...members.values()]) {
+      const claims = member.socket.data.duel;
+      if (!claims || !authorized(claims)) detachSocket(member.socket, "expired", false);
+    }
   }
 
   io.on("connection", (socket: TypedSocket) => {
@@ -63,6 +79,12 @@ export function registerDuelEventHandlers(io: TypedServer, opts: { secret: strin
           ack?.({ ok: false, error: "invalid token" });
           return;
         }
+        if (!authorized(claims)) {
+          const previous = socket.data.duel;
+          if (previous) pruneDuelRoom(previous.slug, previous.guildId);
+          ack?.({ ok: false, error: "access denied" });
+          return;
+        }
         // Renew in place: briefly detaching would emit a false "away" on every renewal.
         const previous = socket.data.duel;
         if (previous && (previous.guildId !== claims.guildId || previous.slug !== claims.slug)) detachSocket(socket, "leave");
@@ -74,7 +96,7 @@ export function registerDuelEventHandlers(io: TypedServer, opts: { secret: strin
           members = new Map();
           occupancy.set(roomKey, members);
         }
-        members.set(socket.id, { playerId: claims.playerId, seat: claims.seat,
+        members.set(socket.id, { socket,
           observe: payload.observe === true, visible: payload.visible !== false });
         socket.data.duel = {
           slug: claims.slug,
@@ -94,9 +116,10 @@ export function registerDuelEventHandlers(io: TypedServer, opts: { secret: strin
             detachSocket(socket, "expired");
           }, delay),
         );
+        pruneDuelRoom(claims.slug, claims.guildId);
         const snapshot = presenceSnapshot(roomKey);
         ack?.({ ok: true, onlineSeats: snapshot.onlineSeats, spectatorCount: snapshot.spectatorCount });
-        emitPresence(roomKey, claims.slug);
+        emitPresence(roomKey, claims.slug, claims.guildId);
       } catch (err) {
         console.error(`[ws] duel:join error for ${socket.id}`, err);
         ack?.({ ok: false, error: "join failed" });
@@ -117,11 +140,12 @@ export function registerDuelEventHandlers(io: TypedServer, opts: { secret: strin
       const member = occupancy.get(roomKey)?.get(socket.id);
       if (!member || member.observe || member.visible === payload.visible) return;
       member.visible = payload.visible;
-      emitPresence(roomKey, membership.slug);
+      emitPresence(roomKey, membership.slug, membership.guildId);
     });
 
     socket.on("disconnecting", () => {
       if (socket.data.duel) detachSocket(socket, "leave");
     });
   });
+  return { pruneDuelRoom };
 }
