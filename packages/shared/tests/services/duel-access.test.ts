@@ -67,3 +67,10 @@ it("fails closed when the database is missing", () => {
     expect(reader.findDuelEventTarget(app.forkSlug, app.guildId)).toBeNull();
   } finally { reader.close(); }
 });
+
+it("keeps public socket access for legacy play rows with null settings", () => {
+  app.db.prepare("update duels set settings_json=null where id=?").run(app.source.id);
+  expect(app.duels.room(app.source.slug, app.guildId, app.sourcePlayer.playerId).session.settings.visibility).toBe("public");
+  expect(access.canReadDuel(app.db, claims(app.source.slug, app.sourcePlayer))).toBe(true);
+  expect(access.canReadDuel(app.db, claims(app.source.slug, app.alpha, null))).toBe(true);
+});

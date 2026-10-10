@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { isOwnerUser } from "../access/owner-access.js";
 import { isDuelKind, isDuelKindSetup, isReplayFork, isDuelFormat, type DuelKind, type ReplayForkSetup } from "../duels/index.js";
+import { parseStoredDuelSettings } from "../duels/settings.js";
 import type { DuelConnectionTokenClaims } from "../ws/duel-token.js";
 import { isDuelInviteReference } from "../notify/announce-payload.js";
 import { resolveDraftDatabasePath } from "./draft-access.js";
@@ -14,7 +15,7 @@ export interface DuelEventTarget {
 }
 
 type AccessRow = { id: number; web_slug: string; guild_id: string; kind: unknown; setup_json: string | null;
-  format: unknown; settings_json: string; organizer_player_id: number };
+  format: unknown; settings_json: string | null; organizer_player_id: number };
 
 function loadTarget(db: Database.Database, slug: string, guildId: string): { row: AccessRow; target: DuelEventTarget } | null {
   if (typeof slug !== "string" || !slug || typeof guildId !== "string" || !guildId) return null;
@@ -48,10 +49,8 @@ export function canReadDuel(db: Database.Database, claims: Pick<DuelConnectionTo
     if (isReplayFork(target)) return claims.seat === 0 && seat?.seat === 0
       && row.organizer_player_id === claims.playerId && target.ownerUserId === player.user_id && isOwnerUser(player.user_id);
     if (claims.seat !== null && claims.seat !== seat?.seat) return false;
-    const settings: unknown = JSON.parse(row.settings_json);
-    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return false;
-    if (!("visibility" in settings) || settings.visibility === "public") return true;
-    if (settings.visibility !== "private") return false;
+    const settings = parseStoredDuelSettings(row.settings_json);
+    if (settings.visibility === "public") return true;
     return row.organizer_player_id === claims.playerId || seat !== undefined
       || !!db.prepare("select 1 from duel_invite_grants where duel_id=? and player_id=?").get(row.id, claims.playerId);
   } catch { return false; }
