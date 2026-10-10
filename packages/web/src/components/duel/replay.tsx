@@ -26,6 +26,7 @@ import {
   useReplayController,
   useReplayData,
 } from "./replay-controller";
+import { ReplayFfa, isFfaFormat } from "./replay-ffa";
 import { buildReplayTimeline, type ReplayLogEntry } from "./replay-timeline";
 import { formatLabel } from "./table-format";
 import type { TableController } from "./table/types";
@@ -189,6 +190,15 @@ export function DuelReplayView({ slug }: { slug: string }) {
   const resultHeadline = replayResultHeadline(session, result, playerName);
   const multiSeat = seatCount > 2;
   const canSwitchCards = model.version === 2 && model.mySeat != null;
+
+  // 3-way and 4-way free-for-all tables draw every field in the shared table shell (replay mode).
+  if (isFfaFormat(session.format)) {
+    return (
+      <ReplayFfa slug={slug} model={model} frames={model.frames} engine={engine} controller={controller} preferences={preferences}
+        visibility={visibility} canSwitchCards={canSwitchCards} onVisibility={changeVisibility} notice={notice}
+        newLines={newLines} onCamera={() => { setInspect(null); setHover(null); setFocusChoice(null); }} />
+    );
+  }
 
   function showInspector(target: InspectTarget, mobile = false) {
     setInspect(target);
