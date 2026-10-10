@@ -2,7 +2,7 @@ name: Engine data update
 
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * 1,4"
   workflow_dispatch:
     inputs:
       scripts:
@@ -115,7 +115,7 @@ jobs:
 
   prepare:
     needs: prod-errors
-    # An optional export or artifact failure must never prevent weekly preparation.
+    # An optional export or artifact failure must never prevent scheduled preparation.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
