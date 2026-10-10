@@ -16,6 +16,19 @@ import { normalizeDuelSettings } from "@yugidraft/shared/duels";
 import { openDatabase } from "@yugidraft/shared/db";
 import { createCardCatalogService } from "@yugidraft/shared/services";
 
+// Synthetic CDBs must not consume the production remap policy or Git history.
+// Override cases supply their own exact overrideBytes and historical identities.
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, readFile: (...args: Parameters<typeof actual.readFile>) =>
+    String(args[0]).endsWith("/card-remap-overrides.json")
+      ? Promise.resolve("{}\n") : actual.readFile(...args) };
+});
+vi.mock("../scripts/prerelease-history.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../scripts/prerelease-history.js")>();
+  return { ...actual, prereleaseHistory: async () => ({ cards: [], transitions: [] }) };
+});
+
 const roots: string[] = [];
 const root = () => { const dir = mkdtempSync(join(tmpdir(), "released-data-test-")); roots.push(dir); return dir; };
 afterEach(() => { roots.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })); vi.unstubAllEnvs(); vi.useRealTimers(); vi.restoreAllMocks(); });

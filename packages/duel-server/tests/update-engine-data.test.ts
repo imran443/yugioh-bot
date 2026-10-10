@@ -16,6 +16,15 @@ import { withCardUpdate } from "../scripts/engine-data-card-report.js";
 import * as smoke from "../scripts/prerelease-script-smoke.js";
 import * as probe from "../scripts/probe-engine-data.js";
 
+// Mocked upstream CDBs have no production BETB identities. Explicit policy tests
+// belong to released-card-data.test.ts; this suite exercises the updater.
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, readFile: (...args: Parameters<typeof actual.readFile>) =>
+    String(args[0]).endsWith("/card-remap-overrides.json")
+      ? Promise.resolve("{}\n") : actual.readFile(...args) };
+});
+
 const oldPins: Pins = { scripts: "a".repeat(40), database: "b".repeat(40), strings: "c".repeat(40) };
 const nextPins: Pins = { scripts: "d".repeat(40), database: "e".repeat(40), strings: "f".repeat(40) };
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");

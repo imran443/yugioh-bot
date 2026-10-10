@@ -1,11 +1,34 @@
 import { readFileSync } from "node:fs";
 import type { DuelEngineView, DuelFormat } from "@yugidraft/shared/duels";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { playDuel } from "./fuzz-n/driver.js";
 import { CHECKS, NChecker } from "./fuzz-n/invariants.js";
 import { currentDomainMultiWasm, describeWithCores, needs } from "./support/cores.js";
 import { liveNseat } from "./support/live-nseat.js";
 import { engineDataDirectory } from "./engine-data-dir.js";
+
+// Catalog growth changes generated decks even with the same seed. Pin this
+// coverage fixture, while keeping the real engine, random answers and checker.
+// Inaba White Rabbit returns to hand in the End Phase after its Normal Summon,
+// giving recall opportunities without relying on opponents destroying a master.
+vi.mock("./fuzz-n/decks.js", () => ({
+  buildSeatDecks: (_catalog: unknown, _rng: unknown, _mode: unknown, seats: number) => {
+    const cards = [
+      // Low-level Normal Monsters: no summon prerequisites or effect loops.
+      5053103, 15025844, 21844576, 32452818, 38289717, 40374923,
+      53829412, 66602787, 67724379, 69247929, 84327329, 91152256,
+      // Removal and draw keep real battles and chains in the fuzz run.
+      12580477, 53129443, 55144522, 44095762, 94192409, 5318639, 19613556, 83764718,
+    ];
+    return {
+      decks: Array.from({ length: seats }, () => ({
+        main: cards.flatMap((code) => [code, code, code]), extra: [], side: [], deckMaster: 77084837,
+      })),
+      notes: Array.from({ length: seats }, () => "Fixed Spirit Deck Master recall fixture"),
+      disjoint: false,
+    };
+  },
+}));
 
 function responseOrderViolations(format: DuelFormat, turnSeat: number, responses: number[]) {
   const n = format === "ffa3" ? 3 : 4;
