@@ -1336,7 +1336,8 @@ export function createDuelHost(options: {
     if (reason !== TIME_LIMIT_REASON) throw new RequestError("This engine cannot eliminate a surrendering duelist", 409);
     if (!entry.surrendered.has(seat)) {
       entry.surrendered.add(seat);
-      service.setSetup(slug, guildId, { ...(state.setup ?? {}), surrenderedSeats: [...entry.surrendered].sort((a, b) => a - b) });
+      const { engineIdentity: _identity, ...setup } = state.setup ?? {};
+      service.setSetup(slug, guildId, { ...setup, surrenderedSeats: [...entry.surrendered].sort((a, b) => a - b) });
     }
     if (state.clock) service.setClock(slug, guildId, stopSeatClock(state.clock, seat, now()));
     const view = await game.view(0);
@@ -1637,8 +1638,7 @@ export function createDuelHost(options: {
         throw new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
       }
       const clock = startDecisionClock(await readClockView(game, seatCount), settings.turnSeconds, now(), seatCount);
-      service.activate(slug, guildId, actor, seed, resources.bundleVersion, clock, {
-        engineIdentity: resources.identity,
+      service.activateRecorded(slug, guildId, actor, seed, resources.bundleVersion, clock, {
         firstTurnDraw,
         scriptErrorMode,
         scenarioId: preset.id,
@@ -1646,7 +1646,7 @@ export function createDuelHost(options: {
         startupScripts: scripts,
         botPolicies,
         ...(preset.format === "1v1" ? { engine: "pinned" as const } : {}),
-      });
+      }, resources.identity);
       games.set(slug, {
         game,
         lastRequestAt: now(),
@@ -2138,9 +2138,9 @@ export function createDuelHost(options: {
       ));
       const clock = startDecisionClock(await readClockView(game, seatCount), settings.turnSeconds, now(), seatCount);
       // The engine is saved with the duel, so a recover and a replay use it even after DUEL_1V1_ENGINE changes.
-      service.activate(slug, guildId, organizer, seed, resources.bundleVersion, clock, {
-        ...(state.setup ?? {}), engineIdentity: resources.identity, firstTurnDraw, scriptErrorMode, ...(engine ? { engine } : {}),
-      });
+      service.activateRecorded(slug, guildId, organizer, seed, resources.bundleVersion, clock, {
+        ...(state.setup ?? {}), firstTurnDraw, scriptErrorMode, ...(engine ? { engine } : {}),
+      }, resources.identity);
       games.set(slug, { game, lastRequestAt: now(), guildId, surrendered: new Set(), policies: new Map(), traces: new Map() });
       await emitChange(slug, guildId);
       await driveBot(slug, guildId, game);

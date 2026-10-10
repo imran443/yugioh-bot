@@ -66,43 +66,58 @@ const identity: EngineIdentity = {
 };
 
 describe("recorded engine identity", () => {
+  it("rejects identity in a normal activation setup", () => {
+    const { duels, session, creator } = setup("1v1");
+    expect(() => duels.activate(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null, {
+      engineIdentity: identity,
+    })).toThrow(/Unknown duel setup field: engineIdentity/);
+    expect(duels.get(session.slug, "test-guild").status).toBe("lobby");
+  });
+
   it("stores server identity atomically at activation and keeps it private", () => {
     const { duels, session, creator } = setup("1v1");
-    duels.activate(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null, {
-      engine: "pinned", engineIdentity: identity, firstTurnDraw: false, scriptErrorMode: "tolerant",
-    });
+    duels.activateRecorded(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null, {
+      engine: "pinned", firstTurnDraw: false, scriptErrorMode: "tolerant",
+    }, identity);
     expect(duels.privateState(session.slug, "test-guild").setup?.engineIdentity).toEqual(identity);
     expect(duels.room(session.slug, "test-guild", creator.playerId)).not.toHaveProperty("engineIdentity");
     const saved = duels.privateState(session.slug, "test-guild").setup!;
-    duels.setSetup(session.slug, "test-guild", { ...saved, surrenderedSeats: [1] });
+    const { engineIdentity: _identity, ...rules } = saved;
+    duels.setSetup(session.slug, "test-guild", { ...rules, surrenderedSeats: [1] });
     expect(duels.privateState(session.slug, "test-guild").setup).toEqual({ ...saved, surrenderedSeats: [1] });
   });
 
-  it.each(["replace", "remove", "clear"])("refuses to %s a recorded identity", (action) => {
+  it.each(["replace", "clear"])("refuses to %s a recorded identity", (action) => {
     const { duels, session, creator } = setup("1v1");
-    duels.activate(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null, { engineIdentity: identity });
-    const next = action === "clear" ? null : action === "remove" ? {} : { engineIdentity: { ...identity, wasmHash: "0".repeat(64) } };
-    expect(() => duels.setSetup(session.slug, "test-guild", next)).toThrow(/identity.*immutable/i);
+    duels.activateRecorded(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null, {}, identity);
+    const next = action === "clear" ? null : { engineIdentity: { ...identity, wasmHash: "0".repeat(64) } };
+    expect(() => duels.setSetup(session.slug, "test-guild", next)).toThrow(/identity.*immutable|Unknown duel setup field: engineIdentity/i);
+    expect(duels.privateState(session.slug, "test-guild").setup?.engineIdentity).toEqual(identity);
+  });
+
+  it("preserves recorded identity when a normal update omits it", () => {
+    const { duels, session, creator } = setup("1v1");
+    duels.activateRecorded(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null, {}, identity);
+    duels.setSetup(session.slug, "test-guild", {});
     expect(duels.privateState(session.slug, "test-guild").setup?.engineIdentity).toEqual(identity);
   });
 
   it("does not permit identity before activation", () => {
     const { duels, session } = setup("1v1");
-    expect(() => duels.setSetup(session.slug, "test-guild", { engineIdentity: identity })).toThrow(/identity.*start/i);
+    expect(() => duels.setSetup(session.slug, "test-guild", { engineIdentity: identity })).toThrow(/Unknown duel setup field: engineIdentity/);
   });
 
   it("does not backfill an old active game's identity", () => {
     const { duels, session, creator } = setup("1v1");
     duels.activate(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "old-bundle", null);
-    expect(() => duels.setSetup(session.slug, "test-guild", { engineIdentity: identity })).toThrow(/identity.*start/i);
+    expect(() => duels.setSetup(session.slug, "test-guild", { engineIdentity: identity })).toThrow(/Unknown duel setup field: engineIdentity/);
     expect(duels.privateState(session.slug, "test-guild").setup?.engineIdentity).toBeUndefined();
   });
 
   it("rejects malformed identity and rolls back activation", () => {
     const { duels, session, creator } = setup("1v1");
-    expect(() => duels.activate(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null, {
-      engineIdentity: { ...identity, wasmHash: "wrong" },
-    })).toThrow(/invalid engine identity/i);
+    expect(() => duels.activateRecorded(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-1", null,
+      {}, { ...identity, wasmHash: "wrong" })).toThrow(/invalid engine identity/i);
     expect(duels.get(session.slug, "test-guild").status).toBe("lobby");
     expect(duels.privateState(session.slug, "test-guild").seed).toBeNull();
   });

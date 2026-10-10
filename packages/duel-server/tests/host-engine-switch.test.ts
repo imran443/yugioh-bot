@@ -333,10 +333,9 @@ describe("server-recorded engine identity", () => {
   it("refuses recovery on a changed recorded wrapper", async () => {
     const t = await table("1v1");
     const current = getCurrentEngineResources(DATA, { mode: "normal", engine: "legacy" });
-    t.duels.activate(t.session.slug, "g1", t.player, ["1", "2", "3", "4"], current.bundleVersion, null, {
+    t.duels.activateRecorded(t.session.slug, "g1", t.player, ["1", "2", "3", "4"], current.bundleVersion, null, {
       engine: "legacy", firstTurnDraw: false, scriptErrorMode: "tolerant",
-      engineIdentity: { ...current.identity, wrapperHash: "0".repeat(64) },
-    });
+    }, { ...current.identity, wrapperHash: "0".repeat(64) });
     expect(await post(t.host, { op: "view", ...t.organizer })).toMatchObject({ status: 409, data: { code: "ENGINE_UNAVAILABLE_FOR_SOURCE" } });
     expect(t.workers).toHaveLength(0);
     expect(t.duels.get(t.session.slug, "g1").status).toBe("interrupted");
