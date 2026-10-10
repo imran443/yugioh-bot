@@ -1,8 +1,32 @@
 # Staging for 3-player and 4-player duel tests
 
 Staging is a second copy of the web app, the websocket server, duel server and scheduling worker. It runs on the same VM as
-production, but it shares nothing with production. People can test 3-player and 4-player duels there. Production
-does not change.
+production. Its data, services and Clerk instance are separate. It shares VM memory, CPU, disk and the Docker build cache.
+People can test releases there before the owner deploys production in downtime.
+
+After owner setup and `STAGING_AUTO_DEPLOY=1`: merge to `main` → **Deploy Staging** runs → test the staging SHA → the owner runs **Deploy** (prod) in downtime.
+Push deploys stay disabled until the owner sets that repository variable. A merge does not deploy production.
+Staging skips for live production duels, openings or active drafts, a failed activity guard, or a VM that is busy or short of resources.
+Open tournament rounds and series alone do not block staging. Manual dispatch can skip only the activity guard with `ignore_prod_activity=true`.
+Use the tested SHA as the production `ref`; `main` may have moved since the test.
+Dispatch both workflows from `main`; their jobs refuse dispatch from other branches. The selected `ref` can differ.
+Prod keeps its activity guard from the main workflow revision. Staging keeps its remote entry script and activity guard
+from that revision; other staging helpers come from the selected ref. Prod checks main ancestry on the runner
+before it runs selected code. The SSH private key is in the Configure SSH key step only in both workflows.
+This step placement does not isolate the key from staging ref code that runs earlier. That code can use `GITHUB_ENV`,
+`GITHUB_PATH` or `RUNNER_TEMP` to reach the later key step. Run only trusted staging refs.
+See the [runbook note on a required-reviewer environment](vm-runbook.md#staging-first-manual-production).
+
+## Current state (2026-10-09)
+
+The last staging run succeeded on 2026-10-03 from `n-player-ui-implementation`, SHA
+`a113ef2fc476b163fc5442bfa538223275d17549` ([run 37098124582](https://github.com/DuelingDomain/yugioh-bot/actions/runs/37098124582)).
+It predates the current Clerk setup. Later prod deploys stop its containers. Staging also stays off after a VM reboot.
+Without VM access, its present container, DB, firewall and Clerk state cannot be confirmed.
+Treat staging as **not ready for outside testers** until the owner completes the checks below.
+
+GitHub has the shared `VM_*` deploy secret names. It has no environment records and no `STAGING_*` repository variables.
+Only the production public Clerk key variable is set. The staging Clerk file is on the VM; GitHub cannot show whether it exists.
 
 ## What staging is
 
@@ -14,7 +38,7 @@ does not change.
 | Database | `data/bot.sqlite` | a copy: `data-staging/bot.sqlite` |
 | Engine files | `data/duel-engine` | `data-staging/duel-engine` (with both multiplayer cores) |
 | Docker network | the default network of the project | `yugidraft-staging-net` |
-| Address | port 80 | port 8080, plain HTTP (never 80 or 443) |
+| Address | HTTPS on 443 | internal HTTP on 8080; a separate public HTTPS host is required for testers |
 | Secrets | `.env` | `.env.staging` (separate staging Clerk instance and new internal secrets) |
 | New theme drafts | Off by default (`THEME_DRAFTS=0`) | On by default (`STAGING_THEME_DRAFTS=1`) |
 
@@ -37,7 +61,7 @@ Rules that keep production safe:
   `data/bot.sqlite` (read-only, to make the copy) and the git remote address (only for the first clone). It writes nothing there.
 - There is no bot in either PR 2 Compose stack. Web and worker fix `DISCORD_BOT_ENABLED=0`; no Discord token/client credentials or bot announce variables reach web. Gameplay mutations and worker timers continue with WS broadcasts.
 - Staging Clerk keys come only from `STAGING_CLERK_ENV` (default `/etc/yugidraft/staging-clerk.env`), a separate staging instance. Production and dev keys must never be used. Newly copied databases have production Clerk IDs and sync timestamps cleared before consumers start; staging users link through their staging Clerk accounts. A kept staging DB retains its staging IDs.
-- Every service has a memory limit and no swap. If the VM runs out of memory, the kernel stops a staging process first.
+- Every service has a memory limit and no swap. `oom_score_adj` makes staging a more likely OOM victim. It cannot guarantee production stays up.
 - Every service has a lower CPU weight than production (`cpu_shares: 256`). Staging containers never restart by themselves
   (`restart: "no"`): after a crash or a VM reboot staging stays off until you run the workflow again.
 
@@ -53,24 +77,35 @@ The VM has 4 GB of RAM. Production uses most of it at busy times. The limits of 
 | worker | 192 MB |
 | caddy | 64 MB |
 
-The weak point is the build: `next build` needs about 1 GB or more for a short time. The workflow protects production like this:
+The weak point is the build: `next build` needs about 1 GB or more for a short time. BuildKit does not use the staging
+containers' memory limits, CPU shares or OOM score. The workflow applies these checks:
 
-1. It stops the old staging containers before it builds.
-2. It takes the build lock `/var/lock/yugidraft-build.lock` and waits up to 15 minutes for it. The production deploy
-   (`.github/workflows/deploy.yml`) takes the same lock, so two builds never run together. The production deploy also
-   stops the staging containers before it builds, and staging stays off until you run the staging workflow again.
-   It also stops if it sees another build process that does not use the lock.
-3. It stops if the VM has less than 1100 MB of available memory before the build, or less than 6000 MB of free disk.
-   It checks the disk again after the build (2500 MB). Worker startup/cron owns image-cache eviction; deploy keeps the cache.
-4. It stops if the VM has less than 1900 MB of available memory before it starts the containers.
-5. After a healthy start it removes the old staging images from the earlier deploy. It removes only those image ids,
-   and Docker refuses an image that a container or the production project still uses.
+1. It takes `/var/lock/yugidraft-build.lock` before it changes the staging checkout, env or build context.
+   It uses the same lock for `stop`. A deploy skips immediately when the lock is busy and leaves the old stack alone.
+   A stop waits up to 15 minutes, then fails if it cannot get the lock.
+   Prod uses the same lock and waits only 15 minutes. A cold staging build can take longer, so prod can fail on the lock wait.
+   After it gets the lock, prod stops staging to free memory for its build.
+   Prod leaves staging off. Restart staging later with **Deploy Staging**.
+2. Before clone, fetch, checkout reset or env changes, it checks production activity with read-only SQLite queries.
+   Any active duel, RPS or dice opening, or active draft skips the build. Open tournament rounds and series do not block it.
+   A failed guard also skips. Manual dispatch can set `ignore_prod_activity=true` to skip only this check.
+   Push deploys always keep the check. The shared lock and all resource checks still apply with the input on.
+   It then stops the old staging containers. If it detects another build outside the lock, it skips.
+3. It skips below 1100 MB of available memory or 6000 MB of free disk before the build.
+   After the build, it skips below 2500 MB of free disk. Worker startup/cron owns image-cache eviction.
+4. It skips below 1900 MB of available memory before it starts staging.
+5. After a healthy start, it removes only old staging image IDs. Docker refuses to remove an image still used by a container.
 
-If the health check fails at the end, the workflow stops the staging containers again, so an unhealthy stack does not keep
-using memory. The engine bundle in `/tmp` on the VM is removed after every run.
+A skip returns success, emits a **Staging skipped** warning and writes a line in the step summary.
+**A green run alone does not prove a deploy.** A lock or activity skip leaves existing staging containers running.
+After a resource skip, staging stays down. Check the warning, summary and final `staging is running` line, then test the site.
+A health failure returns failure and stops staging. Temporary engine bundles and build contexts are removed on exit.
+No staging step stops production or prunes the shared Docker build cache.
 
-If a check stops the run, staging stays down and production is not touched. Run the workflow again when the VM is quiet.
-A push to `main` while staging runs therefore stops staging. This is on purpose: production comes first.
+After auto deploy is enabled, a main push can stop staging games during a staging update. It does not restart production.
+The production activity check is a snapshot. A game can start after it passes; use downtime for staging builds on this VM.
+Production and staging still compete for resources. For the 15–16 tester alpha, use a **second VM** for staging if possible.
+A larger VM (at least 8 GB) gives more RAM, but still shares CPU, disk and a failure boundary.
 
 To look at the memory by hand, on the VM:
 
@@ -83,49 +118,121 @@ sh scripts/staging/check-resources.sh now 1000 3000 /opt
 
 ## One-time steps for the owner
 
-1. **Push the branch** `<reviewed-branch>` to GitHub. (Nobody and nothing has pushed it for you.)
-2. **Put the workflow on `main`.** GitHub lists a manual workflow in the Actions tab only when its file is on the default
-   branch. Make a small pull request that adds only `.github/workflows/deploy-staging.yml`. The workflow uses the input
-   `ref` to check out the feature branch, so the scripts and the code come from that branch. Note: a push to `main`
-   starts the normal production deploy of `main`. That deploy is the usual one and does not include staging.
-3. **Open the network.** In the Hetzner Cloud Firewall, allow inbound TCP `8080`. If you can, allow only the IP
-   addresses of the testers. Docker publishes ports around `ufw`, so the Hetzner firewall is the real gate.
-   Staging is then at `http://YOUR_VM_IP:8080`. Staging is plain HTTP only. It never uses port 80 or 443: the production
-   Caddy owns them, and a staging container that held one of them could stop production from starting.
-   The scripts refuse a staging port below 1024. Optional: add a second DNS name for the VM, for example
-   `staging.example.org`, and set the repository variable `STAGING_DOMAIN` to it. The address is then
-   `http://staging.example.org:8080`, and the cookies of staging and production no longer clash.
-   Clerk staging uses a separate production instance, which needs a public HTTPS origin.
-   Before enabling auth, arrange an owner-approved HTTPS proxy for the separate staging hostname to the
-   staging HTTP service, including `/socket.io`. The current staging Compose/Caddy continues to bind only
-   its high HTTP port; this task does not change production Caddy routing.
-4. **Configure a separate staging Clerk instance.** Use its production-instance keys (`pk_live_...` / `sk_live_...`), never dev keys or keys from the app's production instance. Configure its staging origin, Clerk-provided Discord callback and `/sso-callback` continuation, waitlist/invitations, email/password verification, username and legal consent like production. Legal links remain the marketing privacy/terms URLs. Store only these two keys in `/etc/yugidraft/staging-clerk.env`, mode 0600, readable by the deploy user. Do not put the secret in repository variables or build args. Set `STAGING_CLERK_ENV` to a different protected absolute path if needed.
+1. **Put this deploy-flow change on `main` after review.** The branch alone does not change live triggers.
+   Leave `STAGING_AUTO_DEPLOY` unset or `0` until setup and a manual staging test pass. Production uses manual **Deploy**.
+2. **Choose the staging HTTPS host and add DNS.** `SITE_DOMAIN` is `app.duelingdomain.com`, so
+   `staging.<SITE_DOMAIN>` is `staging.app.duelingdomain.com`. `staging.duelingdomain.com` is also an option.
+   Point an A record to the VM. Add AAAA only if that IPv6 address reaches it. Use a hostname separate from prod.
+3. **Add the HTTPS proxy in downtime.** Keep ports 80/443 with the existing production Caddy.
+   See the Caddy procedure below. Public port 8080 is not needed with the private proxy network; close it in the
+   Hetzner firewall. Docker can bypass `ufw`. Allow public 80/443 for Caddy's certificate checks.
+4. **Create or verify a separate staging Clerk instance.** Use its production-instance keys
+   (`pk_live_...` / `sk_live_...`). The current scripts refuse dev keys. Apply the exact Clerk DNS records
+   and deploy its certificates. Set its HTTPS origin, Discord OAuth credentials and Clerk-provided callback,
+   `/sso-callback`, invitations/waitlist, username, consent and email verification. Use the marketing privacy/terms URLs.
+   Keep staging sessions separate from prod. Put only `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+   in `/etc/yugidraft/staging-clerk.env`, mode 0600, readable by the deploy user. Never print the keys.
+   [Clerk's deployment guide](https://clerk.com/docs/guides/development/deployment/production) covers DNS, OAuth and certificates.
+5. **Set the staging runtime origin.** On the VM, in `/opt/yugioh-bot-staging`, generate `.env.staging` if missing.
+   Upgrade an old NextAuth env with `--force` only after saving it privately; this rotates staging internal secrets.
 
    ```sh
-   STAGING_CLERK_ENV=/etc/yugidraft/staging-clerk.env STAGING_HOST=staging.example.org \
+   STAGING_CLERK_ENV=/etc/yugidraft/staging-clerk.env STAGING_DOMAIN=staging.app.duelingdomain.com \
      sh scripts/staging/make-staging-env.sh /opt/yugioh-bot/.env .env.staging
-   # Upgrade an existing NextAuth staging env deliberately (internal secrets rotate):
-   STAGING_CLERK_ENV=/etc/yugidraft/staging-clerk.env STAGING_HOST=staging.example.org \
-     sh scripts/staging/make-staging-env.sh --force /opt/yugioh-bot/.env .env.staging
    ```
 
-   After generation, set `WEB_URL=https://<staging-host>` and `NEXT_PUBLIC_WS_URL=https://<staging-host>`
-   in `.env.staging` to the configured HTTPS origin before dispatching a Clerk deployment. Keep
-   `STAGING_HTTP_PORT` for the internal proxy/health endpoint. Reapply those origin settings after `--force`.
+   The generator initially uses HTTP. Before the deploy, set both `WEB_URL` and `NEXT_PUBLIC_WS_URL` in
+   **staging's** env to `https://staging.app.duelingdomain.com`, without `:8080`. Keep `STAGING_HTTP_PORT=8080`
+   for the internal listener and health check. Reapply the HTTPS URLs after any env regeneration.
+   The generator keeps an existing output unless `--force` is set. It copies community config only from prod,
+   keys only from the separate Clerk source, and creates new internal secrets. It does not change prod's env.
+6. **Set optional GitHub variables and check the folder.** Set `STAGING_DOMAIN` to the chosen host.
+   `STAGING_HOST` defaults to `VM_HOST`; `STAGING_HTTP_PORT` defaults to `8080`;
+   `STAGING_CLERK_ENV` defaults to the protected VM path above. These variables affect new env files only.
+   No new GitHub secret or environment is needed. If the deploy user is not root, ensure it owns
+   `/opt/yugioh-bot-staging` and can use the shared build lock.
+7. **Deploy staging once and test it.** Run **Deploy Staging** from `main`, `ref=main`, `action=deploy`,
+   `refresh_db=false`, `ignore_prod_activity=false`. This also starts staging after prod stops it or after a VM reboot.
+   Set `ignore_prod_activity=true` only when you intend to build staging during production play.
+   If the saved DB still has production Clerk bindings from the old stack, use `refresh_db=true` once.
+   This replaces staging data; production stays unchanged. Verify `/sign-in`, invitations, Discord and email sign-in,
+   username/consent, session isolation, Socket.IO, a duel, a draft, a tournament round and worker timers.
+   Record the staging SHA. In downtime, run **Deploy** from `main` with that SHA as `ref`, `force=false`, `rollback=false`.
+8. **Enable push deploys after setup and testing pass.** Set the repository Actions variable `STAGING_AUTO_DEPLOY` to `1`.
+   Later pushes to `main` can deploy staging. Set it to `0` to disable push deploys; manual dispatch from `main` still works.
 
-   The generator copies community config only from the first source, Clerk keys only from the separate source, sets `WEB_URL`/`NEXT_PUBLIC_WS_URL` to staging, and generates fresh WS/duel secrets. It removes NextAuth/obsolete auth/Discord credentials and announce variables. Existing output stays unchanged unless `--force` is given. If this is an old staging DB copied after production Clerk import, refresh it through the deploy workflow so production Clerk IDs are cleared on the copy.
+The workflow health check covers `/sign-in` 200, anonymous `/api/auth/session` 200 with body `null`, Socket.IO and worker health.
+It does not test public DNS, certificates or real Clerk sign-in. The owner must test those in a browser before inviting testers.
 
-5. **Optional repository variables.** They are read only the first time, when `.env.staging` does not exist yet.
-   `STAGING_DOMAIN`, `STAGING_HOST` (default: the secret `VM_HOST`), `STAGING_HTTP_PORT` (default `8080`) and `STAGING_CLERK_ENV` (protected VM path).
-   The secrets `VM_HOST`, `VM_USER`, `VM_SSH_PRIVATE_KEY` and `VM_PORT` are the ones that production already uses.
-6. **Run the workflow.** GitHub, Actions, "Deploy Staging", Run workflow. Choose the same branch for
-   "Use workflow from" and `ref` (default `main`),
-   `refresh_db` = off, `action` = `deploy`. The first run is slow (it builds four images and both multi cores).
-   From the CLI, specify the branch twice: `gh workflow run deploy-staging.yml --ref <branch> -f ref=<branch>`.
-   If the VM user is not `root`, make the folder first: `sudo mkdir /opt/yugioh-bot-staging && sudo chown $USER: /opt/yugioh-bot-staging`.
+## Give staging its own domain through Caddy
 
-When the run is green, the job log ends with the container list, the memory use and `staging is running`.
-Open `/sign-in` and exercise custom Clerk sign-in. The automated health check requires `/sign-in` 200 and anonymous `/api/auth/session` 200 with body `null`, plus Socket.IO and worker health. Manually verify invitation ticket + Discord, required username/consent, email verification/reset, history recovery and worker timers.
+This is an owner setup procedure, not a route installed by this branch. Keep it in reviewed repository configuration
+so a later deploy does not remove it. Do not add a second listener on host ports 80 or 443.
+
+Use a dedicated external Docker network between **production Caddy and staging Caddy only**.
+The existing prod and staging app networks stay separate. Pick an unused subnet; this example uses `172.30.80.0/24`.
+Create it once on the VM:
+
+```sh
+docker network create --subnet 172.30.80.0/24 yugidraft-staging-proxy
+```
+
+Add this network definition to both Compose files:
+
+```yaml
+networks:
+  staging_proxy:
+    external: true
+    name: yugidraft-staging-proxy
+```
+
+In production Compose, add `networks: [default, staging_proxy]` to **caddy only**.
+In staging Compose, replace **caddy's** inherited network list with:
+
+```yaml
+networks:
+  staging: {}
+  staging_proxy:
+    aliases: [staging-http]
+```
+
+Add a literal host to the production `Caddyfile` (no prod `.env` change is needed):
+
+```caddyfile
+staging.app.duelingdomain.com {
+    header >X-Robots-Tag "noindex, nofollow"
+    reverse_proxy staging-http:80
+}
+
+http://staging.app.duelingdomain.com {
+    redir https://staging.app.duelingdomain.com{uri} 308
+}
+```
+
+The explicit HTTP host keeps staging requests out of the existing app HTTP catch-all redirect.
+This sends every path, including `/socket.io/*`, to staging Caddy. That Caddy already routes Socket.IO to staging WS.
+Because this is a second HTTP proxy hop, add this inside the existing global block of `Caddyfile.staging`:
+
+```caddyfile
+servers {
+    trusted_proxies static 172.30.80.0/24
+}
+```
+
+Use the actual dedicated subnet. This lets staging Caddy retain the outer proxy's `X-Forwarded-Proto: https` and host.
+Do not trust forwarded headers from all addresses. `127.0.0.1:8080` inside production Caddy is its own container,
+so it cannot reach staging through the VM loopback address.
+
+Validate both Caddy files and check the resulting Compose network entries without printing runtime env values.
+In downtime, recreate **only** production Caddy with
+`docker compose -f docker-compose.yml up -d --no-deps --force-recreate caddy`, then deploy staging.
+The external network remains when staging is stopped. Staging deploys do not restart production Caddy.
+Check both the existing prod hosts and the new staging host after setup. Confirm the certificate, HTTPS redirects,
+Clerk callbacks and Socket.IO. Staging returns 502 while its stack is off; prod routes must still work.
+
+Caddy requires working DNS and public challenge ports for automatic HTTPS.
+See [automatic HTTPS](https://caddyserver.com/docs/automatic-https) and
+[proxy header handling](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#defaults).
 
 ## Engine files and image build
 
@@ -339,7 +446,8 @@ WHERE web_slug = '<verified-local-duel-slug>'
   AND json_extract(setup_json, '$.firstTurnDraw') IS NULL;
 ```
 
-- **Update staging to a newer commit.** Push the branch. Run the workflow again with `action` = `deploy`.
+- **Update staging to a newer commit.** With `STAGING_AUTO_DEPLOY=1`, merge to `main` for an automatic deploy.
+  Or dispatch the workflow from `main` with a branch or SHA as `ref` and `action` = `deploy`.
   The staging database is kept. Staging is stopped during a deploy, so a duel that is running in staging at that time
   is set to `interrupted` (the engine install refuses a new bundle while a duel is active).
 - **Refresh the database from production.** Run the workflow with `refresh_db` on. Staging duels and anything

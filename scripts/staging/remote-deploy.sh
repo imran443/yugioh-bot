@@ -5,18 +5,20 @@
 #
 # Input (environment):
 #   STAGING_ACTION       deploy (default) or stop
-#   STAGING_REF          the git branch to run (required for deploy)
+#   STAGING_REF          the git ref or SHA to run (required for deploy)
 #   STAGING_COMMIT       exact checked-out CI commit (required for deploy)
 #   STAGING_REFRESH_DB   "true" copies the production database again (default false)
+#   STAGING_IGNORE_PROD_ACTIVITY  "true" skips only the activity guard (manual dispatch only, default false)
 #   STAGING_HOST         public address of the VM, used only when .env.staging does not exist yet
 #   STAGING_DOMAIN       host name for the staging address, used only when .env.staging does not exist yet (optional)
 #   STAGING_HTTP_PORT    host port of staging (optional, default 8080, never below 1024)
 #   STAGING_CLERK_ENV    separate staging Clerk source on the VM (default /etc/yugidraft/staging-clerk.env)
 #   STAGING_BUNDLE       the engine bundle sent to a mktemp path by the workflow (required for deploy)
+#   STAGING_GUARD        the activity guard from the main workflow revision (required for deploy)
 #
 # It works in /opt/yugioh-bot-staging. Community config comes from production .env; Clerk keys
-# come only from STAGING_CLERK_ENV. It also reads data/bot.sqlite (read-only, through
-# copy-staging-db.sh) and the git remote URL (only for the first clone). It never runs docker compose in
+# come only from STAGING_CLERK_ENV. It also reads data/bot.sqlite (read-only, through the activity guard
+# and copy-staging-db.sh) and the git remote URL (only for the first clone). It never runs docker compose in
 # /opt/yugioh-bot and never writes there.
 set -eu
 
@@ -25,17 +27,49 @@ refresh_db=${STAGING_REFRESH_DB:-false}
 staging_dir=${STAGING_DIR:-/opt/yugioh-bot-staging}
 prod_dir=/opt/yugioh-bot
 bundle=${STAGING_BUNDLE:-}
+guard=${STAGING_GUARD:-}
+
+skip_staging() {
+  echo "::warning title=Staging skipped::skipping staging; $*"
+  exit 0
+}
 
 if [ "$staging_dir" = "$prod_dir" ]; then
   echo "remote-deploy: the staging directory is the production directory. Stopping." >&2
   exit 1
 fi
 
-# Cover clone/fetch failures as well as build and install failures. Use an absolute context path
-# because these early exits can happen before cd into the staging checkout.
+# Take the shared lock before changing the checkout, env or build context, including for stop.
+# Production has priority: staging deploys do not wait. Stops wait or fail.
+lock=${STAGING_BUILD_LOCK:-/var/lock/yugidraft-build.lock}
 if [ "$action" = "deploy" ]; then
   [ -n "$bundle" ] || { echo "remote-deploy: STAGING_BUNDLE is required" >&2; exit 1; }
-  trap 'rm -f "$bundle"; rm -rf "$staging_dir/.deploy-duel-engine"' EXIT
+  trap 'rm -f "$bundle" "$guard"' EXIT
+fi
+if ! command -v flock >/dev/null 2>&1; then
+  echo "remote-deploy: flock is required. Install util-linux." >&2
+  exit 1
+fi
+exec 9>"$lock"
+if [ "$action" = "stop" ]; then
+  if ! flock -w "${STAGING_LOCK_WAIT_S:-900}" 9; then
+    echo "remote-deploy: staging stop failed; another build holds $lock. Run Stop again." >&2
+    exit 1
+  fi
+elif ! flock -n 9; then
+  skip_staging "another build holds $lock. Production has priority."
+fi
+
+# Context cleanup is safe only after this process holds the lock.
+if [ "$action" = "deploy" ]; then
+  trap 'rm -f "$bundle" "$guard"; rm -rf "$staging_dir/.deploy-duel-engine"' EXIT
+  # Read production activity before cloning, fetching, resetting or changing the env.
+  # Staging counts only live duels, openings and active drafts. Guard failures also skip.
+  if [ "${STAGING_IGNORE_PROD_ACTIVITY:-false}" = "true" ]; then
+    echo "remote-deploy: ignore_prod_activity=true; skipping only the production activity guard."
+  elif [ -z "$guard" ] || ! python3 "$guard" "$prod_dir/data/bot.sqlite" --target staging; then
+    skip_staging "production gameplay is active or the activity guard failed. Existing staging containers keep running."
+  fi
 fi
 
 # First run: the clone. The owner makes the folder once (docs/deployment/staging.md).
@@ -93,28 +127,16 @@ if [ ! -f .env.staging ]; then
     sh scripts/staging/make-staging-env.sh "$prod_dir/.env" .env.staging
 fi
 
-# 2. One build at a time on this VM. The production deploy (.github/workflows/deploy.yml) holds the same lock,
-#    and it also stops the staging containers before it builds. The lock is held until this script exits.
-lock=${STAGING_BUILD_LOCK:-/var/lock/yugidraft-build.lock}
-if command -v flock >/dev/null 2>&1; then
-  exec 9>"$lock"
-  if ! flock -w "${STAGING_LOCK_WAIT_S:-900}" 9; then
-    echo "remote-deploy: another build holds $lock (maybe the production deploy). Try again later." >&2
-    exit 1
-  fi
-else
-  echo "remote-deploy: flock is not installed, so the build lock is off. Install util-linux." >&2
-  exit 1
-fi
-
-# Free the memory of the old staging stack, then check that a build is safe.
+# 2. The shared build lock is held until this script exits.
+# Free the memory of the old staging stack, then check the build resources.
 compose stop || true
 if pgrep -f 'turbo run build|next build' >/dev/null 2>&1; then
-  echo "remote-deploy: another build is running on this VM (maybe the production deploy). Try again later." >&2
-  exit 1
+  skip_staging "another build is running on this VM."
 fi
 # The disk is shared with the production database. Each staging image holds a full node_modules.
-sh scripts/staging/check-resources.sh "before build" "${STAGING_MIN_BUILD_MB:-1100}" "${STAGING_MIN_DISK_MB:-6000}" /opt
+if ! sh scripts/staging/check-resources.sh "before build" "${STAGING_MIN_BUILD_MB:-1100}" "${STAGING_MIN_DISK_MB:-6000}" /opt; then
+  skip_staging "the build resource check did not pass. Staging stays down."
+fi
 
 # Worker startup and IMAGE_CLEANUP_CRON evict the oldest cached images to the configured byte limit.
 
@@ -128,7 +150,9 @@ DUEL_PREFLIGHT=1 DUEL_BUNDLE_SRC="$staging_dir/.deploy-duel-engine" \
   sh packages/duel-server/scripts/install-engine-bundle.sh
 old_images=$(compose images -q 2>/dev/null | sort -u | tr '\n' ' ' || true)
 compose build
-sh scripts/staging/check-resources.sh "after build" 0 "${STAGING_MIN_DISK_AFTER_BUILD_MB:-2500}" /opt
+if ! sh scripts/staging/check-resources.sh "after build" 0 "${STAGING_MIN_DISK_AFTER_BUILD_MB:-2500}" /opt; then
+  skip_staging "the disk check did not pass. Staging stays down."
+fi
 
 # 4. The database: first run, or when asked.
 mkdir -p data-staging
@@ -166,7 +190,9 @@ compose run --rm --no-deps -e STAGING_COPIED_DB="$copied_db" worker node --input
 rm -f "$clerk_scrub_marker"
 
 # 6. Start, only when the VM has the memory for the limits of the stack.
-sh scripts/staging/check-resources.sh "before start" "${STAGING_MIN_START_MB:-1900}"
+if ! sh scripts/staging/check-resources.sh "before start" "${STAGING_MIN_START_MB:-1900}"; then
+  skip_staging "the start resource check did not pass. Staging stays down."
+fi
 compose up -d
 compose ps
 

@@ -330,6 +330,7 @@ jobs:
         run: |
           node --test scripts/ci/*.test.mjs
           python3 -B scripts/ci/parallel_emxx_test.py
+          python3 -B -m unittest discover -s scripts/deployment -p test_deploy_safety.py
 
       - name: Select changed test files
         id: selection
