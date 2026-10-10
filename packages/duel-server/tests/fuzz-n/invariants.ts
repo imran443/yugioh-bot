@@ -64,7 +64,7 @@ const REVEAL_WORDS = /reveal|show|confirm|excavat|look|hand/i;
 const PUBLIC_HAND_EFFECT_CODES = new Set([20228463, 2992467, 33900648, 34298391, 34694160, 56673480, 66690411, 81434470, 8951260, 75364199]);
 
 /** True when a face-up card of PUBLIC_HAND_EFFECT_CODES is on any field of the view. */
-function publicHandEffectOnField(view: DuelEngineView): boolean {
+export function publicHandEffectOnField(view: DuelEngineView): boolean {
   return view.seats.some((seat) =>
     [...seat.monsters, ...seat.spells].some((card) => card && card.code !== undefined && (card.position & FACEDOWN) === 0 && PUBLIC_HAND_EFFECT_CODES.has(card.code)),
   );

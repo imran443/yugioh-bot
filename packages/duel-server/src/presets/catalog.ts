@@ -23,6 +23,7 @@ export function defaultEngineDataDirectory(): string {
 interface Entry {
   code: number;
   name: string;
+  alias?: number;
 }
 
 interface Catalog {
@@ -41,17 +42,18 @@ function load(dir: string): Catalog {
   const db = new Database(path, { readonly: true, fileMustExist: true });
   try {
     const rows = db
-      .prepare("SELECT d.id AS code, t.name AS name FROM datas d JOIN texts t USING(id) WHERE d.alias=0 AND (d.ot&3)!=0 ORDER BY d.id")
+      .prepare("SELECT d.id AS code, d.alias, t.name AS name FROM datas d JOIN texts t USING(id) WHERE (d.ot&3)!=0 ORDER BY d.id")
       .all() as Entry[];
     const byName = new Map<string, Entry[]>();
     const byCode = new Map<number, Entry>();
     for (const row of rows) {
       byCode.set(row.code, row);
+      if (row.alias) continue; // Exact numeric references retain artwork identity; names resolve only to main artworks.
       const list = byName.get(row.name) ?? [];
       list.push(row);
       byName.set(row.name, list);
     }
-    const catalog = { byName, byCode, all: rows };
+    const catalog = { byName, byCode, all: rows.filter(row => !row.alias) };
     catalogs.set(dir, catalog);
     return catalog;
   } finally {
@@ -64,7 +66,7 @@ export function resolveCard(ref: CardRef, dir: string = defaultEngineDataDirecto
   const catalog = load(dir);
   if (typeof ref === "number") {
     ref = loadCardPasscodeRemaps(dir).get(ref) ?? ref;
-    if (!catalog.byCode.has(ref)) throw new Error(`Unknown card code ${ref} (not a main passcode in cards.cdb)`);
+    if (!catalog.byCode.has(ref)) throw new Error(`Unknown card code ${ref} (not in cards.cdb)`);
     return ref;
   }
   const exact = catalog.byName.get(ref);

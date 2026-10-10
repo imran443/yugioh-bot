@@ -122,6 +122,8 @@ function walkCodes(value: unknown, visit: (code: number, key: string) => void, d
 }
 
 export interface CheckerOptions {
+  /** Exact printed strings of an already known card; references in those strings are public rules. */
+  printedText?: (code: number) => string[];
   mode: DuelMode;
   decks: [DuelDeck, DuelDeck];
   disjoint: boolean;
@@ -452,7 +454,9 @@ export class InvariantChecker {
       });
       // Text and code scan over everything new in this viewer's stream.
       const secret = (code: number) => this.codeTotals.has(code) && !known.has(code);
+      const printed = new Set([...known].flatMap(code => this.options.printedText?.(code) ?? []));
       const scanText = (text: string, where: string, detail: unknown) => {
+        if (where.startsWith("prompt ") && printed.has(text)) return;
         for (const match of text.matchAll(/\b\d{5,10}\b/g)) {
           const code = Number(match[0]);
           if (secret(code)) add("privacy-text", `Viewer ${String(viewer)}: ${where} contains code ${code}`, { text, detail });

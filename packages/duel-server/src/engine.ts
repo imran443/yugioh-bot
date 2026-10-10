@@ -11,6 +11,7 @@ import createCore, {
   OcgDuelMode,
   OcgHintType,
   OcgLocation,
+  OcgLogType,
   OcgMessageType,
   OcgPosition,
   OcgProcessResult,
@@ -131,6 +132,10 @@ function readMultiWasm(dataDirectory: string, mode: DuelMode): LoadedWasm {
 }
 
 export interface EngineGameOptions {
+  /** Test-only observer of Lua Debug.Message output; never exposed in player views. */
+  onDebugMessage?: (text: string) => void;
+  /** Test-only observer of parsed core messages, including shuffles absent from view events. */
+  onCoreMessage?: (message: OcgMessage) => void;
   scriptErrorMode?: DuelScriptErrorMode;
   /** Private telemetry callback; omitted by standalone replay tools. */
   onScriptError?: (error: DuelScriptError) => void;
@@ -152,6 +157,8 @@ export interface EngineGameOptions {
    * Production callers leave this unset.
    */
   startupScripts?: EngineStartupScript[];
+  /** Test-only Lua observers installed before any Deck or board card runs initial_effect. */
+  beforeCardsScripts?: EngineStartupScript[];
   /**
    * Test hook: run Standard duels on this wasm instead of `ocgcore.standard.wasm` from the data
    * directory. The differential tests use it to compare cores. Production callers leave this unset.
@@ -388,6 +395,7 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
   let declaringAttack = false;
   let completingAttackPick = false;
   const errorHandler = (type: number, text: string) => {
+    if (type === OcgLogType.FROM_SCRIPT) options.onDebugMessage?.(text);
     if (readAttackTargetQuery(text, attackTargetQuery)) return;
     if (noteDestroyLog(eventContext, text) || noteChainTargetLog(eventContext, text)) return;
     scriptErrors.note(type, text);
@@ -483,6 +491,9 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
       throw new Error(`Failed to load ${MP_UTILITY_FILE}${errors.length > 0 ? `: ${errors.join("; ")}` : ""}`);
     }
     if (!lib.loadScript(handle, "chain-target-notes.lua", CHAIN_TARGET_NOTE_SCRIPT)) throw new Error("Failed to register chain target reporter");
+    for (const script of options.beforeCardsScripts ?? []) {
+      if (!lib.loadScript(handle, script.name, script.content)) throw new Error(`Failed to run pre-card script ${script.name}`);
+    }
     if (options.mode === "domain") {
       // Card creation runs initial_effect; procedure libraries must be loaded first.
       for (let teamSeat = 0; teamSeat < seatCount; teamSeat += 1) {
@@ -989,12 +1000,14 @@ ${Array.from({ length: seatCount }, (_, seat) => `        Duel.ShuffleDeck(${sea
         let nextExtra = 0;
         messages.forEach((message, index) => {
           while (nextExtra < extras.length && extras[nextExtra]!.after <= index) applyRaw(extras[nextExtra++]!);
+          options.onCoreMessage?.(message);
           applyMessage(message);
           recordEvent(message);
         });
         while (nextExtra < extras.length) applyRaw(extras[nextExtra++]!);
       } else {
         for (const message of messages) {
+          options.onCoreMessage?.(message);
           applyMessage(message);
           recordEvent(message);
         }
