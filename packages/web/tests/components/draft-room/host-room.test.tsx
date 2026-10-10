@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDraftStore } from "../../../src/lib/stores/draft-store";
 
@@ -35,20 +35,18 @@ const card = (id: number) => ({
   imageUrlSmall: `/c/${id}s.jpg`,
 });
 
-async function renderRoom(onHostAction?: (action: "end" | "cancel") => Promise<void>) {
+async function renderRoom(onCancel?: () => Promise<void>) {
   render(
-    <DraftRoom slug="d" name="Friday" config={{ packSize: 3, packsPerPlayer: 2, cardsPerPlayer: 6, pickSeconds: 60 }} isParticipant onHostAction={onHostAction} />,
+    <DraftRoom slug="d" name="Friday" config={{ packSize: 3, packsPerPlayer: 2, cardsPerPlayer: 6, pickSeconds: 60 }} isParticipant onCancel={onCancel} />,
   );
   await screen.findByRole("button", { name: "Card 1" });
 }
 
 const room = () => document.querySelector(".room") as HTMLElement;
-const hostButton = () => screen.getByRole("button", { name: "Host controls" });
+const cancelButton = () => screen.getByRole("button", { name: "Cancel draft" });
 
-async function openConfirm(action: "end" | "cancel") {
-  fireEvent.click(hostButton());
-  const menu = screen.getByRole("dialog", { name: "Host controls" });
-  fireEvent.click(menu.querySelector(`[data-host-action="${action}"]`)!);
+async function openConfirm() {
+  fireEvent.click(cancelButton());
   return screen.findByRole("alertdialog");
 }
 
@@ -80,18 +78,21 @@ describe("host controls in the draft room", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the Host button to the host and not to another player", async () => {
+  it("shows the Cancel draft button to the host and not to another player", async () => {
     await renderRoom(vi.fn());
-    expect(hostButton()).toBeInTheDocument();
+    expect(cancelButton()).toBeInTheDocument();
+    // One direct button: no Host menu, no End now.
+    expect(screen.queryByRole("button", { name: "Host controls" })).toBeNull();
+    expect(screen.queryByText(/End now/)).toBeNull();
     cleanup();
     await renderRoom(undefined);
-    expect(screen.queryByRole("button", { name: "Host controls" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel draft" })).toBeNull();
   });
 
   it("locks the room behind the confirm dialog, and frees it when the dialog closes", async () => {
     await renderRoom(vi.fn().mockResolvedValue(undefined));
     expect(room()).not.toHaveAttribute("inert");
-    const dialog = await openConfirm("cancel");
+    const dialog = await openConfirm();
     expect(room()).toHaveAttribute("inert");
     expect(dialog.closest("[inert]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Keep drafting" }));
@@ -99,16 +100,19 @@ describe("host controls in the draft room", () => {
     expect(room()).not.toHaveAttribute("inert");
   });
 
-  it("frees the room after a confirmed action and does not leave inert behind on unmount", async () => {
-    const onHostAction = vi.fn().mockResolvedValue(undefined);
-    await renderRoom(onHostAction);
-    await openConfirm("end");
+  it("frees the room after a confirmed cancel and does not leave inert behind on unmount", async () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    await renderRoom(onCancel);
+    let dialog = await openConfirm();
     expect(room()).toHaveAttribute("inert");
-    fireEvent.click(screen.getByRole("button", { name: "End draft" }));
-    await waitFor(() => expect(onHostAction).toHaveBeenCalledExactlyOnceWith("end"));
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "cancel" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel draft" }));
+    await waitFor(() => expect(onCancel).toHaveBeenCalledExactlyOnceWith());
     await waitFor(() => expect(room()).not.toHaveAttribute("inert"));
+    // Focus goes back to the button that opened the dialog.
+    await waitFor(() => expect(cancelButton()).toHaveFocus());
 
-    await openConfirm("end");
+    dialog = await openConfirm();
     expect(room()).toHaveAttribute("inert");
     const detached = room();
     cleanup();

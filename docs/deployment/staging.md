@@ -40,10 +40,18 @@ Only the production public Clerk key variable is set. The staging Clerk file is 
 | Docker network | the default network of the project | `yugidraft-staging-net` |
 | Address | HTTPS on 443 | internal HTTP on 8080; a separate public HTTPS host is required for testers |
 | Secrets | `.env` | `.env.staging` (separate staging Clerk instance and new internal secrets) |
+| New theme drafts | Off by default (`THEME_DRAFTS=0`) | On by default (`STAGING_THEME_DRAFTS=1`) |
 
 Files: `docker-compose.staging.yml`, `Caddyfile.staging`, `scripts/staging/`, `.github/workflows/deploy-staging.yml`.
 
 The duel and web services set `MULTIPLAYER_TABLES=1` to permit FFA3, FFA4 and 2v2 Tag tables and presets.
+
+The staging web service sets `THEME_DRAFTS=${STAGING_THEME_DRAFTS:-1}`. Set `STAGING_THEME_DRAFTS=0`
+in `.env.staging` to close new theme drafts. Only `1`, `true` and `on` enable the flag. The code default
+is off in every build; staging opens it through Compose. Recreate web after a change; `restart` does
+not reload the environment. Existing theme lobbies and active games can continue when the flag is off,
+and completed drafts still show their summary and export decks. The server returns `themeDraftsEnabled`
+in `GET /api/drafts` and `GET /api/cubes`; browser code must use that value.
 
 Rules that keep production safe:
 

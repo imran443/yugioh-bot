@@ -25,6 +25,7 @@ describe.each(["theme", "booster"] as const)("POST /api/drafts (%s Discord setti
 
   beforeEach(() => {
     vi.resetModules();
+    vi.stubEnv("THEME_DRAFTS", "1");
     vi.clearAllMocks();
     vi.stubEnv("DISCORD_GUILD_ID", "guild-1");
     vi.stubEnv("DISCORD_DEFAULT_CHANNEL_ID", "default-channel");

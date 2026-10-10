@@ -414,8 +414,8 @@ export async function buildDraftResponse(slug: string, actor: { userId: number; 
     visibility: draftModel.visibility,
     canJoin: findDraftReadAccess(db, draft.id, guildId, userId)?.canJoin ?? false,
     ...(draft.created_by_user_id === userId ? { canManageInvite: true } : {}),
-    // The same rule as POST /end and /cancel: the host or an owner. The page only uses it to show the controls.
-    ...(draft.created_by_user_id === userId || isOwnerUser(userId) ? { canEndOrCancel: true } : {}),
+    // The same rule as POST /cancel: the host or an owner. The page only uses it to show the controls.
+    ...(draft.created_by_user_id === userId || isOwnerUser(userId) ? { canCancel: true } : {}),
     createdByUserId: draft.created_by_user_id,
     config,
     currentPackRound: draftModel.currentPackRound,

@@ -13,8 +13,7 @@ import { TALK_COOLDOWN_MS, type TalkLineId } from "@yugidraft/shared/ws/talk";
 import { Binder, type BinderHandle } from "./binder";
 import { CardReader, TAG_CHOSEN, TAG_PICKED, TAG_POINTING } from "./card-reader";
 import { FullscreenLayer } from "./layer";
-import { HostConfirm, HostMenu } from "./host-menu";
-import type { DraftTerminalAction } from "@/lib/draft-terminal-client";
+import { CancelConfirm } from "./cancel-confirm";
 import { MotionMenu } from "./motion-menu";
 import { SayMenu } from "./say-menu";
 import { animate, canTravel, flight, motionOff, prefersReducedMotion, useMotionSetting, wait } from "./motion";
@@ -59,10 +58,10 @@ export interface DraftRoomProps {
   config: RoomConfigLike;
   isParticipant: boolean;
   /**
-   * The host or an owner passes this to get the Host button (End now, Cancel draft). It sends the request and resolves
-   * when the draft has changed; it rejects with the words to show. Left out, the room has no host controls.
+   * The host or an owner passes this to get the Cancel draft button. It sends the request and resolves when the
+   * draft has changed; it rejects with the words to show. Left out, the room has no Cancel button.
    */
-  onHostAction?: (action: DraftTerminalAction) => Promise<void>;
+  onCancel?: () => Promise<void>;
 }
 
 const PHONE = "(max-width: 900px)";
@@ -88,7 +87,7 @@ const canRestoreFocus = (el: HTMLElement | null | undefined): el is HTMLElement 
   return true;
 };
 
-export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: DraftRoomProps) {
+export function DraftRoom({ slug, name, config, isParticipant, onCancel }: DraftRoomProps) {
   const rs = useRoomState(config, isParticipant);
   const { sizes, deal, turn, direction } = rs;
   const [motion, setMotion] = useMotionSetting();
@@ -119,9 +118,8 @@ export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: D
   const [motionOpen, setMotionOpen] = useState(false);
   const [sayAnchor, setSayAnchor] = useState<HTMLElement | null>(null);
   const [sayWait, setSayWait] = useState(false);
-  const [hostAnchor, setHostAnchor] = useState<HTMLElement | null>(null);
-  const [hostAction, setHostAction] = useState<DraftTerminalAction | null>(null);
-  const hostBtn = useRef<HTMLElement | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const cancelBtn = useRef<HTMLElement | null>(null);
   const sayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [kbd, setKbd] = useState(false);
   const [newId, setNewId] = useState<number | null>(null);
@@ -171,8 +169,7 @@ export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: D
   const myPlayerId = useDraftStore((s) => s.seats.find((x) => x.isCurrentPlayer)?.playerId ?? null);
   const canSay = isParticipant && myPlayerId != null;
   const sayOpen = sayAnchor != null;
-  const hostOpen = hostAnchor != null && !!onHostAction;
-  const hostBusy = hostOpen || hostAction != null;
+  const cancelling = cancelOpen && !!onCancel;
   useEffect(() => {
     useTalkStore.getState().clear();
     return () => {
@@ -182,7 +179,6 @@ export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: D
   }, []);
   const toggleSay = useCallback((anchor: HTMLElement) => {
     setMotionOpen(false);
-    setHostAnchor(null);
     setSayAnchor((cur) => (cur === anchor ? null : anchor));
   }, []);
   // the Say button moves between the bar and the seat strip at the phone breakpoint
@@ -728,8 +724,8 @@ export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: D
   const blockedNote = chosen?.blocked ? blockedLabel(chosen) : null;
 
   /* ---------- keys: 1-9 choose, arrows move, Enter picks, / searches, Esc closes ---------- */
-  const latest = useRef({ rs, holdDeal, turn, selectedId, geometry, phone, drawer, binderOpen, motionOpen: motionOpen || sayOpen || hostBusy, sheet, drawerOpen, doPick, select, openSheet, closeSheets });
-  latest.current = { rs, holdDeal, turn, selectedId, geometry, phone, drawer, binderOpen, motionOpen: motionOpen || sayOpen || hostBusy, sheet, drawerOpen, doPick, select, openSheet, closeSheets };
+  const latest = useRef({ rs, holdDeal, turn, selectedId, geometry, phone, drawer, binderOpen, motionOpen: motionOpen || sayOpen || cancelling, sheet, drawerOpen, doPick, select, openSheet, closeSheets });
+  latest.current = { rs, holdDeal, turn, selectedId, geometry, phone, drawer, binderOpen, motionOpen: motionOpen || sayOpen || cancelling, sheet, drawerOpen, doPick, select, openSheet, closeSheets };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const L = latest.current;
@@ -827,7 +823,7 @@ export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: D
   return (
     <FullscreenLayer ref={rootRef} label="Draft room" attrs={attrs}>
       {/* The confirm dialog is a sibling of .room, so the whole room is locked while it is open: no Tab, click or key reaches it. */}
-      <div className="room" inert={hostAction != null}>
+      <div className="room" inert={cancelling}>
         <RoomBar
           ref={motionBtn}
           name={name}
@@ -836,16 +832,14 @@ export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: D
           motionOpen={motionOpen}
           onMotion={() => {
             setSayAnchor(null);
-            setHostAnchor(null);
             setMotionOpen((v) => !v);
           }}
-          canHost={!!onHostAction}
-          hostOpen={hostOpen}
-          onHost={(anchor) => {
+          canCancel={!!onCancel}
+          onCancel={(anchor) => {
             setSayAnchor(null);
             setMotionOpen(false);
-            hostBtn.current = anchor;
-            setHostAnchor((cur) => (cur === anchor ? null : anchor));
+            cancelBtn.current = anchor;
+            setCancelOpen(true);
           }}
           canSay={canSay}
           sayOpen={sayOpen}
@@ -1000,26 +994,15 @@ export function DraftRoom({ slug, name, config, isParticipant, onHostAction }: D
         onChoose={setMotion}
         onClose={() => setMotionOpen(false)}
       />
-      {onHostAction ? (
-        <>
-          <HostMenu
-            open={hostOpen}
-            anchor={hostAnchor}
-            onChoose={(action) => {
-              setHostAnchor(null);
-              setHostAction(action);
-            }}
-            onClose={() => setHostAnchor(null)}
-          />
-          <HostConfirm
-            action={hostAction}
-            onConfirm={onHostAction}
-            onClose={() => {
-              setHostAction(null);
-              requestAnimationFrame(() => hostBtn.current?.focus());
-            }}
-          />
-        </>
+      {onCancel ? (
+        <CancelConfirm
+          open={cancelOpen}
+          onConfirm={onCancel}
+          onClose={() => {
+            setCancelOpen(false);
+            requestAnimationFrame(() => cancelBtn.current?.focus());
+          }}
+        />
       ) : null}
       <div className="kit-fx" ref={layerRef} aria-hidden="true" />
     </FullscreenLayer>

@@ -24,6 +24,7 @@ let tempDir: string;
 describe("mutations are limited to the configured guild", () => {
   beforeEach(async () => {
     vi.resetModules();
+    vi.stubEnv("THEME_DRAFTS", "1");
     auth.mockResolvedValue({ user: { id: String(fixtureUserId("host")), discordUserId: fixtureDiscordId("host"), name: "Host" } });
     tempDir = mkdtempSync(join(tmpdir(), "yugioh-resource-access-"));
     vi.stubEnv("DATABASE_PATH", join(tempDir, "test.sqlite"));

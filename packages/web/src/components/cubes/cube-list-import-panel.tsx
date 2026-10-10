@@ -5,7 +5,7 @@ import { ListFileButton } from "@/components/card-list-import/list-file-button";
 import { ListImportReport } from "@/components/card-list-import/list-import-report";
 import { Segmented, StatusLine, SvButton, svButtonClass } from "@/components/sheet";
 import { loadedFileLine, type ListDiagnostics } from "@/lib/card-list-import";
-import { CUBE_DRAFT_TYPES, CUBE_TYPE_HINTS, CUBE_TYPE_LABELS, type CubeDraftType } from "@/lib/cube-type";
+import { CUBE_TYPE_LABELS, cubeTypeHint, offeredCubeTypes, type CubeDraftType } from "@/lib/cube-type";
 import styles from "./cubes.module.css";
 
 export interface ImportedCube extends ListDiagnostics {
@@ -23,6 +23,7 @@ export function CubeListImportPanel({
   defaultName,
   defaultType = "any",
   fixedType,
+  themeDraftsEnabled = false,
   onCreated,
   onCancel,
 }: {
@@ -30,6 +31,8 @@ export function CubeListImportPanel({
   defaultType?: CubeDraftType;
   /** Set when the screen decides the type (a theme draft needs theme cubes); the type picker is then hidden. */
   fixedType?: CubeDraftType;
+  /** The server says theme drafts are open. Closed, the type picker offers no theme cube. Default closed. */
+  themeDraftsEnabled?: boolean;
   onCreated: (result: ImportedCube) => void | Promise<void>;
   onCancel: () => void;
 }) {
@@ -107,10 +110,10 @@ export function CubeListImportPanel({
             label="Cube type"
             value={type}
             disabled={busy}
-            options={CUBE_DRAFT_TYPES.map((value) => ({ value, label: CUBE_TYPE_LABELS[value] }))}
+            options={offeredCubeTypes(themeDraftsEnabled).map((value) => ({ value, label: CUBE_TYPE_LABELS[value] }))}
             onChange={setType}
           />
-          <p className="hint">{CUBE_TYPE_HINTS[type]} You can change this later.</p>
+          <p className="hint">{cubeTypeHint(type, themeDraftsEnabled)} You can change this later.</p>
         </div>
       )}
       <div className={styles.importField}>

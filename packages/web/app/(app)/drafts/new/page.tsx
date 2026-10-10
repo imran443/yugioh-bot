@@ -1,9 +1,14 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { svButtonClass } from "@/components/sheet";
 import { DraftFrame } from "@/components/draft/draft-frame";
 import { NewDraftLead } from "@/components/draft/create/new-lead";
+import { themeDraftsEnabled } from "@/lib/theme-drafts";
 import styles from "@/components/draft/create/create.module.css";
+
+// The theme draft flag is read per request on the server.
+export const dynamic = "force-dynamic";
 
 /** Fixed, well-known cards for the fans. They load through the existing card image route. */
 const CUBE_FAN = [55144522, 77585513, 44095762];
@@ -21,6 +26,8 @@ function Fan({ ids }: { ids: number[] }) {
 }
 
 export default function NewDraftPage() {
+  // Only one kind is open, so there is nothing to choose. Go straight to its setup.
+  if (!themeDraftsEnabled()) redirect("/drafts/new/cube");
   return (
     <DraftFrame
       back={{ href: "/drafts", label: "All drafts" }}

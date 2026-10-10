@@ -91,6 +91,51 @@ describe("CubesLibraryList", () => {
     expect(screen.getByRole("button", { name: /Retry/ })).toBeInTheDocument();
   });
 
+  describe("theme drafts flag", () => {
+    const stubList = (flag: boolean | undefined) =>
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ cubes, ...(flag === undefined ? {} : { themeDraftsEnabled: flag }) })));
+
+    it("closed: the type choice and the lede name no theme draft", async () => {
+      stubList(false);
+      const { container } = render(<CubesLibraryList />);
+      await screen.findByRole("link", { name: "Blue-Eyes pool" });
+      fireEvent.click(screen.getByRole("button", { name: "New cube" }));
+      expect(screen.queryByRole("button", { name: "Theme cube" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Any" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Cube draft" })).toBeInTheDocument();
+      expect(container).not.toHaveTextContent(/theme/i);
+    });
+
+    it("closed when the API sends no flag", async () => {
+      stubList(undefined);
+      render(<CubesLibraryList />);
+      await screen.findByRole("link", { name: "Blue-Eyes pool" });
+      fireEvent.click(screen.getByRole("button", { name: "New cube" }));
+      expect(screen.queryByRole("button", { name: "Theme cube" })).toBeNull();
+    });
+
+    it("closed: the import form offers no Theme cube either", async () => {
+      stubList(false);
+      const { container } = render(<CubesLibraryList />);
+      await screen.findByRole("link", { name: "Blue-Eyes pool" });
+      fireEvent.click(screen.getByRole("button", { name: "Import a list" }));
+      expect(screen.getByRole("region", { name: "Import a list as a new cube" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Theme cube" })).toBeNull();
+      expect(container).not.toHaveTextContent(/theme/i);
+    });
+
+    it("open: the Theme cube choice, its hint and the lede show", async () => {
+      stubList(true);
+      render(<CubesLibraryList />);
+      await screen.findByRole("link", { name: "Blue-Eyes pool" });
+      expect(screen.getByText(/cube drafts and theme drafts/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "New cube" }));
+      expect(screen.getByRole("button", { name: "Theme cube" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Import a list" }));
+      expect(screen.getAllByRole("button", { name: "Theme cube" })).toHaveLength(1);
+    });
+  });
+
   describe("cube type", () => {
     it("asks what the cube is for before it creates one, and sends the choice", async () => {
       const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) =>

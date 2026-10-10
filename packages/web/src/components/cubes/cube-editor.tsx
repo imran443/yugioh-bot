@@ -32,7 +32,7 @@ import { CubeBottomSheet, UndoToast } from "./cube-sheet";
 import { parseAddTab } from "./library-model";
 import { clampCopies, poolTotals, type BoosterSettings } from "./readiness";
 import { CubeCheck } from "./cube-check";
-import { CUBE_DRAFT_TYPES, CUBE_TYPE_HINTS, CUBE_TYPE_LABELS, type CubeDraftType } from "@/lib/cube-type";
+import { CUBE_TYPE_LABELS, cubeTypeHint, offeredCubeTypes, type CubeDraftType } from "@/lib/cube-type";
 import styles from "./cubes.module.css";
 
 interface CubeDto {
@@ -67,7 +67,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
-export function CubeEditor({ cubeId }: { cubeId: number }) {
+export function CubeEditor({ cubeId, themeDraftsEnabled = false }: { cubeId: number; themeDraftsEnabled?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // When opened from a draft's cube builder, return there instead of the library.
@@ -538,10 +538,10 @@ export function CubeEditor({ cubeId }: { cubeId: number }) {
               label="Cube type"
               value={draftType}
               disabled={savingType}
-              options={CUBE_DRAFT_TYPES.map((value) => ({ value, label: CUBE_TYPE_LABELS[value] }))}
+              options={offeredCubeTypes(themeDraftsEnabled, draftType).map((value) => ({ value, label: CUBE_TYPE_LABELS[value] }))}
               onChange={(value) => void saveType(value)}
             />
-            <p className="hint">{CUBE_TYPE_HINTS[draftType]}</p>
+            <p className="hint">{cubeTypeHint(draftType, themeDraftsEnabled)}</p>
           </div>
           <p className={styles.counts}>
             <span>
@@ -554,7 +554,7 @@ export function CubeEditor({ cubeId }: { cubeId: number }) {
             </span>
           </p>
         </div>
-        <CubeCheck type={draftType} pools={pools} settings={cube?.settings} />
+        <CubeCheck type={draftType} pools={pools} settings={cube?.settings} themeDraftsEnabled={themeDraftsEnabled} />
       </section>
 
       {error && (

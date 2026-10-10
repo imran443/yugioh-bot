@@ -6,6 +6,9 @@ A Discord-first Yu-Gi-Oh draft, tournament, and duel platform. Discord is the lo
 
 ### Drafts
 
+**Host stop / Cancelled draft**:
+Under the owner rule of 2026-10-09, a host stop cancels the whole draft: null and void. Players must do a new draft. Cancel discards every pick and gives no decks, exports or tournament. There is no End now action to keep picks. See `docs/api/draft-host-end.md` for the API and the unchanged automatic pool-exhaustion paths.
+
 **Cube**:
 A reusable, guild-owned draft configuration and card pool. Stored in `cubes` with optional explicit `cube_cards` entries split into `main` / `extra` pools and per-card `max_copies`. Supplies shared booster-style drafts or a player's private pool in a **Theme draft**. Bot template commands also save cubes.
 _Avoid_: Theme (for the saved resource)

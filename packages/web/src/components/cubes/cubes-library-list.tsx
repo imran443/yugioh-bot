@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, Plus, Trash2 } from "lucide-react";
 import { FloorList, FloorRow, Segmented, StatusLine, SvButton, Zone } from "@/components/sheet";
-import { CUBE_DRAFT_TYPES, CUBE_TYPE_HINTS, CUBE_TYPE_LABELS, type CubeDraftType } from "@/lib/cube-type";
+import { CUBE_TYPE_LABELS, cubeTypeHint, offeredCubeTypes, type CubeDraftType } from "@/lib/cube-type";
 import { PageFrame } from "@/components/decks/page-frame";
 import { ListImportReport } from "@/components/card-list-import/list-import-report";
 import { listAddedLine } from "@/lib/card-list-import";
@@ -126,6 +126,8 @@ export function CubesLibraryList() {
   const [cubes, setCubes] = React.useState<CubeSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadFailed, setLoadFailed] = React.useState(false);
+  // The API says whether theme drafts are open. Until it answers they are closed.
+  const [themeDraftsEnabled, setThemeDraftsEnabled] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<number | null>(null);
@@ -141,8 +143,9 @@ export function CubesLibraryList() {
     setLoadFailed(false);
     fetch("/api/cubes")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("load failed"))))
-      .then((data: { cubes: CubeSummary[] }) => {
+      .then((data: { cubes: CubeSummary[]; themeDraftsEnabled?: boolean }) => {
         setCubes(data.cubes ?? []);
+        setThemeDraftsEnabled(data.themeDraftsEnabled === true);
         setLoading(false);
       })
       .catch(() => {
@@ -229,7 +232,9 @@ export function CubesLibraryList() {
       }
     >
       <p className={styles.lede}>
-        Reusable card pools for cube drafts and theme drafts. Anyone can use them; only the creator can edit one.
+        {themeDraftsEnabled
+          ? "Reusable card pools for cube drafts and theme drafts. Anyone can use them; only the creator can edit one."
+          : "Reusable card pools for cube drafts. Anyone can use them; only the creator can edit one."}
       </p>
 
       {chooser && (
@@ -239,10 +244,10 @@ export function CubesLibraryList() {
             label="Cube type"
             value={newType}
             disabled={busy}
-            options={CUBE_DRAFT_TYPES.map((value) => ({ value, label: CUBE_TYPE_LABELS[value] }))}
+            options={offeredCubeTypes(themeDraftsEnabled).map((value) => ({ value, label: CUBE_TYPE_LABELS[value] }))}
             onChange={setNewType}
           />
-          <p className="hint">{CUBE_TYPE_HINTS[newType]} You can change this later.</p>
+          <p className="hint">{cubeTypeHint(newType, themeDraftsEnabled)} You can change this later.</p>
           <div className={styles.newActs}>
             <SvButton variant="primary" disabled={busy} onClick={createChosen}>
               Create cube
@@ -257,6 +262,7 @@ export function CubesLibraryList() {
       {importing && (
         <CubeListImportPanel
           defaultName={nextCubeName(cubes.map((c) => c.name))}
+          themeDraftsEnabled={themeDraftsEnabled}
           onCreated={importDone}
           onCancel={() => setImporting(false)}
         />

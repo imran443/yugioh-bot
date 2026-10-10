@@ -379,6 +379,7 @@ WEB_URL=https://${SITE_DOMAIN}
 MARKETING_URL=https://duelingdomain.com
 DISCORD_GUILD_ID=your_community_id
 DISCORD_BOT_ENABLED=0
+THEME_DRAFTS=0
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=  # production key, also set as the repository variable
 CLERK_SECRET_KEY=  # production web runtime only; never a build arg
 WS_INTERNAL_SECRET=  # openssl rand -hex 32; web/duel/worker/ws share it
@@ -391,6 +392,15 @@ SETS_SYNC_TIMEZONE=UTC
 IMAGE_CLEANUP_CRON=0 4 * * *
 IMAGE_CLEANUP_TIMEZONE=UTC
 ```
+
+| Environment variable | Default | Behavior |
+| --- | --- | --- |
+| `THEME_DRAFTS` | `0` for production web | Only `1`, `true` and `on` permit new theme drafts. The code default is off in every build. |
+| `STAGING_THEME_DRAFTS` | `1` for staging web | Sets web's `THEME_DRAFTS` in staging Compose. Use `0` to close new theme drafts there. |
+
+The owner keeps new production theme drafts closed for the alpha testers. Existing theme lobbies
+and active games can finish when the flag is off. Summary and deck export remain available.
+`GET /api/drafts` and `GET /api/cubes` return `themeDraftsEnabled` for browser create flows.
 
 Protect `.env` as 0600. Web has an explicit environment list; no `NEXTAUTH_*`, obsolete `AUTH_*`, Discord bot token, bot announce vars or E2E gate are forwarded. Web receives `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` at runtime for existing-player recovery; retain the original Discord OAuth application's credentials in the protected runtime configuration. The Clerk secret is runtime-only and only web receives it; owner CLI runs use explicit `-e CLERK_SECRET_KEY`. Dev keys never reach staging/production. Staging uses a separate instance and source. `WEB_URL` is required; missing it fails Compose config instead of changing WS CORS to localhost.
 

@@ -28,13 +28,13 @@ function setup(bot = false) {
     tournament: vi.fn(async () => {}), discord: vi.fn(async () => {}), duel: vi.fn(async () => {}) };
   return { db, drafts, lobby, draft, host, guest, effects, startedAt: now };
 }
-it.each(["end", "cancel"])("ignores %s drafts in a stale active-list snapshot", async action => {
+it("ignores cancelled drafts in a stale active-list snapshot", async () => {
   const app = setup(true);
   app.drafts.start(app.draft.id, now);
   const snapshot = app.drafts.findById(app.draft.id);
   const expire = vi.spyOn(app.drafts, "expireCurrentPickStep");
   vi.spyOn(app.drafts, "listActive").mockImplementationOnce(() => {
-    if (action === "end") app.drafts.endNow(app.draft.id); else app.drafts.cancel(app.draft.id);
+    app.drafts.cancel(app.draft.id);
     return [snapshot];
   });
   const timer = createDraftTimer(app);
@@ -67,12 +67,11 @@ it("does not start an armed lobby after cancellation", async () => {
   expect(app.drafts.picks(app.draft.id)).toEqual([]);
   expect(app.effects.draft).not.toHaveBeenCalled();
 });
-it("preserves an armed lobby after a rejected end and starts it at its deadline", async () => {
+it("preserves an armed lobby and starts it at its deadline", async () => {
   const app = setup(true);
   const scheduled = app.lobby.setAutoStart(app.draft.id, app.host.userId, {
     revision: app.lobby.read(app.draft.id).lobby.revision, enabled: true,
   }, now);
-  expect(() => app.drafts.endNow(app.draft.id)).toThrow(expect.objectContaining({ status: 409, code: "DRAFT_NOT_STARTED" }));
   expect(app.drafts.findById(app.draft.id).status).toBe("pending");
   expect(app.lobby.read(app.draft.id, app.host.userId)).toEqual(scheduled);
   await createDraftTimer(app).tick(new Date(scheduled.lobby.start!.startsAt));

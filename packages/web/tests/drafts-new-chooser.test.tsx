@@ -1,9 +1,39 @@
 // @vitest-environment jsdom
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NewDraftPage from "../app/(app)/drafts/new/page";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const { redirect } = vi.hoisted(() => ({
+  redirect: vi.fn((to: string) => {
+    throw new Error(`NEXT_REDIRECT ${to}`);
+  }),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), redirect }));
+
+const originalFlag = process.env.THEME_DRAFTS;
+beforeEach(() => {
+  process.env.THEME_DRAFTS = "1";
+  redirect.mockClear();
+});
+afterEach(() => {
+  if (originalFlag === undefined) delete process.env.THEME_DRAFTS;
+  else process.env.THEME_DRAFTS = originalFlag;
+});
+
+describe("draft-type chooser, theme drafts closed", () => {
+  it("sends the page straight to the cube draft setup and shows no theme option", () => {
+    delete process.env.THEME_DRAFTS;
+    expect(() => render(<NewDraftPage />)).toThrow("NEXT_REDIRECT /drafts/new/cube");
+    expect(redirect).toHaveBeenCalledWith("/drafts/new/cube");
+  });
+
+  it("stays closed for any other flag value", () => {
+    for (const value of ["", "0", "false", "off"]) {
+      process.env.THEME_DRAFTS = value;
+      expect(() => render(<NewDraftPage />)).toThrow("NEXT_REDIRECT /drafts/new/cube");
+    }
+  });
+});
 
 describe("draft-type chooser", () => {
   it("offers a cube and a theme draft option", () => {

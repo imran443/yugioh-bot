@@ -101,6 +101,7 @@ describe("theme lobby routes", () => {
     syncDraftPool.mockResolvedValue([]);
   });
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     delete process.env.DATABASE_PATH;
     delete process.env.DISCORD_GUILD_ID;
@@ -704,6 +705,7 @@ describe("theme lobby routes", () => {
   }, 30000);
 
   it("creation still rejects a deleted cube ID", async () => {
+    vi.stubEnv("THEME_DRAFTS", "1");
     const { cubeIds } = await seedDraft([{ main: 42, extra: 0 }]);
     const { getDb } = await import("../src/lib/db");
     const { createCubeService, createCardCatalogService } = await import("@yugidraft/shared/services");

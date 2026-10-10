@@ -92,6 +92,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   for (const db of connections.splice(0)) db.close();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
   delete process.env.DATABASE_PATH;
@@ -292,6 +293,7 @@ describe("attach/detach", () => {
   });
 
   it.each(["start", "mode", "delete"])("keeps a seeded cube saved when concurrent %s prevents attachment", async (change) => {
+    if (change === "mode") vi.stubEnv("THEME_DRAFTS", "1");
     const db = await seed();
     const gate = seedGate();
     const { POST } = await import("../app/api/drafts/[slug]/cubes/route");
@@ -346,6 +348,7 @@ describe("attach/detach", () => {
   });
 
   it.each(["POST", "DELETE"])("rejects cube edits on a booster draft via %s", async (method) => {
+    vi.stubEnv("THEME_DRAFTS", "1");
     const db = await seed({ mode: "booster" });
     const routes = await import("../app/api/drafts/[slug]/cubes/route");
     const response = await routes[method as "POST" | "DELETE"](request(method, method === "POST" ? { kind: "blank", name: "Wrong" } : { cubeId: 1 }), context);

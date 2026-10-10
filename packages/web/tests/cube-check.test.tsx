@@ -100,7 +100,7 @@ describe("CubeCheck", () => {
   });
 
   it("any: both checks as short lines and no theme warning", () => {
-    render(<CubeCheck type="any" pools={pools(2, 0, 1)} />);
+    render(<CubeCheck type="any" pools={pools(2, 0, 1)} themeDraftsEnabled />);
     expect(screen.getByRole("heading", { name: "Cube check" })).toBeInTheDocument();
     expect(screen.getByText(/needs 40 more main copies/)).toBeInTheDocument();
     expect(screen.getByText(/needs 88 more copies/)).toBeInTheDocument();
@@ -109,8 +109,19 @@ describe("CubeCheck", () => {
   });
 
   it("any: ready lines for a cube that suits both", () => {
-    render(<CubeCheck type="any" pools={pools(30, 10)} />);
+    render(<CubeCheck type="any" pools={pools(30, 10)} themeDraftsEnabled />);
     expect(screen.getByText("Theme draft:").parentElement).toHaveTextContent("Theme draft: ready.");
     expect(screen.getByText("Cube draft:").parentElement).toHaveTextContent("Cube draft: ready for up to 2 players.");
+  });
+
+  it("any, theme drafts closed: names no theme draft and keeps the cube draft line", () => {
+    const { container } = render(<CubeCheck type="any" pools={pools(30, 10)} />);
+    expect(container).not.toHaveTextContent(/theme/i);
+    expect(screen.getByText("Cube draft:").parentElement).toHaveTextContent("Cube draft: ready for up to 2 players.");
+  });
+
+  it("theme cube, theme drafts closed: an existing theme cube keeps its own check", () => {
+    render(<CubeCheck type="theme" pools={pools(14, 6)} />);
+    expect(screen.getByRole("heading", { name: "Theme draft check" })).toBeInTheDocument();
   });
 });

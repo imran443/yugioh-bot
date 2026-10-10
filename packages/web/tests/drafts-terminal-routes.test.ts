@@ -42,38 +42,37 @@ function setup(status: "pending" | "active" = "active", guild = "g", channel: st
   if (status === "active") drafts.start(draft.id, new Date("2030-01-01"));
   return { draft, drafts, host, guest };
 }
-async function call(action: "end" | "cancel", slug: string) {
-  const { POST } = action === "end" ? await import("../app/api/drafts/[slug]/end/route")
-    : await import("../app/api/drafts/[slug]/cancel/route");
-  return POST(new Request(`http://localhost/api/drafts/${slug}/${action}`, { method: "POST" }), { params: Promise.resolve({ slug }) });
+async function call(slug: string) {
+  const { POST } = await import("../app/api/drafts/[slug]/cancel/route");
+  return POST(new Request(`http://localhost/api/drafts/${slug}/cancel`, { method: "POST" }), { params: Promise.resolve({ slug }) });
 }
 
-describe("emergency draft API", () => {
-  it.each(["end", "cancel"] as const)("allows the host to %s and announces committed status", async action => {
+describe("draft cancellation API", () => {
+  it("allows the host to cancel and announces committed status", async () => {
     const { draft } = setup();
-    const response = await call(action, draft.webSlug!);
+    const response = await call(draft.webSlug!);
     expect(response.status).toBe(200);
-    const status = action === "end" ? "completed" : "cancelled";
+    const status = "cancelled";
     expect(await response.json()).toMatchObject({ id: draft.id, webSlug: draft.webSlug, status, changed: true, pickDeadlineAt: null, tournamentId: null });
     expect(state.broadcast).toHaveBeenCalledWith({ kind: "status", slug: draft.webSlug, status });
     expect(state.broadcast).toHaveBeenCalledWith({ kind: "resync", slug: draft.webSlug, packRound: 1, pickStep: 1 });
     expect(state.announce).toHaveBeenCalledWith({ kind: "draft-status", draftId: draft.id });
-    if (action === "end") expect(state.announce).toHaveBeenCalledWith({ kind: "draft-completed", draftId: draft.id, channelId: "c", name: draft.name, webSlug: draft.webSlug });
+    expect(state.announce).toHaveBeenCalledTimes(1);
   });
-  it.each(["end", "cancel"] as const)("denies a seated non-host's %s with 403", async action => {
+  it("denies a seated non-host's cancellation with 403", async () => {
     const { draft, drafts } = setup(); state.actor.userId = 2; state.actor.discordUserId = "100000000000000002";
-    expect((await call(action, draft.webSlug!)).status).toBe(403);
+    expect((await call(draft.webSlug!)).status).toBe(403);
     expect(drafts.findById(draft.id).status).toBe("active");
     expect(state.broadcast).not.toHaveBeenCalled(); expect(state.announce).not.toHaveBeenCalled();
   });
-  it.each(["end", "cancel"] as const)("allows an unseated email-only owner to %s a private draft", async action => {
+  it("allows an unseated email-only owner to cancel a private draft", async () => {
     const { draft } = setup(); state.actor.userId = 3;
     vi.stubEnv("OWNER_USER_IDS", "3");
-    expect((await call(action, draft.webSlug!)).status).toBe(200);
+    expect((await call(draft.webSlug!)).status).toBe(200);
   });
-  it.each(["end", "cancel"] as const)("conceals a private draft from an unseated non-owner on %s", async action => {
+  it("conceals a private draft from an unseated non-owner on cancellation", async () => {
     const { draft, drafts } = setup(); state.actor.userId = 3;
-    const response = await call(action, draft.webSlug!);
+    const response = await call(draft.webSlug!);
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "Draft not found" });
     expect(drafts.findById(draft.id).status).toBe("active");
@@ -82,69 +81,70 @@ describe("emergency draft API", () => {
   it("returns 403 to a non-owner who can read an open lobby", async () => {
     const { draft } = setup("pending"); state.actor.userId = 3;
     db.prepare("update drafts set visibility = 'open' where id = ?").run(draft.id);
-    expect((await call("cancel", draft.webSlug!)).status).toBe(403);
+    expect((await call(draft.webSlug!)).status).toBe(403);
   });
-  it.each(["end", "cancel"] as const)("rejects unauthenticated %s", async action => {
+  it("rejects unauthenticated cancellation", async () => {
     const { draft } = setup(); state.authenticated = false;
-    expect((await call(action, draft.webSlug!)).status).toBe(401);
+    expect((await call(draft.webSlug!)).status).toBe(401);
   });
-  it.each(["end", "cancel"] as const)("scopes %s lookup to the configured guild", async action => {
+  it("scopes cancellation lookup to the configured guild", async () => {
     const { draft } = setup("active", "foreign");
     state.actor.userId = 3; vi.stubEnv("OWNER_USER_IDS", "3");
-    expect((await call(action, draft.webSlug!)).status).toBe(404);
+    expect((await call(draft.webSlug!)).status).toBe(404);
     expect(state.broadcast).not.toHaveBeenCalled();
   });
-  it.each(["end", "cancel"] as const)("notifies only once for repeated %s and rejects the opposite terminal transition", async action => {
-    const { draft } = setup(action === "end" ? "active" : "pending");
-    const status = action === "end" ? "completed" : "cancelled";
-    const first = await call(action, draft.webSlug!);
+  it("notifies only once for repeated cancellation", async () => {
+    const { draft } = setup("pending");
+    const first = await call(draft.webSlug!);
     expect(first.status).toBe(200);
-    expect(await first.json()).toMatchObject({ status, changed: true });
-    const retry = await call(action, draft.webSlug!);
+    expect(await first.json()).toMatchObject({ status: "cancelled", changed: true });
+    const retry = await call(draft.webSlug!);
     expect(retry.status).toBe(200);
-    expect(await retry.json()).toMatchObject({ status, changed: false });
+    expect(await retry.json()).toMatchObject({ status: "cancelled", changed: false });
     expect(state.broadcast.mock.calls.map(([payload]) => payload)).toEqual([
-      { kind: "status", slug: draft.webSlug, status },
-      { kind: "resync", slug: draft.webSlug, packRound: action === "end" ? 1 : 0, pickStep: action === "end" ? 1 : 0 },
+      { kind: "status", slug: draft.webSlug, status: "cancelled" },
+      { kind: "resync", slug: draft.webSlug, packRound: 0, pickStep: 0 },
     ]);
-    expect(state.announce).toHaveBeenCalledTimes(action === "end" ? 2 : 1);
-    const conflict = await call(action === "end" ? "cancel" : "end", draft.webSlug!);
+    expect(state.announce).toHaveBeenCalledTimes(1);
+  });
+  it("rejects cancellation of a naturally completed draft", async () => {
+    const { draft, drafts, host, guest } = setup();
+    for (let step = 0; step < 4 && drafts.findById(draft.id).status === "active"; step++) {
+      for (const player of [host, guest]) drafts.pickCard(draft.id, player.id, drafts.pickOptions(draft.id, player.id)[0].id);
+    }
+    expect(drafts.findById(draft.id).status).toBe("completed");
+    const conflict = await call(draft.webSlug!);
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ code: "DRAFT_ALREADY_FINISHED" });
-  });
-  it("rejects ending a pending lobby without changing it or notifying clients", async () => {
-    const { draft, drafts } = setup("pending");
-    const before = drafts.findById(draft.id);
-    const response = await call("end", draft.webSlug!);
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: "DRAFT_NOT_STARTED" });
-    expect(drafts.findById(draft.id)).toEqual(before);
+    expect(drafts.findById(draft.id).status).toBe("completed");
     expect(state.broadcast).not.toHaveBeenCalled(); expect(state.announce).not.toHaveBeenCalled();
   });
   it("returns 403 for an email-only seated non-host", async () => {
     const { draft } = setup(); state.actor.userId = 2;
-    expect((await call("end", draft.webSlug!)).status).toBe(403);
+    expect((await call(draft.webSlug!)).status).toBe(403);
   });
-  it("broadcasts through the existing signed broadcaster after committing uneven picks", async () => {
+  it("broadcasts through the existing signed broadcaster after discarding uneven picks", async () => {
     const { draft, drafts, host, guest } = setup();
     drafts.pickCard(draft.id, host.id, drafts.pickOptions(draft.id, host.id)[0].id);
     const rec = recordingTransport();
     const broadcaster = createBroadcaster(rec.transport);
     state.broadcast.mockImplementation(async payload => {
-      expect(drafts.findById(draft.id).status).toBe("completed");
+      expect(drafts.findById(draft.id).status).toBe("cancelled");
+      expect(drafts.picks(draft.id)).toEqual([]);
+      expect(drafts.pool(draft.id, host.id)).toHaveLength(0);
       expect(drafts.pool(draft.id, guest.id)).toHaveLength(0);
       await broadcaster.draft(payload);
     });
-    expect((await call("end", draft.webSlug!)).status).toBe(200);
+    expect((await call(draft.webSlug!)).status).toBe(200);
     expect(rec.calls).toEqual([
-      { path: "/internal/draft/status", body: JSON.stringify({ slug: draft.webSlug, status: "completed" }) },
+      { path: "/internal/draft/status", body: JSON.stringify({ slug: draft.webSlug, status: "cancelled" }) },
       { path: "/internal/draft/resync", body: JSON.stringify({ slug: draft.webSlug, packRound: 1, pickStep: 1 }) },
     ]);
   });
   it("keeps a committed result successful if notification transport throws", async () => {
     const { draft, drafts } = setup(); state.broadcast.mockRejectedValue(new Error("offline"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try { expect((await call("end", draft.webSlug!)).status).toBe(200); expect(drafts.findById(draft.id).status).toBe("completed"); }
+    try { expect((await call(draft.webSlug!)).status).toBe(200); expect(drafts.findById(draft.id).status).toBe("cancelled"); }
     finally { warn.mockRestore(); }
   });
 });

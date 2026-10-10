@@ -30,7 +30,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-it.each(["end", "cancel"] as const)("stops the pick route's bot loop when %s commits after it reads options", async action => {
+it("stops the pick route's bot loop when cancellation commits after it reads options", async () => {
   const directory = mkdtempSync(join(tmpdir(), "draft-pick-terminal-race-"));
   directories.push(directory);
   const path = join(directory, "test.sqlite");
@@ -57,7 +57,7 @@ it.each(["end", "cancel"] as const)("stops the pick route's bot loop when %s com
     const options = pickOptions(draftId, playerId);
     if (playerId === 2 && options.length > 0 && !terminalCommitted) {
       // Force the race between the bot's option snapshot and its actual write transaction.
-      if (action === "end") otherDrafts.endNow(draftId); else otherDrafts.cancel(draftId);
+      otherDrafts.cancel(draftId);
       terminalCommitted = true;
     }
     return options;
@@ -71,12 +71,12 @@ it.each(["end", "cancel"] as const)("stops the pick route's bot loop when %s com
   }), { params: Promise.resolve({ slug: draft.webSlug! }) });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({ status: action === "end" ? "completed" : "cancelled" });
+  expect(await response.json()).toMatchObject({ status: "cancelled" });
   expect(terminalCommitted).toBe(true);
   expect(botPick).toHaveBeenCalledOnce();
   expect(botPick).toHaveBeenCalledWith(draft.id, 2, expect.any(Number), "auto");
   expect(logError).not.toHaveBeenCalledWith("[draft] bot pick failed:", expect.anything());
   expect(drafts.findById(draft.id).pickDeadlineAt).toBeNull();
-  expect(drafts.picks(draft.id).map(pick => pick.playerId)).toEqual(action === "end" ? [1] : []);
+  expect(drafts.picks(draft.id).map(pick => pick.playerId)).toEqual([]);
   expect(db.pragma("foreign_key_check")).toEqual([]);
 });

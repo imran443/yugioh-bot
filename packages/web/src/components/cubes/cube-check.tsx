@@ -128,13 +128,13 @@ function BoosterCheck({ pools, settings }: { pools: CubePoolsDto; settings: Boos
 }
 
 /** A plain cube is used for either draft: both checks as short lines, nothing alarming. */
-function AnyCheck({ pools, settings }: { pools: CubePoolsDto; settings: BoosterSettings }) {
+function AnyCheck({ pools, settings, themeDraftsEnabled }: { pools: CubePoolsDto; settings: BoosterSettings; themeDraftsEnabled: boolean }) {
   const theme = cubeReadiness(poolTotals(pools.main).usable, poolTotals(pools.extra).usable);
   const booster = boosterReadiness(poolTotals(pools.main).copies, poolTotals(pools.main).usable, settings);
   return (
     <section className={styles.check} aria-labelledby="ce-rd">
-      <SectionHead id="ce-rd" title="Cube check" note="Works for theme drafts and cube drafts" />
-      {theme.main.short > 0 ? (
+      <SectionHead id="ce-rd" title="Cube check" note={themeDraftsEnabled ? "Works for theme drafts and cube drafts" : undefined} />
+      {!themeDraftsEnabled ? null : theme.main.short > 0 ? (
         <StatusLine tone="neutral">
           <b>Theme draft:</b> needs {theme.main.short} more main {plural(theme.main.short, "copy", "copies")} (
           {theme.main.have} of {THEME_MAIN_NEEDED}).
@@ -171,15 +171,18 @@ export function CubeCheck({
   type,
   pools,
   settings = {},
+  themeDraftsEnabled = false,
 }: {
   type: CubeDraftType;
   pools: CubePoolsDto;
   settings?: BoosterSettings;
+  /** The server says theme drafts are open. Closed, a plain cube is checked for cube drafts only. Default closed. */
+  themeDraftsEnabled?: boolean;
 }) {
   if (type !== "theme" && pools.main.length === 0 && settings.poolFromConfig) {
     return <section className={styles.check}><SectionHead title="Cube draft check" /><StatusLine tone="neutral">Pool from sets or passcodes; checked at draft start.</StatusLine></section>;
   }
   if (type === "theme") return <ThemeCheck pools={pools} />;
   if (type === "booster") return <BoosterCheck pools={pools} settings={settings} />;
-  return <AnyCheck pools={pools} settings={settings} />;
+  return <AnyCheck pools={pools} settings={settings} themeDraftsEnabled={themeDraftsEnabled} />;
 }

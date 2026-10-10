@@ -67,6 +67,7 @@ describe("draft and tournament route broadcasts", () => {
   afterEach(() => {
     db.close();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it("the web draft POST schedules a start and broadcasts active only after the server countdown", async () => {
@@ -129,6 +130,7 @@ describe("draft and tournament route broadcasts", () => {
   });
 
   it.each([{ name: "Renamed" }, { config: { mode: "theme", allowedCubeIds: [] } }])("editing a draft refreshes open pages: %j", async (body) => {
+    if (body.config?.mode === "theme") vi.stubEnv("THEME_DRAFTS", "1");
     fixture();
     const { PUT } = await import("../app/api/drafts/[slug]/route");
     expect((await PUT(request("PUT", body), draftCtx)).status).toBe(200);

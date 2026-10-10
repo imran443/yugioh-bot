@@ -14,6 +14,7 @@ import { announcer } from "@/lib/notify";
 import { toUtcIso } from "@/lib/utils";
 import { ensureCatalogCards, sanitizePoolSource } from "@/lib/cube-pool";
 import { hostThemeAssignmentError } from "@/lib/theme-draft-validation";
+import { themeDraftsEnabled, themeDraftSetupError } from "@/lib/theme-drafts";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ export async function GET(request?: Request) {
     const items = result.items.map(({ configJson, ...item }) => ({
       ...item, config: parseDraftConfig(configJson, item.status), createdAt: toUtcIso(item.createdAt), endedAt: toUtcIso(item.endedAt),
     }));
-    return NextResponse.json({ items, nextCursor: result.nextCursor });
+    return NextResponse.json({ items, nextCursor: result.nextCursor, themeDraftsEnabled: themeDraftsEnabled() });
   } catch (error) {
     if (error instanceof InvalidListCursorError) return NextResponse.json({ error: error.message }, { status: 400 });
     console.error("[api/drafts] error:", error);
@@ -53,6 +54,10 @@ async function handlePOST(request: NextRequest) {
   if (typeof name !== "string" || !name.trim() || !rawConfig || typeof rawConfig !== "object" || Array.isArray(rawConfig)
     || (discordEnabled && channelId !== undefined && typeof channelId !== "string")) {
     return NextResponse.json({ error: "name and config are required", code: "INVALID_BODY" }, { status: 400 });
+  }
+  if (rawConfig.mode === "theme") {
+    const closed = themeDraftSetupError();
+    if (closed) return NextResponse.json({ error: closed }, { status: 403 });
   }
   assertDraftConfigShape(rawConfig);
   const capError = cardsPerPlayerError(rawConfig);

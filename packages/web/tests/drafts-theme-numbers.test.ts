@@ -12,6 +12,7 @@ vi.mock("@/lib/notify", () => ({ announcer: { announce: vi.fn() }, broadcaster: 
 let directory: string;
 beforeEach(() => {
   vi.resetModules();
+  vi.stubEnv("THEME_DRAFTS", "1");
   directory = mkdtempSync(join(tmpdir(), "draft-theme-numbers-"));
   vi.stubEnv("DATABASE_PATH", join(directory, "test.sqlite"));
   vi.stubEnv("DISCORD_GUILD_ID", "g");

@@ -286,17 +286,32 @@ describe("useDraftWebsocket", () => {
     expect(onStatusChange).toHaveBeenCalledWith("completed");
   });
 
-  it.each(["completed", "cancelled"] as const)("calls onHostStopped when the host stops the draft (%s)", (status) => {
+  it("calls onHostStopped when the host cancels the draft", () => {
     const onHostStopped = vi.fn();
 
     render(<HookHarness slug="my-draft" options={{ onHostStopped }} />);
 
     act(() => {
       simulateEvent("connect");
-      simulateEvent("draft:status", { status });
+      simulateEvent("draft:status", { status: "cancelled" });
     });
 
-    expect(onHostStopped).toHaveBeenCalledExactlyOnceWith(status);
+    expect(onHostStopped).toHaveBeenCalledExactlyOnceWith("cancelled");
+  });
+
+  it("does not call onHostStopped for a completed status, but still reports the status", () => {
+    const onHostStopped = vi.fn();
+    const onStatusChange = vi.fn();
+
+    render(<HookHarness slug="my-draft" options={{ onHostStopped, onStatusChange }} />);
+
+    act(() => {
+      simulateEvent("connect");
+      simulateEvent("draft:status", { status: "completed" });
+    });
+
+    expect(onHostStopped).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenCalledWith("completed");
   });
 
   it("does not call onHostStopped when the draft finishes by itself", () => {

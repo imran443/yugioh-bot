@@ -81,7 +81,7 @@ describe("draft timer service", () => {
     vi.useRealTimers();
   });
 
-  it.each(["end", "cancel"])("ignores %s drafts, including a stale active-list snapshot", async (action) => {
+  it("ignores cancelled drafts, including a stale active-list snapshot", async () => {
     const app = setup();
     const yugi = app.players.upsert("guild-1", "900000000000000116", "Yugi");
     const kaiba = app.players.upsert("guild-1", "900000000000000117", "Kaiba");
@@ -93,7 +93,7 @@ describe("draft timer service", () => {
     const snapshot = app.drafts.findById(draft.id);
     const expire = vi.spyOn(app.drafts, "expireCurrentPickStep");
     const list = vi.spyOn(app.drafts, "listActive").mockImplementationOnce(() => {
-      if (action === "end") app.drafts.endNow(draft.id); else app.drafts.cancel(draft.id);
+      app.drafts.cancel(draft.id);
       return [snapshot];
     });
     const rec = recordingTransport();
