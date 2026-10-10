@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_DUEL_1V1_ENGINE, duel1v1Engine, isDuelEngineChoice } from "../../src/duels/index.js";
+import { DEFAULT_DUEL_1V1_ENGINE, duel1v1Engine, duel1v1EngineForMode, isDuelEngineChoice } from "../../src/duels/index.js";
 
 describe("duel1v1Engine", () => {
   it("defaults to legacy when the key is missing or empty", () => {
@@ -38,5 +38,23 @@ describe("duel1v1Engine", () => {
     expect(isDuelEngineChoice("pinned")).toBe(true);
     expect(isDuelEngineChoice("multi")).toBe(false);
     expect(isDuelEngineChoice(undefined)).toBe(false);
+  });
+});
+
+describe("duel1v1EngineForMode", () => {
+  it.each(["pinned", " PINNED ", "legacy", " LEGACY "])("applies Standard override %j without changing the global choice", (override) => {
+    const expected = override.trim().toLowerCase();
+    const global = expected === "pinned" ? "legacy" : "pinned";
+    const env = { DUEL_1V1_ENGINE: global, DUEL_STANDARD_1V1_ENGINE: override };
+    expect(duel1v1EngineForMode("normal", env)).toBe(expected);
+    expect(duel1v1EngineForMode("domain", env)).toBe(global);
+    expect(duel1v1Engine(env)).toBe(global);
+  });
+
+  it.each([undefined, "", " ", "unknown"])("falls back to the global switch for Standard override %j", (override) => {
+    for (const global of [undefined, "legacy", "pinned"]) {
+      const env = { DUEL_1V1_ENGINE: global, DUEL_STANDARD_1V1_ENGINE: override };
+      for (const mode of ["normal", "domain"] as const) expect(duel1v1EngineForMode(mode, env)).toBe(duel1v1Engine(env));
+    }
   });
 });

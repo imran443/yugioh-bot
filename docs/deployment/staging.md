@@ -137,9 +137,9 @@ The duel server resolves `DUEL_DATA_DIR` from the application root; both Compose
 | --- | --- | --- |
 | Standard FFA3, FFA4, Tag | `ocgcore.multi.wasm` | Plain multi core must exist |
 | Domain FFA3, FFA4, Tag | `ocgcore.multi-domain.wasm` | Both multi core files must exist |
-| Standard 1v1, pinned engine | `ocgcore.standard.wasm` | Does not use multi cores |
+| Standard 1v1, pinned engine (Compose default) | `ocgcore.standard.wasm` | Does not use multi cores |
 | Domain 1v1, pinned engine | `ocgcore.domain.wasm` | Does not use multi cores |
-| Legacy 1v1 (production default) | npm Standard core or `ocgcore.domain.legacy.wasm` | Does not use multi cores |
+| Legacy 1v1 (Domain Compose default; Standard rollback) | npm Standard core or `ocgcore.domain.legacy.wasm` | Does not use multi cores |
 
 The Domain guard needs the plain multi file as well, even though the Domain game loads only the Domain
 variant. The `capabilities` operation reports `multiDomainCoreReady` from the Domain file; preset
@@ -363,8 +363,10 @@ WHERE web_slug = '<verified-local-duel-slug>'
   workflow that ships only the plain core leaves Domain blocked.
 - **Rule coverage.** `docs/specs/multiplayer-rule-coverage.md` lists all 45 rules of ADR-0002 as covered by an outcome test. A
   rule id is one unit, so read the scenario before you trust a rule with several clauses. Cards outside the tested scenarios can still behave wrongly: report them.
-- The legacy Standard 1v1 engine uses the older npm core. Staging defaults to the legacy 1v1 engine, as production does (`STAGING_DUEL_1V1_ENGINE=pinned` tests the merged one);
-  multiplayer games load the separately built multi cores.
+- Staging and production default Standard 1v1 to the pinned core. `STAGING_DUEL_STANDARD_1V1_ENGINE` supplies
+  `DUEL_STANDARD_1V1_ENGINE`; missing or empty values mean `pinned`. Set it to `legacy` and recreate `duel` to roll back.
+  Domain keeps `STAGING_DUEL_1V1_ENGINE=legacy`; set it to `pinned` to test the merged Domain core.
+  Each game of a series reads the switch at its start. Multiplayer games load the separately built multi cores.
 - Staging has a database copy with production Clerk IDs cleared on refresh. Testers use invitations/accounts in the separate staging Clerk instance. Email-only access works without guild membership REST checks.
 - Use a separate staging hostname and its configured Clerk origin to keep staging sessions scoped correctly. Dev keys never authenticate a deployed staging stack. The current staging Caddy serves plain HTTP on the configured port; arrange the separate HTTPS proxy and set the public HTTPS origin before enabling Clerk auth.
 

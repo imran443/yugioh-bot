@@ -49,9 +49,9 @@ Compose runs web/WS/duel/worker/Caddy, fixes `DISCORD_BOT_ENABLED=0`, and inject
 ```mermaid
 flowchart TB
   host[host.ts<br/>op switch + per-duel queue] --> worker[Engine worker<br/>one thread per duel]
-  worker --> pick{Seats?}
-  pick -->|2: 1v1| legacy[Legacy core<br/>default]
-  pick -->|2: 1v1, DUEL_1V1_ENGINE=pinned| pinned[Pinned core]
+  worker --> pick{Seats and engine choice?}
+  pick -->|2: Domain, DUEL_1V1_ENGINE=legacy| legacy[Legacy core<br/>Domain Compose default]
+  pick -->|2: Standard, DUEL_STANDARD_1V1_ENGINE=pinned| pinned[Pinned core<br/>Standard Compose default]
   pick -->|3 or 4: Tag, FFA3, FFA4| multi[Multi core<br/>+ Lua overlay]
   legacy & pinned & multi --> lua[Card scripts<br/>Lua + cards.cdb]
   worker --> views[views.ts<br/>one redacted view per seat]
@@ -70,9 +70,13 @@ flowchart TB
 
 | Core | Used for | File |
 |---|---|---|
-| Legacy | 1v1, the default | npm `ocgcore-wasm`, `ocgcore.domain.legacy.wasm` |
-| Pinned | 1v1 when `DUEL_1V1_ENGINE=pinned` | `ocgcore.standard.wasm`, `ocgcore.domain.wasm` |
+| Legacy | Domain 1v1 Compose default (`DUEL_1V1_ENGINE=legacy`); Standard with `DUEL_STANDARD_1V1_ENGINE=legacy` | npm `ocgcore-wasm`, `ocgcore.domain.legacy.wasm` |
+| Pinned | Standard 1v1 Compose default (`DUEL_STANDARD_1V1_ENGINE=pinned`); Domain with `DUEL_1V1_ENGINE=pinned` | `ocgcore.standard.wasm`, `ocgcore.domain.wasm` |
 | Multi | Tag, 3-way, 4-way | `ocgcore.multi.wasm`, `ocgcore.multi-domain.wasm` |
+
+Native runs with a missing, empty or invalid Standard override use `DUEL_1V1_ENGINE` (default `legacy`).
+Compose uses `pinned` for a missing or empty Standard value. Each game of a series reads the switch at its start;
+recover and replay keep that game's saved engine. See [the engine switch](deployment/duel-engine-switch.md).
 
 **Engine data.** `scripts/prepare-data.ts` pins the card DB (BabelCDB), strings and Lua scripts (ProjectIgnis CardScripts). `manifest.json` holds the hashes and the `bundleVersion`. The server checks the bundle at start.
 

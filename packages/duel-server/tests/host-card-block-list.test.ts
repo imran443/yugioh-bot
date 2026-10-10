@@ -131,3 +131,27 @@ it.each([
     }
   } finally { await host.close(); db.close(); }
 });
+
+it.each(["pinned-normal", "legacy-normal"] as const)("Standard override uses pinned admission rules for a %s block", async (kind) => {
+  vi.stubEnv("DUEL_1V1_ENGINE", "legacy");
+  vi.stubEnv("DUEL_STANDARD_1V1_ENGINE", "pinned");
+  const db = new Database(":memory:"); migrate(db);
+  const player = seedIdentity(db, { guildId: "g", name: "P", userId: seedUser(db, kind).userId }).playerId;
+  const session = createDuelService(db).create({ guildId: "g", organizerPlayerId: player, name: "Standard override", mode: "normal" });
+  const code = 18144506;
+  db.prepare(`INSERT INTO card_script_auto_blocks (code, reason, blocked_at, distinct_duels, error_count, threshold, window_days, bundle_version, script_hash, engine_kind)
+    VALUES (?, 'reason', CURRENT_TIMESTAMP, 3, 3, 3, 7, 'test', ?, ?)`)
+    .run(code, cardScriptHash(loadCardDatabase(DATA), code, kind), kind);
+  const host = createDuelHost({ db, dataDirectory: DATA, secret: SECRET, searchCards: () => [] });
+  try {
+    for (const op of ["card-query", "card-details"]) {
+      const body = { op, guildId: "g", playerId: player, codes: [code], cardQuery: { text: String(code) } };
+      for (const context of [{}, { slug: session.slug }]) {
+        const result = await post(host, { ...body, ...context });
+        expect(result.status).toBe(200);
+        if (kind === "pinned-normal") expect(result.data.cards[0].unavailableReason).toBe("Its effect script is being investigated");
+        else expect(result.data.cards[0]).not.toHaveProperty("unavailableReason");
+      }
+    }
+  } finally { await host.close(); db.close(); }
+});

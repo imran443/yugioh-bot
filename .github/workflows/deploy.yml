@@ -83,7 +83,7 @@ jobs:
           docker pull docker.io/emscripten/emsdk:4.0.9@sha256:3c853ef9c3b4c2708da1adac2fdfdba49c775fdc4144ceef4989423963e96811
           npx tsx packages/duel-server/scripts/build-domain-core.ts
           npx tsx packages/duel-server/scripts/build-domain-core.ts standard
-          # The Domain core of the legacy 1v1 engine (the approved legacy pin), next to the merged one. 1v1 duels start on it by default.
+          # The approved legacy Domain core, next to the merged cores. Domain 1v1 uses it by default.
           npx tsx packages/duel-server/scripts/build-domain-core.ts legacy-domain
 
       - name: Save pinned duel-engine bundle
@@ -96,8 +96,8 @@ jobs:
       # The pinned bundle above (data/duel-engine) now holds the merged cores (ocgcore.standard.wasm, ocgcore.domain.wasm) AND the
       # legacy 1v1 files (ocgcore.domain.legacy.wasm, card-scripts/domain.legacy.lua). Its cache key hashes legacy-1v1/** and
       # build-standard-core.sh too, so the first deploy of the merge builds the bundle again and the bundle changes: the deploy
-      # preflight then needs an empty server (no active duel), see docs/deployment/vm-runbook.md. 1v1 duels run on the legacy files
-      # unless DUEL_1V1_ENGINE=pinned (docs/deployment/duel-engine-switch.md).
+      # preflight then needs an empty server (no active duel), see docs/deployment/vm-runbook.md. Compose defaults Standard 1v1
+      # to DUEL_STANDARD_1V1_ENGINE=pinned; Domain keeps DUEL_1V1_ENGINE=legacy (docs/deployment/duel-engine-switch.md).
       # The multi-duelist core (Tag and 3 and 4 player tables) is NOT part of the pinned bundle: it travels next to the bundle in the
       # deploy tarball and is installed by packages/duel-server/scripts/install-engine-bundle.sh. The server loads it only for tables
       # with more than 2 seats, and MULTIPLAYER_TABLES (default on; set 0 in .env to close) controls those tables.

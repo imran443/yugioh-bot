@@ -146,9 +146,15 @@ The multiplayer merge changes the Standard and Domain cores, so its first deploy
 
 ### Engine switch and multiplayer flag
 
-The merge deploys with `DUEL_1V1_ENGINE=legacy` (1v1 duels run on main's old engine) and `MULTIPLAYER_TABLES` on (Tag,
-3-player and 4-player tables open; `MULTIPLAYER_TABLES=0` in `.env` closes them). Both are read by a restart of the `duel` service (the flag also by `web`). They need no
-empty server. See `duel-engine-switch.md` for the values, the engine saved for each duel and how to switch back.
+Compose defaults Standard 1v1 to `DUEL_STANDARD_1V1_ENGINE=pinned`, with no production `.env` edit.
+Domain keeps `DUEL_1V1_ENGINE=legacy`. To roll back Standard, set `DUEL_STANDARD_1V1_ENGINE=legacy` in `.env`, then run
+`docker compose -f docker-compose.yml up -d --force-recreate duel`. An empty or missing Standard value means `pinned`
+in Compose. A Compose `restart` does not apply changed environment values. Each game of a series reads the switch
+at its start; active games keep their saved engine.
+
+`MULTIPLAYER_TABLES` is on (Tag, 3-player and 4-player tables open); `MULTIPLAYER_TABLES=0` in `.env` closes new multi
+tables after `duel` and `web` are recreated. Switch changes need no empty server. See `duel-engine-switch.md` for the
+values, the engine saved for each game and bundle rebuild checks.
 
 ### Report bug button (GitHub issues)
 
