@@ -15,6 +15,9 @@ import { reconcile, scanText } from "../scripts/scan-multiplayer-scripts.js";
 import { withCardUpdate } from "../scripts/engine-data-card-report.js";
 import * as smoke from "../scripts/prerelease-script-smoke.js";
 import * as probe from "../scripts/probe-engine-data.js";
+import * as history from "../scripts/prerelease-history.js";
+import * as releasedData from "../scripts/released-card-data.js";
+import { CardRemapValidationError } from "../scripts/prerelease-graduations.js";
 
 // Mocked upstream CDBs have no production BETB identities. Explicit policy tests
 // belong to released-card-data.test.ts; this suite exercises the updater.
@@ -50,7 +53,265 @@ async function fixture() {
   return { root, files };
 }
 
+async function loadedDataFixture(change: string) {
+  const { root } = await fixture();
+  const manifest = join(root, "packages/duel-server/domain-core/multi-scripts/MANIFEST.json");
+  await mkdir(dirname(manifest), { recursive: true });
+  await writeFile(manifest, '{"cards":[]}');
+  const corpus = join(root, "corpus");
+  await mkdir(join(corpus, "official"), { recursive: true });
+  await writeFile(join(corpus, "official/c1.lua"), "-- playable");
+  await writeFile(join(corpus, "utility.lua"), "-- helper");
+  const archive = execFileSync("tar", ["-czf", "-", "-C", root, "corpus"]);
+  const inputs: Array<Map<string, Buffer>> = [];
+  for (const candidate of [false, true]) {
+    const databases = new Map<string, Buffer>();
+    const makeDatabase = async (file: string, rows: Array<[number, string]>) => {
+      const path = join(root, `${candidate}-${file}`), db = new Database(path);
+      db.exec("CREATE TABLE datas(id INTEGER PRIMARY KEY,ot INTEGER,alias INTEGER,type INTEGER); CREATE TABLE texts(id INTEGER PRIMARY KEY,name TEXT,desc TEXT)");
+      for (const [code, name] of rows) {
+        db.prepare("INSERT INTO datas VALUES(?,3,0,33)").run(code);
+        db.prepare("INSERT INTO texts VALUES(?,?,'Effect')").run(code, name);
+      }
+      db.close(); databases.set(file, await readFile(path));
+    };
+    await makeDatabase("cards.cdb", [[1, "Playable"], ...(change === "ambiguous-old" ? [[2, "Second identity"] as [number, string]] : [])]);
+    if (change === "graduation" && !candidate) await makeDatabase("prerelease-betb.cdb", [[100000001, "Graduating card"]]);
+    if (["graduation", "new-release"].includes(change) && candidate) await makeDatabase("release-betb.cdb", [[2, "Graduating card"]]);
+    if (change === "ambiguous-old" && !candidate) {
+      await makeDatabase("prerelease-betb.cdb", [[100000001, "Playable"]]);
+      await makeDatabase("prerelease-conflict.cdb", [[100000001, "Second identity"]]);
+    }
+    if (change === "pending-set") await makeDatabase("prerelease-betb.cdb", [[100000001, "Preview"]]);
+    inputs.push(databases);
+  }
+  if (change === "graduation") {
+    const preparation = join(root, "packages/duel-server/scripts/prepare-data.ts");
+    await writeFile(preparation, (await readFile(preparation, "utf8")) + `\nconst history = { prereleaseHistoryStart: "${"1".repeat(40)}" };\n`);
+    vi.spyOn(history, "prereleaseHistory").mockResolvedValue({
+      cards: [{ code: 100000001, name: "Graduating card", type: 33 }], transitions: [],
+    });
+  }
+  const request = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input), candidate = Object.values(nextPins).some(sha => url.includes(sha));
+    if (url.includes("/commits?")) return Response.json([{ sha: url.includes("CardScripts") ? oldPins.scripts
+      : url.includes("BabelCDB") ? oldPins.database : oldPins.strings }]);
+    if (url.includes("/compare/")) return Response.json({ ahead_by: 1, behind_by: 0, status: "ahead" });
+    if (url.includes("/git/trees/")) return Response.json({ truncated: false, tree: url.includes("BabelCDB")
+      ? [...inputs[candidate ? 1 : 0]!.keys()].map(path => ({ path, type: "blob", sha: path }))
+      : [{ path: "official/c1.lua", type: "blob", sha: "unchanged" },
+        { path: "utility.lua", type: "blob", sha: candidate && change === "utility" ? "changed-helper" : "helper" }] });
+    if (url.endsWith(".cdb")) {
+      const bytes = inputs[candidate ? 1 : 0]!.get(url.split("/").pop()!);
+      if (bytes) return new Response(new Uint8Array(bytes));
+    }
+    if (url.endsWith("/strings.conf")) return new Response("strings");
+    if (url.includes("codeload.github.com")) return new Response(new Uint8Array(archive));
+    if (url.includes("ygoprodeck")) return Response.json(url.includes("cardsets.php")
+      ? [{ set_name: "Beyond the Brave", set_code: "BETB", tcg_date: "2026-10-08" }] : { data: [] });
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  return { root, request };
+}
+
 describe("engine data update", () => {
+  it.each(["identical", "utility", "cards", "strings", "remaps", "remap-error", "no-pr"])("compares loaded data with the open PR (%s)", async change => {
+    const { root, request: upstream } = await loadedDataFixture(change === "utility" ? "utility" : change === "cards" ? "new-release" : "identical");
+    const prHead = "2".repeat(40);
+    const prPins = { scripts: "3".repeat(40), database: "4".repeat(40), strings: "5".repeat(40) };
+    const request = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://api.github.com/repos/test/repo/pulls?")) return Response.json(change === "no-pr" ? []
+        : [{ head: { sha: prHead } }]);
+      if (url.startsWith("https://api.github.com/repos/test/repo/contents/")) {
+        expect(new URL(url).searchParams.get("ref")).toBe(prHead);
+        return Response.json({ encoding: "base64", content: Buffer.from(`const sources = ${JSON.stringify(prPins)};`).toString("base64") });
+      }
+      if (change === "strings" && url.endsWith("/strings.conf") && url.includes(nextPins.strings)) return new Response("changed strings");
+      let mapped = url;
+      for (const key of Object.keys(prPins) as (keyof Pins)[]) mapped = mapped.replaceAll(prPins[key], oldPins[key]);
+      return upstream(mapped);
+    });
+    // Ensure publication is reached even when candidate and PR data match: main's
+    // unavailable snapshot opens its gate without affecting the PR comparison.
+    const download = releasedData.downloadReleasedCardData;
+    vi.spyOn(releasedData, "downloadReleasedCardData").mockImplementation(async (commit, ...args) => {
+      if (commit === oldPins.database || (change === "remap-error" && commit === prPins.database)) {
+        throw new CardRemapValidationError("Ambiguous prerelease passcode 100000001");
+      }
+      const data = await download(commit, ...args);
+      return change === "remaps" && commit === nextPins.database ? { ...data, remaps: { "100000001": 1 } } : data;
+    });
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false, repository: "test/repo" });
+    expect(result.changed).toBe(true);
+    expect(result.matchingPrHead).toBe(change === "identical" ? prHead : undefined);
+  });
+
+  it("continues the update when the open PR comparison API fails", async () => {
+    const { root, request: upstream } = await loadedDataFixture("utility");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const request = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://api.github.com/repos/test/repo/pulls?")) {
+        return Response.json([{ head: { sha: "2".repeat(40) } }]);
+      }
+      if (url.startsWith("https://api.github.com/repos/test/repo/contents/")) {
+        return new Response("Service unavailable", { status: 503 });
+      }
+      return upstream(input);
+    });
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false, repository: "test/repo" });
+    expect(result.changed).toBe(true);
+    expect(result.matchingPrHead).toBeUndefined();
+    expect(await readPins(root)).toEqual(nextPins);
+    expect(result.files).toContain("packages/duel-server/scripts/prepare-data.ts");
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining("Open PR comparison failed"),
+      expect.objectContaining({ message: expect.stringContaining("Download failed (503)") }));
+  });
+
+  it.each([false, true])("includes released upstream previews in the job summary when pins moved=%s", async moved => {
+    const { root, request } = await loadedDataFixture("pending-set");
+    const result = await runUpdate({ root, overrides: moved ? nextPins : oldPins, request, validate: false, report: ".status/report.md" });
+    expect(result.changed).toBe(false);
+    expect(result.files).toEqual([]);
+    expect(await readPins(root)).toEqual(oldPins);
+    expect(request.mock.calls.some(([url]) => String(url).includes("codeload"))).toBe(false);
+    await writeFile(join(dirname(result.reportPath), "update.json"), JSON.stringify(result));
+    const summary = join(root, "summary.md");
+    execFileSync(process.execPath, ["--import", "tsx", resolve(import.meta.dirname, "../scripts/validate-engine-data.ts")], {
+      cwd: process.cwd(), env: { ...process.env, UPDATE_ARTIFACT_DIR: dirname(result.reportPath),
+        DUEL_DATA_DIR: join(root, "absent-bundle"), GITHUB_STEP_SUMMARY: summary,
+        GITHUB_REPOSITORY: "test/repo", GITHUB_RUN_ID: "1" },
+    });
+    expect(await readFile(summary, "utf8")).toContain("Beyond the Brave (BETB)");
+    expect(await readFile(summary, "utf8")).toContain("TCG release: 2026-10-08; 1 cards");
+  });
+
+  it.each(["invalid-override", "cyclic"])("opens the gate when old remap validation fails (%s)", async failure => {
+    const { root, request } = await loadedDataFixture(failure === "invalid-override" ? "graduation" : "identical");
+    if (failure === "invalid-override") {
+      const download = releasedData.downloadReleasedCardData;
+      vi.spyOn(releasedData, "downloadReleasedCardData").mockImplementation((commit, directory, request, options) =>
+        download(commit, directory, request, { ...options, overrideBytes: '{"100000001":2}' }));
+    } else {
+      const preparation = join(root, "packages/duel-server/scripts/prepare-data.ts");
+      await writeFile(preparation, (await readFile(preparation, "utf8")) + `\nconst history = { prereleaseHistoryStart: "${"1".repeat(40)}" };\n`);
+      const identity = { name: "Historical card", type: 33, atk: 1000, def: 1000, level: 4,
+        attribute: 1, race: "1", description: "An effect description long enough to match historical graduations uniquely." };
+      vi.spyOn(history, "prereleaseHistory").mockImplementation(async (_start, commit) => ({ cards: [],
+        transitions: commit === oldPins.database ? [
+          { commit: "first", removed: [{ ...identity, code: 2 }], added: [{ ...identity, code: 3 }] },
+          { commit: "second", removed: [{ ...identity, code: 3 }], added: [{ ...identity, code: 2 }] },
+        ] : [] }));
+    }
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false });
+    expect(result.changed).toBe(true);
+    expect(result.relevance).toMatchObject({ comparisonAvailable: false, newCards: null, changedCards: null });
+    expect(await readPins(root)).toEqual(nextPins);
+    expect(await readFile(result.reportPath, "utf8")).toContain(failure === "invalid-override"
+      ? "Invalid card remap override 100000001" : "Cyclic historical prerelease passcode");
+  });
+
+  it("still rejects unrelated old-snapshot download failures", async () => {
+    const { root, request } = await loadedDataFixture("identical");
+    const download = releasedData.downloadReleasedCardData;
+    vi.spyOn(releasedData, "downloadReleasedCardData").mockImplementation((commit, ...args) => {
+      if (commit === oldPins.database) throw new Error("Download failed (500)");
+      return download(commit, ...args);
+    });
+    await expect(runUpdate({ root, overrides: nextPins, request, validate: false })).rejects.toThrow("Download failed (500)");
+    expect(await readPins(root)).toEqual(oldPins);
+  });
+
+  it.each(["graduation", "new-release", "utility", "ambiguous-old"])("opens the end-to-end gate for %s", async change => {
+    const { root, request } = await loadedDataFixture(change);
+    const overrides = change === "utility" ? { ...oldPins, scripts: nextPins.scripts } : nextPins;
+    const result = await runUpdate({ root, overrides, request, validate: false });
+    expect(result.changed).toBe(true);
+    expect(await readPins(root)).toEqual(overrides);
+    expect(result.files).toContain("packages/duel-server/scripts/prepare-data.ts");
+    expect(githubOutput(result)).toContain("changed=true");
+    if (change === "graduation") {
+      expect(result.relevance).toMatchObject({ newCards: 1, removedCards: 1, remapsChanged: true });
+      expect(result.cardChanges?.graduated).toMatchObject([{ oldCode: 100000001, code: 2 }]);
+    } else if (change === "new-release") {
+      expect(result.relevance).toMatchObject({ newCards: 1, changedCards: 0 });
+      expect(await readFile(result.reportPath, "utf8")).toContain("Added release databases: `release-betb.cdb`");
+    } else if (change === "utility") {
+      expect(result.relevance).toMatchObject({ newCards: 0, changedCards: 0, removedCards: 0,
+        changedScripts: ["utility.lua"], stringsChanged: false, remapsChanged: false });
+    } else {
+      expect(result.relevance).toMatchObject({ comparisonAvailable: false, newCards: null, changedCards: null });
+      expect(await readFile(result.reportPath, "utf8")).toContain("Ambiguous prerelease passcode");
+    }
+  });
+  it.each(["irrelevant", "rush-row", "rush-orphan", "card-text", "script", "strings"])("gates moved pins using loaded data (%s)", async change => {
+    const { root } = await fixture();
+    const manifestPath = join(root, "packages/duel-server/domain-core/multi-scripts/MANIFEST.json");
+    await mkdir(dirname(manifestPath), { recursive: true });
+    await writeFile(manifestPath, '{"cards":[]}');
+    const corpus = join(root, "corpus");
+    await mkdir(join(corpus, "official"), { recursive: true });
+    await writeFile(join(corpus, "official/c1.lua"), "-- playable");
+    await mkdir(join(corpus, "rush"));
+    await writeFile(join(corpus, "rush/c999.lua"), "-- rush");
+    await writeFile(join(corpus, "official/c999.lua"), "-- rush");
+    const archive = execFileSync("tar", ["-czf", "-", "-C", root, "corpus"]);
+    const bytes: Buffer[] = [];
+    for (const candidate of [false, true]) {
+      const path = join(root, `${candidate}.cdb`), db = new Database(path);
+      db.exec("CREATE TABLE datas(id INTEGER PRIMARY KEY,ot INTEGER,alias INTEGER,type INTEGER); CREATE TABLE texts(id INTEGER PRIMARY KEY,name TEXT,desc TEXT); INSERT INTO datas VALUES(1,3,0,33),(999,512,0,33); INSERT INTO texts VALUES(1,'Playable','Effect'),(999,'Rush','Effect')");
+      if (change === "rush-orphan") {
+        db.exec("DELETE FROM texts WHERE id=999");
+        if (candidate) db.exec("UPDATE datas SET type=17 WHERE id=999");
+      }
+      if (candidate && change === "rush-row") db.exec("UPDATE texts SET desc='Rush edit' WHERE id=999");
+      if (candidate && change === "card-text") db.exec("UPDATE texts SET desc='Playable edit' WHERE id=1");
+      db.close(); bytes.push(await readFile(path));
+    }
+    const request = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input), candidate = Object.values(nextPins).some(sha => url.includes(sha));
+      if (url.includes("/compare/")) return Response.json({ ahead_by: 1, behind_by: 0, status: "ahead" });
+      if (url.includes("/git/trees/")) return Response.json({ truncated: false, tree: url.includes("BabelCDB") ? [
+        { path: "cards.cdb", type: "blob", sha: candidate ? "new-db" : "old-db" },
+        { path: "prerelease-rush.cdb", type: "blob", sha: candidate ? "new-rush" : "old-rush" },
+        { path: "unused.cdb", type: "blob", sha: candidate ? "new-unused" : "old-unused" },
+      ] : [
+        { path: "official/c1.lua", type: "blob", sha: candidate && change === "script" ? "fix" : "unchanged" },
+        ...(change === "rush-orphan" ? [] : [{ path: "rush/c999.lua", type: "blob", sha: candidate ? "new-rush" : "old-rush" }]),
+        { path: "official/c999.lua", type: "blob", sha: candidate ? "new-rush" : "old-rush" },
+        { path: "README.md", type: "blob", sha: candidate ? "new-docs" : "old-docs" },
+      ] });
+      if (url.endsWith("/cards.cdb")) return new Response(new Uint8Array(bytes[candidate ? 1 : 0]!));
+      if (url.endsWith("/strings.conf")) return new Response(candidate && change === "strings" ? "changed" : "strings");
+      if (url.includes("codeload.github.com")) return new Response(new Uint8Array(archive));
+      if (url.includes("ygoprodeck")) return Response.json(url.includes("cardsets.php") ? [] : { data: [] });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false, report: ".status/report.md" });
+    const relevant = !["irrelevant", "rush-row", "rush-orphan"].includes(change);
+    expect(result.changed).toBe(relevant);
+    expect(await readPins(root)).toEqual(relevant ? nextPins : oldPins);
+    const report = await readFile(result.reportPath, "utf8");
+    expect(report).toContain("## Relevance gate");
+    if (!relevant) {
+      expect(result.files).toEqual([]);
+      expect(githubOutput(result)).toContain("changed=false");
+      expect(report).toContain("upstream pins moved, but no loaded card rows, scripts, strings or remaps changed");
+      expect(request.mock.calls.some(([url]) => String(url).includes("codeload"))).toBe(false);
+      await writeFile(join(dirname(result.reportPath), "update.json"), JSON.stringify(result));
+      const summaryPath = join(root, "summary.md");
+      execFileSync(process.execPath, ["--import", "tsx", resolve(import.meta.dirname, "../scripts/validate-engine-data.ts")], {
+        cwd: process.cwd(), env: { ...process.env, UPDATE_ARTIFACT_DIR: dirname(result.reportPath), DUEL_DATA_DIR: join(root, "absent-bundle"),
+          GITHUB_STEP_SUMMARY: summaryPath, GITHUB_REPOSITORY: "test/repo", GITHUB_RUN_ID: "1" },
+      });
+      expect(await readFile(summaryPath, "utf8")).toContain("upstream pins moved, but no loaded card rows, scripts, strings or remaps changed");
+    } else {
+      expect(report).toContain(`Changed cards: ${change === "card-text" ? 1 : 0}`);
+      expect(report).toContain(`Changed scripts: ${change === "script" ? 1 : 0}`);
+      expect(report).not.toContain("Changed shared scripts (1)");
+    }
+  });
   it("scans newly playable release scripts for multiplayer risk while excluding unrelated pre-release cards", () => {
     const stock = new Map([
       ["pre-release/c17242022.lua", "Duel.GetFieldGroup(tp,LOCATION_HAND,LOCATION_HAND)"],
@@ -118,25 +379,21 @@ describe("engine data update", () => {
     expect(findNewRisks(scripts, ["official/c999999991.lua"], new Set([999999991]))).toEqual([]);
   });
 
-  it("returns no update with mocked API heads, without downloading data or modifying pins", async () => {
-    const { root } = await fixture();
-    const request = vi.fn(async (url: string | URL | Request) => {
-      const key = String(url).includes("CardScripts") ? "scripts" : String(url).includes("BabelCDB") ? "database" : "strings";
-      return new Response(JSON.stringify([{ sha: oldPins[key] }]));
-    });
+  it("returns no update with mocked API heads and reports current data without modifying pins", async () => {
+    const { root, request } = await loadedDataFixture("identical");
     const result = await runUpdate({ root, report: ".status/report.md", request });
     expect(result.changed).toBe(false);
-    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls.filter(([url]) => String(url).includes("/commits?"))).toHaveLength(3);
+    expect(request.mock.calls.some(([url]) => String(url).includes("codeload"))).toBe(false);
     expect(await readPins(root)).toEqual(oldPins);
     expect(await readFile(join(root, ".status/report.md"), "utf8")).toContain("no update");
     expect(await readFile(join(root, ".status/report.md"), "utf8")).toContain("prod error data unavailable");
   });
 
-  it("accepts unchanged overrides offline and rejects malformed SHAs before any requests", async () => {
-    const { root } = await fixture();
-    const request = vi.fn(() => { throw new Error("network forbidden"); });
+  it("accepts unchanged overrides and rejects malformed SHAs before any requests", async () => {
+    const { root, request } = await loadedDataFixture("identical");
     expect((await runUpdate({ root, overrides: oldPins, request })).changed).toBe(false);
-    expect(request).not.toHaveBeenCalled();
+    request.mockClear();
     await expect(runUpdate({ root, overrides: { scripts: "main; echo nope" }, request })).rejects.toThrow(/40.*hex/i);
     expect(request).not.toHaveBeenCalled();
   });
@@ -251,6 +508,7 @@ describe("engine data update", () => {
     expect(await readPins(root)).toEqual(dryRun ? oldPins : overrides);
     const report = await readFile(result.reportPath, "utf8");
     expect(report).toContain("## New cards in this update");
+    expect(report).toContain("## Released TCG sets still in pre-release CDBs");
     expect(report.indexOf("## New cards in this update")).toBeLessThan(report.indexOf("## Released databases"));
     expect(result.cardChanges).toBeDefined();
     const finalized = withCardUpdate(report, result.cardChanges!);

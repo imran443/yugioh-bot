@@ -19,7 +19,9 @@ export function boundedReport(report: string, runUrl: string, maxBytes: number):
     return bytes.subarray(0, end).toString("utf8");
   };
   const prod = report.match(/\n## Script errors in prod \(last 7 days\)\n[\s\S]*?(?=\n## |$)/)?.[0] ?? "";
-  const sections = [warnings, golden, artwork, patches, smoke, prod].filter(Boolean);
+  const relevance = report.match(/\n## Relevance gate\n[\s\S]*?(?=\n## |$)/)?.[0] ?? "";
+  const releasedSets = report.match(/\n## Released TCG sets still in pre-release CDBs\n[\s\S]*?(?=\n## |$)/)?.[0] ?? "";
+  const sections = [warnings, golden, artwork, patches, smoke, prod, relevance, releasedSets].filter(Boolean);
   const sectionLimit = Math.floor(Math.max(0, maxBytes - Buffer.byteLength(notice)) / (2 * Math.max(1, sections.length)));
   const limited = sections.map(section => {
     if (Buffer.byteLength(section) <= sectionLimit) return section;

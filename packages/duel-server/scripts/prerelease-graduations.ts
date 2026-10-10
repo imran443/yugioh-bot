@@ -1,5 +1,7 @@
 import { hasDedupeIdentity, type CardIdentity } from "./prerelease-history.js";
 
+export class CardRemapValidationError extends Error {}
+
 export interface GraduationTransition { commit: string; removed: CardIdentity[]; added: CardIdentity[] }
 export interface UnmatchedGraduation extends CardIdentity { commits: string[]; candidates: number[] }
 
@@ -41,12 +43,14 @@ export function matchGraduations(transitions: GraduationTransition[]): { remaps:
 }
 
 export function parseRemapOverrides(bytes: string): Record<string, number | null> {
-  const value: unknown = JSON.parse(bytes);
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid card remap overrides: expected old-code -> new-code object");
+  let value: unknown;
+  try { value = JSON.parse(bytes); }
+  catch (cause) { throw new CardRemapValidationError("Invalid card remap overrides: malformed JSON", { cause }); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new CardRemapValidationError("Invalid card remap overrides: expected old-code -> new-code object");
   for (const [old, target] of Object.entries(value)) {
     if (!/^[1-9]\d*$/.test(old) || !Number.isSafeInteger(Number(old)) || Number(old) > 0xffffffff ||
       (target !== null && (typeof target !== "number" || !Number.isSafeInteger(target) || target <= 0 || target > 0xffffffff || Number(old) === target))) {
-      throw new Error(`Invalid card remap override ${old}`);
+      throw new CardRemapValidationError(`Invalid card remap override ${old}`);
     }
   }
   return value as Record<string, number | null>;

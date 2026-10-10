@@ -1,4 +1,4 @@
-# Weekly engine data updates
+# Engine data updates
 
 The admin `GET /api/admin/card-data-status` endpoint reports the installed bundle and
 each pinned source's GitHub committer date as **data as of** (`engine.sources.*.pinnedCommitDate`).
@@ -34,11 +34,74 @@ feature. Healthy unauthenticated reads at <=15 calls/hour fit its intended budge
 `BUG_REPORT_GITHUB_TOKEN` for card-data status. This runtime setting is separate from
 the GitHub Actions workflow token described below.
 
-The **Engine data update** workflow runs Mondays at 06:00 UTC. It advances only Project Ignis CardScripts, BabelCDB and Distribution, with an exact pin-file allowlist of `packages/duel-server/scripts/prepare-data.ts`, `packages/duel-server/domain-core/pins.json` and `packages/duel-server/legacy-1v1/domain-core/pins.json`. If an old data SHA appears in another tracked file, the updater fails before writing anything. Both core-build `pins.json` files retain their `cardScripts` record and advance it together with the scripts pin in `prepare-data.ts`. Those records are part of `bundleVersion`. A real CardScripts bump invalidates both core build caches; the resulting multicore rebuild during deployment is accepted. The updater never advances ygopro-core, ocgcore-wasm, Lua or Emscripten.
+The **Engine data update** workflow runs **Monday and Thursday at 06:00 UTC** (`0 6 * * 1,4`), with checks three or four days apart. `workflow_dispatch` remains available for manual checks and exact-SHA inputs. It advances only Project Ignis CardScripts, BabelCDB and Distribution, with an exact pin-file allowlist of `packages/duel-server/scripts/prepare-data.ts`, `packages/duel-server/domain-core/pins.json` and `packages/duel-server/legacy-1v1/domain-core/pins.json`. If an old data SHA appears in another tracked file, the updater fails before writing anything. Both core-build `pins.json` files retain their `cardScripts` record and advance it together with the scripts pin in `prepare-data.ts`. Those records are part of `bundleVersion`. A real CardScripts bump invalidates both core build caches; the resulting multicore rebuild during deployment is accepted. The updater never advances ygopro-core, ocgcore-wasm, Lua or Emscripten.
 
-The `prepare` job has contents-read permission, checks out without persisted credentials, and installs without a token in its environment. It builds shared before running the updater. Pin resolution and candidate bundle preparation receive the read-only GitHub token. It resolves candidate pins, prepares a temporary bundle, checks overlays, probes the installed production core, and uploads a pin-only patch, metadata and full report. The separate `publish` job installs no dependencies, checks out without persisted credentials, validates the artifact's exact paths and pin-only content, then uses its write token to commit, push and manage the PR. Automated bot commits have no Claude co-author or session trailers.
+## Relevance gate and review counts
 
-Before publishing, the job inspects `origin/<base>..origin/chore/engine-data-update`. While an open PR exists, any commit not authored by the exact GitHub Actions bot name and email causes a skip and a comment on that PR, preserving human overlay edits. Without an open PR, the stale branch is replaced from the current base, including after a squash merge or closure. Identical candidate pins on an open PR (or already on the base) cause no push or CI dispatch. Every skip emits a workflow warning. If the base advanced after preparation, publication waits for a fresh run. Updates use an explicit force-with-lease against the fetched tip, so a concurrent edit makes the push fail. There is no automatic merge.
+A moved upstream pin does not by itself justify a data bump. Before rewriting any
+pin, `scripts/update-engine-data.ts` compares the current and candidate inputs with
+`scripts/engine-data-relevance.ts`:
+
+- **Card rows:** rebuild both snapshots with the same non-Rush database discovery,
+  load order, preview deduplication and graduation history used by preparation.
+  Compare every retained column in `datas` and `texts` in the merged database.
+  Include base rows with no counterpart in the other table, as the runtime reads
+  these tables separately.
+  Keep SQLite integers exact, including 64-bit setcodes and races. Database layout,
+  ignored Rush/Legend rows and discarded duplicate previews do not count.
+- **Scripts:** compare Git blob IDs for shipped Lua scripts and shared helpers.
+  Include additions, edits, removals and changes to which scripts are retained.
+  Exclude Rush directories and known Rush card IDs that are absent from the
+  merged database, non-Lua files, absent preview scripts and preview copies
+  discarded in favor of an official script. Known Rush IDs come from the source
+  rows already read and Rush script paths. Retain other numbered Lua files even
+  without a database row, as loaded scripts can use them as dependencies. Explicit
+  paths such as `pre-errata/` remain relevant.
+- **Strings and remaps:** compare the exact `config/strings.conf` bytes from
+  Distribution and the effective old-to-current passcode remaps. Other Distribution
+  files, upstream docs and unused databases do not count.
+
+If these inputs are unchanged, the updater keeps all current pins, reports
+`changed=false`, and writes the reason under **Relevance gate** in the report and
+job summary. Candidate validation and publication are skipped, so an existing bump
+PR is not updated and a new PR is not opened. Skipped upstream changes accumulate
+against the installed pins and are checked again on the next run. If the previous
+snapshot fails remap validation (ambiguity, invalid overrides or cycles), the updater cannot prove irrelevance; it continues with a
+review finding and unknown card counts. Failed downloads or incomplete trees stop
+the run before publication.
+
+For a relevant update, the PR body reports **new cards, changed cards, removed
+cards, changed scripts and new set codes** (for example `BETB`). Card counts compare
+passcodes in the merged rows before the candidate script smoke check; an edit to
+card text, stats, OT, alias or a card string counts as a changed card. Changed script
+counts include added and removed retained Lua paths and shared helpers. New set
+codes come from the new-card source files, with YGOPRODeck printing metadata for
+base/generic additions when available. Existing validation, overlay review,
+golden-hash review and publication protections still apply. Irrelevant changes do
+not change `bundleVersion`; every published data bump still has the deployment and
+replay effects described below.
+
+The PR and job summary also include **Released TCG sets still in pre-release CDBs**,
+including when the relevance gate skips or no pin moved. The note joins
+candidate preview source filenames (including `-en` variants) to the YGOPRODeck
+[`cardsets.php` set index](https://ygoprodeck.com/api-guide/#all-card-sets) and lists
+sets whose valid `tcg_date` is on or before today in UTC. Generic previews can use
+catalog printing codes and explicit beta IDs. Each entry gives the set name/code,
+TCG date, distinct preview passcode count and source files. Rows already present in
+released data by passcode or main-card name/type are excluded. This includes
+unchanged previews during a script-only update and describes upstream membership
+before candidate script smoke exclusions. It tells the reviewer which released
+cards still wait for Ignis; the date alone does not trigger a bump. Unknown/future
+dates are omitted, and failed metadata requests are labeled unavailable instead of
+claiming there are no pending sets. Metadata is best effort and uses the same two
+bounded catalog requests as the new-card report. Counts and the released-set note
+are retained when the PR body is truncated.
+
+The `prepare` job has contents-read and pull-requests-read permissions, checks out without persisted credentials, and installs without a token in its environment. It builds shared before running the updater. Pin resolution and candidate bundle preparation receive the read-only GitHub token. It resolves candidate pins, prepares a temporary bundle, checks overlays, probes the installed production core, and uploads a pin-only patch, metadata and full report. The separate `publish` job installs no dependencies, checks out without persisted credentials, validates the artifact's exact paths and pin-only content, then uses its write token to commit, push and manage the PR. Automated bot commits have no Claude co-author or session trailers.
+
+Before publishing, the job inspects `origin/<base>..origin/chore/engine-data-update`. While an open PR exists, any commit not authored by the exact GitHub Actions bot name and email causes a skip and a comment on that PR, preserving human overlay edits. Without an open PR, the stale branch is replaced from the current base, including after a squash merge or closure. Identical candidate pins on an open PR (or already on the base) cause no push or CI dispatch. Every publication skip emits a workflow warning. If the base advanced after preparation, publication waits for a fresh run. Updates use an explicit force-with-lease against the fetched tip, so a concurrent edit makes the push fail. There is no automatic merge.
+
+Preparation also compares the candidate's loaded data with the open PR's pins; identical data skips the push and CI dispatch only if the fetched PR head still matches the compared head, after the human-commit check.
 
 Enable **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**. No personal token is required. With `GITHUB_TOKEN`, publication explicitly dispatches `test.yml` with `nightly=false`, running normal CI without the four nightly fuzz legs; the native job still checks the committed golden rows. **CI on the bot PR fails at “nduel golden hashes (--check)” until a reviewer re-records and commits `golden.tsv` for the candidate inputs.** Manual test dispatch defaults `nightly` to true; scheduled nightly runs remain enabled. An optional `ENGINE_DATA_PR_TOKEN` personal/app token needs repository contents and pull-request writes; with it, normal pull-request CI runs and explicit dispatch is skipped. Write permissions exist only in `publish`.
 
@@ -50,7 +113,7 @@ Preparation and the updater discover root `cards.cdb`, every root non-Rush `prer
 
 The output is one `cards.cdb`, read by artwork identity and catalog writers, duel deck validation, legacy 1v1, pinned 1v1 and multiplayer engines. Load order is base, sorted prereleases, then sorted releases, using case-insensitive filename order within each group. Complete `datas`/`texts` pairs use `INSERT OR REPLACE`, with rows sorted by ID; released rows always win. SQLite copies integer values directly, preserving 64-bit setcodes/races. The sorted discovery and replacement behavior follows EDOPro's [file discovery](https://github.com/edo9300/edopro/blob/c250b6ab9bebb6eca9fdd07ee0c5bd2278426e81/gframe/utils.cpp#L555), [repository database loading](https://github.com/edo9300/edopro/blob/c250b6ab9bebb6eca9fdd07ee0c5bd2278426e81/gframe/game.cpp#L2648) and [replacement of card entries](https://github.com/edo9300/edopro/blob/c250b6ab9bebb6eca9fdd07ee0c5bd2278426e81/gframe/data_manager.cpp#L97). The preview identity deduplication below adds the owner's casual-format policy.
 
-Only main-art rows (`alias=0`) without the token bit (`type & 0x4000`) participate in identity deduplication or historical remaps. Alternate artworks and tokens keep their distinct passcodes; exact-code released rows still take precedence. Identity is trimmed, case-folded name plus exact numeric type. A released identity wins over every preview, including a preview with a different passcode. Renamed/type-corrected historical previews additionally use the v3 policy below. Duplicate previews prefer an official-size passcode (below 100,000,000), then an `-en.cdb` source, then the lowest code. Every dropped preview is printed during preparation and listed in the weekly report, with its retained passcode when available. References in `datas.alias` to graduated main-card IDs follow their remap. Conflicting remaps or remap sources still retained under another identity stop preparation instead of redirecting a saved card silently. Released and preview artwork families remain intact. Read/import paths and startup skip remaps whose source is a retained alternate artwork or token. Startup checks application artwork families inside the same immediate transaction as its writes. The unsafe v1 recipe omitted alias metadata for dropped artwork rows; nonempty v1 remaps are refused before any saved data or cache records change, requiring bundle preparation with v2. Historical graduations also update the alias of each surviving artwork to its current main code.
+Only main-art rows (`alias=0`) without the token bit (`type & 0x4000`) participate in identity deduplication or historical remaps. Alternate artworks and tokens keep their distinct passcodes; exact-code released rows still take precedence. Identity is trimmed, case-folded name plus exact numeric type. A released identity wins over every preview, including a preview with a different passcode. Renamed/type-corrected historical previews additionally use the v3 policy below. Duplicate previews prefer an official-size passcode (below 100,000,000), then an `-en.cdb` source, then the lowest code. Every dropped preview is printed during preparation and listed in the scheduled report, with its retained passcode when available. References in `datas.alias` to graduated main-card IDs follow their remap. Conflicting remaps or remap sources still retained under another identity stop preparation instead of redirecting a saved card silently. Released and preview artwork families remain intact. Read/import paths and startup skip remaps whose source is a retained alternate artwork or token. Startup checks application artwork families inside the same immediate transaction as its writes. The unsafe v1 recipe omitted alias metadata for dropped artwork rows; nonempty v1 remaps are refused before any saved data or cache records change, requiring bundle preparation with v2. Historical graduations also update the alias of each surviving artwork to its current main code.
 
 The manifest records `sources.databaseFormat = "official-releases-prerelease-v4"`, the ordered `sources.databaseFiles`, and `sources.prereleaseHistoryStart`. `integrity.cards` is SHA-256 over ordered `<filename>:<input SHA-256>` records, joined by newlines with no trailing newline. `integrity.cardsMerged` hashes the merged output bytes and verifies the cached `cards.cdb` on disk. `card-remaps.json` contains schema version 1, old-to-current `remaps`, retained `prerelease` identities and `drops`; `integrity.cardRemaps` hashes its exact bytes. That hash participates in `bundleVersion`. Startup, bundle cache checks and installation verify it; the new recipe requires the artifact even if its remap map is empty. Every bundle version writer excludes only `cardsMerged` and `multiScripts`: SQLite layout/library changes alone cannot invalidate duels or replays. The format marker forces older recipes at unchanged upstream pins to rebuild. Bump it when selection, merge or script filtering changes.
 
@@ -62,7 +125,7 @@ Five rows in `prerelease-imph.cdb` are real alternate artworks, not identity dup
 
 Ignis can replace a temporary code with a final official one and delete the prerelease database. The [BETB release commit on 2026-09-23](https://github.com/ProjectIgnis/BabelCDB/commit/85e7fd3e7c30002a8a2d4047eaf496206b442b85) deletes `prerelease-betb.cdb` and adds `release-betb.cdb`. Adamancipator Conductor moves `101402024 → 24925387`, and Adamancipator Crystal - Tiamite moves `101402025 → 51420096`, preserving name/type. Some other preview names change on release, so name matching cannot safely infer every graduation.
 
-For deterministic cleanup on a fresh deployment, preparation reads all distinct prerelease Git blobs from the feature's fixed initial pin (`prereleaseHistoryStart`, abbreviated to avoid the updater rewriting it) through the candidate pin. The boundary moved back to `52d5221df32c` to recover BETB preview passcodes from `prerelease-betb.cdb`, removed on 2026-09-23. Git is required after that initial pin. The reader walks full merge history, collects distinct database blob IDs, and fetches all of them in one batch before reading their local bytes. Network round trips do not increase with the number of weekly snapshots. It matches historical name/type identities to the current released or retained preview identity, preserving old-to-current mappings even after a file disappears and across skipped weekly updates. No previous bundle or generated tracked registry is required. The initial pin does not retroactively map unsupported previews from earlier history. Withdrawals without a current identity match produce no remap: saved decks keep their code and validation reports it as unknown. Renamed/type-changed identities use the conservative same-commit stats/text policy described below; ambiguous candidates remain unknown for human review. The report explicitly lists disappeared codes without a remap and, for renamed cards, suggests newly released main-art rows with equal type/ATK/DEF/level/attribute for human review. An ambiguous old snapshot is an advisory finding: the report marks its comparison unavailable and the candidate update continues.
+For deterministic cleanup on a fresh deployment, preparation reads all distinct prerelease Git blobs from the feature's fixed initial pin (`prereleaseHistoryStart`, abbreviated to avoid the updater rewriting it) through the candidate pin. The boundary moved back to `52d5221df32c` to recover BETB preview passcodes from `prerelease-betb.cdb`, removed on 2026-09-23. Git is required after that initial pin. The reader walks full merge history, collects distinct database blob IDs, and fetches all of them in one batch before reading their local bytes. Network round trips do not increase with the number of scheduled snapshots. It matches historical name/type identities to the current released or retained preview identity, preserving old-to-current mappings even after a file disappears and across skipped scheduled updates. No previous bundle or generated tracked registry is required. The initial pin does not retroactively map unsupported previews from earlier history. Withdrawals without a current identity match produce no remap: saved decks keep their code and validation reports it as unknown. Renamed/type-changed identities use the conservative same-commit stats/text policy described below; ambiguous candidates remain unknown for human review. The report explicitly lists disappeared codes without a remap and, for renamed cards, suggests newly released main-art rows with equal type/ATK/DEF/level/attribute for human review. An ambiguous old snapshot is an advisory finding: the report marks its comparison unavailable and the candidate update continues.
 
 Duel-server startup verifies the bundle and applies remaps to the shared application database before serving. An immediate SQLite transaction and a per-`bundleVersion` marker make the rewrite atomic and idempotent across concurrent startups. It updates saved decks, tournament registered decks, lobby duel decks, open series' base/current decks, and the `customCardIds`, `customExtraCardIds`, `cubeCardIds` and `poolCardIds` arrays in cube/draft configs. Lobby sandbox setup scripts rewrite literal first arguments of `Debug.AddCard` only. Draft card/deal/undealt catalog references move to the official row while pick row IDs stay stable. Cube collisions sum copies up to `MAX_CUBE_COPIES` (99) and retain existing official metadata. Decks retain all copies after a collision, so normal legality checks may flag the merged deck for exceeding its copy limit. Invalid or non-object JSON rows are skipped unchanged and logged with their table, column and row ID; one unusable saved row does not stop the duel server. The valid rewrites and the schema-owned `engine_card_remap_runs` completion marker remain in one transaction. Missing official catalog metadata is copied from the preview with official image URLs; artwork references move before the old cache row is deleted. Foreign keys stay valid. Completed series and finished/started duel decks, setup, snapshots, seeds and command journals are not rewritten; existing bundle-version replay/recovery rules apply. Web and worker processes use the same database. Rolling back a bundle does not reverse completed remaps: saved data may reference official codes absent from the older bundle. Keep a bundle containing those targets, or restore a matched application DB backup while reconciling intervening writes; see the VM runbook. Never blindly reverse remaps.
 
@@ -70,7 +133,7 @@ Deck import, code normalization, legality/pool counting and numeric scenario-car
 
 The web image route tries YGOPRODeck first and, after a 404 for full/small images, retries `https://pics.projectignis.org:2096/pics/{passcode}.jpg`. The duel UI and 3D art use those full/small routes, so temporary passcodes receive the existing Ignis fallback. Cropped images have no Ignis fallback and may return 404. No image/UI changes are needed for this feature.
 
-The weekly workflow uses this same merge for names and candidate validation. It reports added, removed and graduated previews (including old-to-official codes), every deduplication drop, and added/removed release filenames. Loaded release and prerelease scripts participate in the advisory initialization probe and multiplayer scan even when those scripts did not change. Tree discovery receives `GITHUB_TOKEN` in CI, deployment, staging and candidate preparation. Tree/database downloads retry HTTP 403, 429 and 5xx three times, using `Retry-After` (seconds or HTTP date); `x-ratelimit-reset` also applies only when `x-ratelimit-remaining` is `0`. Exponential delays apply when no future server deadline is available. Each delay is capped at 60 seconds; exhausted retries fail the command so an operator can rerun it. Publication still accepts only the three existing pin files; no preview registry or release list is generated or committed. Bundle cache keys in CI, deployment and staging include both merge and prerelease-history helpers. Core-only checksums remain unchanged; `expected-sha256.txt` files contain WASM/Domain Lua hashes, not card-data hashes.
+The scheduled workflow uses this same merge for names and candidate validation. It reports added, removed and graduated previews (including old-to-official codes), every deduplication drop, and added/removed release filenames. Loaded release and prerelease scripts participate in the advisory initialization probe and multiplayer scan even when those scripts did not change. Tree discovery receives `GITHUB_TOKEN` in CI, deployment, staging and candidate preparation. Tree/database downloads retry HTTP 403, 429 and 5xx three times, using `Retry-After` (seconds or HTTP date); `x-ratelimit-reset` also applies only when `x-ratelimit-remaining` is `0`. Exponential delays apply when no future server deadline is available. Each delay is capped at 60 seconds; exhausted retries fail the command so an operator can rerun it. Publication still accepts only the three existing pin files; no preview registry or release list is generated or committed. Bundle cache keys in CI, deployment and staging include both merge and prerelease-history helpers. Core-only checksums remain unchanged; `expected-sha256.txt` files contain WASM/Domain Lua hashes, not card-data hashes.
 
 The C6 geometry audit scans every Lua directory in the prepared `card-scripts/` corpus and requires an exact match with `packages/duel-server/tests/fixtures/c6-geometry-audit.json`, including a reviewed reason for every expression. Prerelease support restores four expressions in `pre-release/c100458010.lua`, `c101402090.lua` and `c101403030.lua`, bringing the stock audit from 169 to 173 expressions. The fixture documents their masks/mirroring and limits; passing it does not prove effect gameplay. Castellan `101402090` has an unresolved FFA4 side-opponent geometry case, and opponent-field zone masks in Tag need a gameplay proof. Retained-script initial-effect smoke checks cover legacy/pinned 1v1, FFA3/FFA4 and Tag in normal/Domain modes, but do not exercise those callbacks. These require separate multiplayer rules/tests before claiming complete effect compatibility. Retained scripts excluded only because their passcode lacks a database row keep their `requiresAbsentCode` guard; the scan never skips `pre-release/`.
 
@@ -210,7 +273,7 @@ and Trap cannot match each other. Both directions must be unique across all hist
 snapshots. Same stats alone, approximate names, unrelated quoted-name substitutions,
 short/blank text and one-to-many pairs do not establish identity. Missing signals
 remain unknown and appear as **unmatched graduation, needs review**, including after
-skipped weekly bumps. Existing name/type matching remains available.
+skipped scheduled bumps. Existing name/type matching remains available.
 
 Three measured examples from [BabelCDB BETB release 85e7fd3](https://github.com/ProjectIgnis/BabelCDB/commit/85e7fd3e7c30002a8a2d4047eaf496206b442b85)
 are Swift Panther Warrior `101402001 → 77482666` (Swiftwind Panther Warrior),
@@ -235,7 +298,7 @@ automatic mappings; a veto also prevents chains from following that source.
 Overrides do not extend the history boundary backwards. Their parsed map and exact
 source bytes are embedded in `card-remaps.json`, covered by `integrity.cardRemaps` and
 `bundleVersion`; changing even those source bytes invalidates the preparation cache.
-No extra publication path is added: weekly automation still changes only the three
+No extra publication path is added: scheduled automation still changes only the three
 pin files. A human commits override edits as part of reviewed application code.
 
 History cost grows with preview-changing commits since the immutable support
@@ -246,14 +309,14 @@ per edge. Blob downloads are batched and cached by immutable blob hash for that
 scan, as are extracted rows and released snapshots. Workflow bundle caches and
 the unchanged-pin prepare fast path reuse the completed extraction/check. A cold
 rebuild at new pins still scans the full interval; retaining that interval preserves
-graduations across skipped weekly updates. A durable extracted-transition cache
+graduations across skipped scheduled updates. A durable extracted-transition cache
 would need a `(support start, commit, extraction recipe)` key and is deferred.
 
 The same bundle map feeds read/import/validation and the atomic startup migration.
 The migration refreshes target catalog metadata from the installed engine only for
 rows copied from previews in that transaction. It preserves all existing target
 metadata, including YGOPRODeck OCG-only rows with no TCG sets and a different name,
-on later weekly bundle changes. Newly copied cube and draft references display the
+on later scheduled bundle changes. Newly copied cube and draft references display the
 official name/type even offline. Historical duel records
 retain the existing replay rules. Update all three workflow bundle cache inputs when
 adding a matching helper or override input. The database format is now
@@ -297,7 +360,7 @@ remaps under the existing integrity hash and bundle version. Weekly inline valid
 uses the same checker after installing the reviewed shared card-script patches,
 just as fresh preparation does. Deferred reports mark smoke pending; final CI
 validation reads the patched prepared artifact, verifies its hash and includes
-its exact exclusions in the weekly report. Cache hits reuse the
+its exact exclusions in the scheduled report. Cache hits reuse the
 recorded check for the same pins/recipe/override inputs. Workflow bundle cache inputs
 include both smoke helpers. The format is `official-releases-prerelease-v4`.
 
@@ -451,7 +514,7 @@ revision. The identity hashes the card script plus only the shared Lua helpers n
 by those errors, multiplayer suffixes and mp-utility.lua, and the emitted legacy Normal
 chain.lua transform. Helper names are stored when the block is created and reused for
 startup checks and production/candidate comparison. Changes to unrelated helpers keep
-the block, so a weekly helper update no longer lifts every card's block. A hash failure
+the block, so a scheduled helper update no longer lifts every card's block. A hash failure
 logs one line and lifts that row without preventing server startup. Blocks are scoped independently
 to legacy/pinned 1v1 and multiplayer, and to Normal/Domain; a multiplayer error
 never blocks a 1v1 deck. Automatic blocks cover the exact failing passcode,
@@ -482,9 +545,9 @@ Auto blocks are host admission state only. They never enter worker options, save
 setup, commands, journal identity, recovery or replay. A currently running duel is
 never changed or interrupted by a threshold being reached.
 
-### Production script errors in the weekly PR
+### Production script errors in the scheduled PR
 
-The weekly workflow adds **Script errors in prod (last 7 days)**. It includes the
+The scheduled workflow adds **Script errors in prod (last 7 days)**. It includes the
 top 20 cards by sampled error count plus active auto-blocked cards, including blocks
 with zero recent samples. Columns are passcode, card name, distinct duels, sampled
 errors, auto-block status and whether the candidate changes the script. No player
@@ -531,7 +594,7 @@ restrict,command="sh /opt/yugioh-bot/scripts/prod-script-errors.sh" ssh-ed25519 
 
 Install the key and host pin through the existing operator process. Without the
 dedicated secret, the section says **prod error data unavailable**. No VM configuration is changed
-by the weekly workflow. Temporary runner key files are removed after the SSH step.
+by the scheduled workflow. Temporary runner key files are removed after the SSH step.
 
 SSH has a 40-second deadline, five-second database lock timeout and 64-KiB output
 cap. Before uploading any public artifact, the credential job validates the byte
@@ -540,7 +603,7 @@ aggregate fields; unknown fields and raw remote bytes are discarded. Invalid dat
 leaves the initialized unavailable snapshot. Missing secrets/host pin, connectivity or permission failures, a stopped duel
 container, a deployment predating this command/schema, invalid JSON and artifact
 download failures produce **prod error data unavailable**. They never fail the
-weekly preparation/publication path. The separate snapshot artifact expires after
+scheduled preparation/publication path. The separate snapshot artifact expires after
 one day; the aggregate snapshot also accompanies the existing 14-day report artifact.
 
 After candidate preparation, final validation compares installed-prod hashes with

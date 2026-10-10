@@ -142,6 +142,26 @@ describe("engine data publication", () => {
     expect(pushed(f)).toHaveLength(0); expect(dispatched(f)).toHaveLength(0);
   });
 
+  it("does not push or dispatch matching loaded data with different pins on the same open PR head", async () => {
+    const f = fixture(); const head = f.branch(); f.setPr();
+    writeFileSync(join(f.artifact, "update.json"), JSON.stringify({ ...f.update, matchingPrHead: head }));
+    expect(await f.publish()).toMatchObject({ status: "skipped", reason: "identical-data" });
+    expect(pushed(f)).toHaveLength(0); expect(dispatched(f)).toHaveLength(0);
+    expect(f.git("rev-parse", "refs/remotes/origin/chore/engine-data-update")).toBe(head);
+  });
+
+  it.each(["stale-head", "no-pr", "human"])("keeps existing publication protections with a matching-data hint (%s)", async kind => {
+    const f = fixture();
+    const head = f.branch(old, kind === "human" ? { name: "Human", email: "human@example.invalid" } : bot);
+    if (kind !== "no-pr") f.setPr();
+    writeFileSync(join(f.artifact, "update.json"), JSON.stringify({ ...f.update,
+      matchingPrHead: kind === "stale-head" ? "9".repeat(40) : head }));
+    expect(await f.publish()).toMatchObject(kind === "human" ? { status: "skipped", reason: "human-commits" } : { status: "published" });
+    expect(pushed(f)).toHaveLength(kind === "human" ? 0 : 1);
+    expect(dispatched(f)).toHaveLength(kind === "human" ? 0 : 1);
+    expect(f.comments).toHaveLength(kind === "human" ? 1 : 0);
+  });
+
   it("rejects a stale artifact when the remote base advanced", async () => {
     const f = fixture(); f.git("commit", "--allow-empty", "-qm", "new base"); f.git("push", "origin", "main");
     expect(await f.publish()).toMatchObject({ status: "skipped", reason: "base-advanced" });
@@ -181,11 +201,12 @@ describe("engine data publication", () => {
     for (const file of coreFiles) expect(f.git("show", `HEAD:${file}`)).toBe(coreSource(old.scripts).trim());
   });
 
-  it.each(["extra-file", "code-edit", "reported-files", "file-mode", "core-edit", "missing-core-pin", "missing-reported-core"])("rejects an artifact with %s", async (kind) => {
+  it.each(["extra-file", "code-edit", "reported-files", "file-mode", "core-edit", "missing-core-pin", "missing-reported-core", "invalid-matching-head"])("rejects an artifact with %s", async (kind) => {
     const f = fixture();
     if (kind === "core-edit") f.patch(source(next), undefined, coreSource(next.scripts).replace("1".repeat(40), "2".repeat(40)));
     if (kind === "missing-core-pin") f.patch(source(next), undefined, coreSource(old.scripts));
     if (kind === "missing-reported-core") writeFileSync(join(f.artifact, "update.json"), JSON.stringify({ ...f.update, files: [prepare] }));
+    if (kind === "invalid-matching-head") writeFileSync(join(f.artifact, "update.json"), JSON.stringify({ ...f.update, matchingPrHead: "not-a-sha" }));
     if (kind === "extra-file") f.patch(source(next), "unauthorized.txt");
     if (kind === "code-edit") f.patch(source(next).replace("untouched", "changed"));
     if (kind === "reported-files") writeFileSync(join(f.artifact, "update.json"), JSON.stringify({ ...f.update, files: [prepare, "unauthorized.txt"] }));
@@ -193,7 +214,7 @@ describe("engine data publication", () => {
       const patch = readFileSync(join(f.artifact, "update.patch"), "utf8").replace(/index ([^\n]+) 100644\n/, "old mode 100644\nnew mode 100755\nindex $1\n");
       writeFileSync(join(f.artifact, "update.patch"), patch);
     }
-    await expect(f.publish()).rejects.toThrow(/patch|allowlist|pin|mode/i);
+    await expect(f.publish()).rejects.toThrow(/patch|allowlist|pin|mode|matchingPrHead/i);
     expect(pushed(f)).toHaveLength(0); expect(dispatched(f)).toHaveLength(0);
     expect(f.git("status", "--porcelain")).toBe("");
   });

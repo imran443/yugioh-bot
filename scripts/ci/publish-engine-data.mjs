@@ -28,6 +28,9 @@ export function validateArtifact(artifact) {
   if (!artifact || typeof artifact.changed !== "boolean") throw new Error("Artifact changed must be boolean");
   if (!artifact.changed) return;
   if (!/^[a-f0-9]{40}$/.test(artifact.baseSha ?? "")) throw new Error("Artifact baseSha must be a full commit SHA");
+  if (artifact.matchingPrHead !== undefined && !/^[a-f0-9]{40}$/.test(artifact.matchingPrHead)) {
+    throw new Error("Artifact matchingPrHead must be a full commit SHA");
+  }
   if (!Array.isArray(artifact.files) || !artifact.files.includes(PIN_FILE) ||
       new Set(artifact.files).size !== artifact.files.length || artifact.files.some((file) => !PIN_FILES.includes(file))) {
     throw new Error(`Artifact files must match the exact allowlist: ${PIN_FILES.join(", ")}`);
@@ -86,6 +89,7 @@ export async function publishEngineData({ cwd = process.cwd(), env = process.env
   if (updateSha && pr) {
     const current = readPinsFromSource(git("show", `${updateSha}:${PIN_FILE}`));
     if (pinKeys.every((key) => current[key] === artifact.next[key])) return skip("identical-pins");
+    if (artifact.matchingPrHead === updateSha) return skip("identical-data");
   }
   const original = git("show", `${baseSha}:${PIN_FILE}`);
   const old = readPinsFromSource(original);

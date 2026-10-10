@@ -1,4 +1,4 @@
-/** Weekly card-data updates only. Core, Lua, WASM and toolchain pins are never advanced here. */
+/** Scheduled card-data updates only. Core, Lua, WASM and toolchain pins are never advanced here. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -12,9 +12,11 @@ import { applyPrereleaseSmokeResult } from "./prerelease-script-exclusions.js";
 import { installCardScriptPatches } from "./card-script-patches.js";
 import { probeEngineData } from "./probe-engine-data.js";
 import { withValidation, prereleaseUpdateReport, prereleaseScriptReport, prodScriptErrorReport } from "./engine-data-report.js";
-import { cardUpdate, renderCardUpdate, withPreviewExclusions, withCardUpdate } from "./engine-data-card-report.js";
+import { cardUpdate, renderCardUpdate, renderReleasedSets, withPreviewExclusions, withCardUpdate } from "./engine-data-card-report.js";
 import { listIndex, reconcile, scanText } from "./scan-multiplayer-scripts.js";
 import { discoverReleasedDatabases, downloadReleasedCardData, restrictPrereleaseScripts } from "./released-card-data.js";
+import { compareLoadedData, loadedScriptTree, readCardRows, renderRelevantChanges } from "./engine-data-relevance.js";
+import { CardRemapValidationError } from "./prerelease-graduations.js";
 
 export type Pins = { scripts: string; database: string; strings: string };
 const repositories: Record<keyof Pins, string> = { scripts: "CardScripts", database: "BabelCDB", strings: "Distribution" };
@@ -28,13 +30,15 @@ const codeOf = (path: string) => Number(/c(\d+)\.lua$/.exec(path)?.[1]);
 const sorted = (paths: string[]) => paths.sort((a, b) => codeOf(a) - codeOf(b));
 const markdown = (value: string) => value.replace(/[\\`*_{}\[\]<>|]/g, "\\$&").replace(/@|#(?=\d)/g, (match) => match === "@" ? "&#64;" : "&#35;").replace(/[\r\n]+/g, " ");
 
-export async function readPins(root: string): Promise<Pins> {
-  const text = await readFile(join(root, preparePath), "utf8");
+function pinsFromSource(text: string): Pins {
   return Object.fromEntries(keys.map((key) => {
     const value = new RegExp(`["']?\\b${key}\\b["']?\\s*:\\s*["']([a-f0-9]{40})["']`).exec(text)?.[1];
     if (!value) throw new Error(`Missing ${key} pin in ${preparePath}`);
     return [key, value];
   })) as Pins;
+}
+export async function readPins(root: string): Promise<Pins> {
+  return pinsFromSource(await readFile(join(root, preparePath), "utf8"));
 }
 
 export function diffScripts(oldTree: Map<string, string>, newTree: Map<string, string>) {
@@ -93,6 +97,9 @@ type Options = {
   request?: typeof fetch;
   token?: string;
   validate?: boolean;
+  repository?: string;
+  branch?: string;
+  base?: string;
 };
 type Tree = { truncated: boolean; tree: { path: string; type: string; sha: string }[] };
 
@@ -145,13 +152,19 @@ export async function runUpdate(options: Options = {}) {
     // Final validation replaces this optional section using the exact prepared candidate bundle.
     await writeFile(reportPath, report.join("\n") + "\n\n" + prodScriptErrorReport(null));
   }
+  const preparation = await readFile(join(root, preparePath), "utf8");
+  const historyStart = /prereleaseHistoryStart:\s*"([a-f0-9]{12,40})"/.exec(preparation)?.[1];
   if (!changed) {
-    const empty = { released: [], prerelease: [], remaps: {} };
-    report.push(renderCardUpdate(await cardUpdate(empty, empty)), "");
-    report.push("no update: all three data pins already match the requested commits.");
-    await saveReport();
-    console.log("no update");
-    return { changed, next, reportPath, files: [] as string[], changedPaths: [] as string[] };
+    const temporary = await mkdtemp(join(tmpdir(), "engine-data-status-"));
+    try {
+      const database = await downloadReleasedCardData(next.database, temporary, download, { historyStart });
+      const cardChanges = await cardUpdate(database, database, request);
+      report.push(renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
+      report.push("no update: all three data pins already match the requested commits.");
+      await saveReport();
+      console.log("no update");
+      return { changed, next, reportPath, files: [] as string[], changedPaths: [] as string[], cardChanges };
+    } finally { await rm(temporary, { recursive: true, force: true }); }
   }
   report.push("## Upstream commits", "", "| Repository | Old → new | Commits ahead |", "| --- | --- | --- |");
   for (const key of keys) {
@@ -170,7 +183,73 @@ export async function runUpdate(options: Options = {}) {
       return new Map(tree.tree.filter((entry) => entry.type === "blob").map((entry) => [entry.path, entry.sha]));
     };
     const [oldTree, newTree] = await Promise.all([treeAt(old.scripts), treeAt(next.scripts)]);
-    const diff = diffScripts(oldTree, newTree);
+    let oldDataError: string | undefined;
+    const [database, oldDatabase] = await Promise.all([
+      downloadReleasedCardData(next.database, temporary, download, { historyStart }),
+      downloadReleasedCardData(old.database, join(temporary,"old-data"), download, { historyStart }).catch((error: unknown) => {
+        if (!(error instanceof CardRemapValidationError)) throw error;
+        oldDataError = error.message;
+        return null;
+      }),
+    ]);
+    const stringsAt = async (sha: string) => Buffer.from(await (await download(`https://raw.githubusercontent.com/ProjectIgnis/Distribution/${sha}/config/strings.conf`)).arrayBuffer());
+    const nextStrings = await stringsAt(next.strings);
+    const oldStrings = old.strings === next.strings ? nextStrings : await stringsAt(old.strings);
+    const candidateScripts = loadedScriptTree(newTree, database.scriptCodes, database.rushCodes);
+    const previousScripts = loadedScriptTree(oldTree, oldDatabase?.scriptCodes ?? database.scriptCodes, oldDatabase?.rushCodes ?? database.rushCodes);
+    const relevance = compareLoadedData({ cards: oldDatabase ? readCardRows(oldDatabase.path) : null, scripts: previousScripts,
+      strings: sha256(oldStrings), remaps: oldDatabase?.remaps ?? null },
+      { cards: readCardRows(database.path), scripts: candidateScripts, strings: sha256(nextStrings), remaps: database.remaps });
+    let cardChanges = await cardUpdate(oldDatabase, database, request);
+    if (!relevance.relevant) {
+      report.splice(report.indexOf("## Upstream commits"), 0, renderRelevantChanges(relevance, []), "",
+        renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
+      await saveReport();
+      console.log("no update: upstream changes do not affect loaded engine data");
+      return { changed: false, next, reportPath, files: [] as string[], changedPaths: [] as string[], relevance };
+    }
+    report.splice(report.indexOf("## Upstream commits"), 0,
+      renderRelevantChanges(relevance, cardChanges.added.flatMap(group => group.code ? [group.code] : [])), "",
+      renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
+    let matchingPrHead: string | undefined;
+    if (options.repository) {
+      if (!/^[\w.-]+\/[\w.-]+$/.test(options.repository)) throw new Error("Repository must be owner/repository");
+      try {
+        const repositoryApi = `https://api.github.com/repos/${options.repository}`;
+        const query = new URLSearchParams({ state: "open", head: `${options.repository.split("/")[0]}:${options.branch ?? "chore/engine-data-update"}`,
+          base: options.base ?? "main", per_page: "1" });
+        const prs = await (await download(`${repositoryApi}/pulls?${query}`)).json() as Array<{ head: { sha: string } }>;
+        const head = prs[0]?.head.sha;
+        if (head) {
+          if (!/^[a-f0-9]{40}$/.test(head)) throw new Error("Invalid open PR head SHA");
+          const source = await (await download(`${repositoryApi}/contents/${preparePath}?ref=${head}`)).json() as { encoding: string; content: string };
+          if (source.encoding !== "base64" || typeof source.content !== "string") throw new Error("Open PR pin source unavailable");
+          const pins = pinsFromSource(Buffer.from(source.content, "base64").toString("utf8"));
+          const [prTree, prDatabase, prStrings] = await Promise.all([
+            pins.scripts === next.scripts ? newTree : pins.scripts === old.scripts ? oldTree : treeAt(pins.scripts),
+            pins.database === next.database ? database : pins.database === old.database ? oldDatabase
+              : downloadReleasedCardData(pins.database, join(temporary, "pr-data"), download, { historyStart }).catch((error: unknown) => {
+                if (!(error instanceof CardRemapValidationError)) throw error;
+                return null;
+              }),
+            pins.strings === next.strings ? nextStrings : pins.strings === old.strings ? oldStrings : stringsAt(pins.strings),
+          ]);
+          const prRelevance = compareLoadedData(prDatabase ? { cards: readCardRows(prDatabase.path),
+            scripts: loadedScriptTree(prTree, prDatabase.scriptCodes, prDatabase.rushCodes), strings: sha256(prStrings), remaps: prDatabase.remaps } : null,
+            { cards: readCardRows(database.path), scripts: candidateScripts, strings: sha256(nextStrings), remaps: database.remaps });
+          if (!prRelevance.relevant) matchingPrHead = head;
+          report.push("", "## Open pull request comparison", "", matchingPrHead
+            ? `The open bot PR at \`${head}\` already has the same loaded data. Publication will skip the push and CI dispatch if its head is still unchanged; human-commit protection still applies.`
+            : "The candidate differs from the open PR, or its previous data is unavailable. Publication protections still apply.");
+        }
+      } catch (error) {
+        matchingPrHead = undefined;
+        console.warn("Open PR comparison failed; continuing with update:", error);
+      }
+    }
+    const playableCodes = new Set([...(oldDatabase?.scriptCodes ?? []), ...database.scriptCodes]);
+    const rushCodes = new Set([...(oldDatabase?.rushCodes ?? []), ...database.rushCodes]);
+    const diff = diffScripts(loadedScriptTree(oldTree, playableCodes, rushCodes), loadedScriptTree(newTree, playableCodes, rushCodes));
     const archive = join(temporary, "scripts.tar.gz");
     await writeFile(archive, Buffer.from(await (await download(`https://codeload.github.com/ProjectIgnis/CardScripts/tar.gz/${next.scripts}`)).arrayBuffer()));
     const extracted = join(temporary, "card-scripts");
@@ -178,19 +257,6 @@ export async function runUpdate(options: Options = {}) {
     execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", extracted]);
     const stock = new Map<string, string>();
     for (const path of newTree.keys()) if (path.endsWith(".lua")) stock.set(path, await readFile(join(extracted, path), "utf8"));
-    const preparation = await readFile(join(root, preparePath), "utf8");
-    const historyStart = /prereleaseHistoryStart:\s*"([a-f0-9]{12,40})"/.exec(preparation)?.[1];
-    let oldDataError: string | undefined;
-    const [database, oldDatabase] = await Promise.all([
-      downloadReleasedCardData(next.database, temporary, download, { historyStart }),
-      downloadReleasedCardData(old.database, join(temporary,"old-data"), download, { overrideBytes: "{}\n" }).catch((error: unknown) => {
-        if (!(error instanceof Error) || !/^Ambiguous\b/.test(error.message)) throw error;
-        oldDataError = error.message;
-        return null;
-      }),
-    ]);
-    let cardChanges = await cardUpdate(oldDatabase, database, request);
-    report.splice(report.indexOf("## Upstream commits"), 0, renderCardUpdate(cardChanges), "");
     const oldDatabases = oldDatabase?.files ?? await discoverReleasedDatabases(old.database, download);
     const releases = database.files.filter(path => path.startsWith("release-"));
     const loadedCodes = new Set([...database.releaseCodes, ...database.prereleaseCodes]);
@@ -235,8 +301,7 @@ export async function runUpdate(options: Options = {}) {
     const risks = findNewRisks(stock, [...diff.added, ...diff.changed, ...releasePaths], undefined, loadedCodes);
     report.push("", `## New multiplayer risks (${risks.length})`, "", "scan-multiplayer-scripts: new/changed or released cards flagged F or ambiguous O, absent from MULTIPLAYER_FORBIDDEN / MULTIPLAYER_CARD_RULES.", "",
       ...(risks.length ? risks.map((card) => `- \`c${card.code}.lua\` ${markdown(names.get(card.code) ?? card.name)} — **${card.cls}**, ${card.rules.map((rule) => `\`${rule}\``).join(", ")}`) : ["None."]));
-    const shared = [...new Set([...oldTree.keys(), ...newTree.keys()])]
-      .filter((path) => path.endsWith(".lua") && !official(path) && oldTree.get(path) !== newTree.get(path)).sort();
+    const shared = relevance.changedScripts.filter(path => !official(path) && oldTree.get(path) !== newTree.get(path));
     report.push("", `## Changed shared scripts (${shared.length})`, "",
       ...(shared.length ? shared.map((path) => `- \`${path}\` (${!newTree.has(path) ? "removed" : !oldTree.has(path) ? "added" : "changed"})`) : ["None."]));
     if (shared.some((path) => /(?:^|\/)(?:.*utility.*|proc_.*|constant|cards_specific_functions)\.lua$/.test(path))) {
@@ -249,7 +314,7 @@ export async function runUpdate(options: Options = {}) {
     // Probe those scripts too, and omit pre-release card scripts removed from the prepared bundle.
     const allowed = (path: string) => !/^pre-release\/c\d+\.lua$/.test(path) ||
       (database.scriptCodes.has(codeOf(path)) && !stock.has(`official/c${codeOf(path)}.lua`));
-    const changedPaths = [...new Set([...stock.keys()].filter(path => newTree.get(path) !== oldTree.get(path)).concat(releasePaths))].filter(allowed);
+    const changedPaths = [...new Set([...candidateScripts.keys()].filter(path => newTree.get(path) !== oldTree.get(path)).concat(releasePaths))].filter(allowed);
     report[0] = `Needs review: ${conflicts.length + patchConflicts.length} conflicts, ${risks.length} risks, ${shared.length} shared-script changes, probe errors not run, overlay check exit not run`;
     report.push("", "## Core compatibility", "", "Pending installed npm ocgcore-wasm@0.1.2 probe against candidate data.");
     if (patchConflicts.length) {
@@ -263,7 +328,7 @@ export async function runUpdate(options: Options = {}) {
       // Match prepare-data: reviewed shared patches are part of the effective
       // scripts being gated, after stock conflicts have already blocked the run.
       installCardScriptPatches(extracted, join(root, packagePath, "card-script-patches"));
-      await writeFile(join(temporary, "strings.conf"), Buffer.from(await (await download(`https://raw.githubusercontent.com/ProjectIgnis/Distribution/${next.strings}/config/strings.conf`)).arrayBuffer()));
+      await writeFile(join(temporary, "strings.conf"), nextStrings);
       try {
         await applyPrereleaseSmokeResult(database, await smokePrereleaseScripts(temporary, [...database.prereleaseCodes]));
         const smoke = JSON.parse(database.remapBytes).scriptSmoke;
@@ -297,7 +362,7 @@ export async function runUpdate(options: Options = {}) {
     await saveReport();
     if (!options.dryRun) await rewritePins(root, old, next, false);
     console.log(`${options.dryRun ? "dry run" : "update"}: ${diff.added.length} new, ${diff.changed.length} changed, ${diff.removed.length} removed official scripts; ${conflicts.length} overlay conflicts; ${risks.length} new multiplayer risks. Report: ${reportPath}`);
-    return { changed, next, reportPath, files, changedPaths, cardChanges };
+    return { changed, next, reportPath, files, changedPaths, cardChanges, relevance, matchingPrHead };
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
@@ -306,7 +371,8 @@ export async function runUpdate(options: Options = {}) {
 async function main() {
   const { values } = parseArgs({ options: { scripts: { type: "string" }, database: { type: "string" }, strings: { type: "string" }, "dry-run": { type: "boolean", default: false }, report: { type: "string" }, metadata: { type: "string" }, "defer-validation": { type: "boolean", default: false } } });
   const overrides = Object.fromEntries(keys.filter((key) => values[key] !== undefined).map((key) => [key, values[key]]));
-  const result = await runUpdate({ overrides, dryRun: values["dry-run"], report: values.report, validate: !values["defer-validation"] });
+  const result = await runUpdate({ overrides, dryRun: values["dry-run"], report: values.report, validate: !values["defer-validation"],
+    repository: process.env.GITHUB_REPOSITORY, branch: process.env.UPDATE_BRANCH, base: process.env.BASE_BRANCH });
   if (values.metadata) {
     const metadataPath = resolve(values.metadata);
     await mkdir(dirname(metadataPath), { recursive: true });

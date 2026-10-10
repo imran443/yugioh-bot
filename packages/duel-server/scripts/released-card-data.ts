@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isPrereleaseDatabaseFile, releasedDatabaseFiles, type ReleasedDatabaseTree } from "../src/released-database-files.js";
 import { hasDedupeIdentity, prereleaseHistory, type CardIdentity } from "./prerelease-history.js";
-import { matchGraduations, parseRemapOverrides, type GraduationTransition, type UnmatchedGraduation } from "./prerelease-graduations.js";
+import { CardRemapValidationError, matchGraduations, parseRemapOverrides, type GraduationTransition, type UnmatchedGraduation } from "./prerelease-graduations.js";
 export { releasedDatabaseFiles } from "../src/released-database-files.js";
 
 type Download = (url: string, init?: RequestInit) => Promise<Response>;
@@ -62,6 +62,7 @@ export async function downloadReleasedCardData(commit: string, directory: string
   await mkdir(inputs, { recursive: true });
   const inputHashes: string[] = [];
   const rows: Row[] = [];
+  const rushCodes = new Set<number>();
   for (const file of files) {
     const response = await download(`https://raw.githubusercontent.com/ProjectIgnis/BabelCDB/${commit}/${encodeURIComponent(file)}`, request);
     const bytes = Buffer.from(await response.arrayBuffer());
@@ -70,6 +71,8 @@ export async function downloadReleasedCardData(commit: string, directory: string
     await writeFile(path, bytes);
     const db = new Database(path, { readonly: true });
     try {
+      // Rush base rows can lack texts, but are still removed from the merged DB.
+      for (const row of db.prepare("SELECT id FROM datas WHERE (ot & 1536)!=0").all() as { id: number }[]) rushCodes.add(row.id);
       const columns = new Set((db.prepare("PRAGMA table_info(datas)").all() as { name: string }[]).map(row => row.name));
       const textColumns = new Set((db.prepare("PRAGMA table_info(texts)").all() as { name: string }[]).map(row => row.name));
       const stats = ["atk", "def", "level", "attribute"].filter(column => columns.has(column)).map(column => `, d.${column}`).join("")
@@ -93,7 +96,7 @@ export async function downloadReleasedCardData(commit: string, directory: string
   const remaps: Record<string, number> = {};
   const addRemap = (old: number, target: number) => {
     if (old === target || overridden(old)) return;
-    if (remaps[old] !== undefined && remaps[old] !== target) throw new Error(`Ambiguous prerelease passcode ${old}`);
+    if (remaps[old] !== undefined && remaps[old] !== target) throw new CardRemapValidationError(`Ambiguous prerelease passcode ${old}`);
     remaps[old] = target;
   };
   for (const row of [...previews].sort(preferred)) {
@@ -140,7 +143,7 @@ export async function downloadReleasedCardData(commit: string, directory: string
     db.exec("DELETE FROM texts WHERE id IN (SELECT id FROM datas WHERE (ot & 1536)!=0); DELETE FROM datas WHERE (ot & 1536)!=0");
     for (const row of db.prepare("SELECT id FROM datas ORDER BY id").all() as { id: number }[]) scriptCodes.add(row.id);
     // A source still present under another identity must never redirect a saved card.
-    for (const old of Object.keys(remaps)) if (scriptCodes.has(Number(old))) throw new Error(`Ambiguous retained prerelease passcode ${old}`);
+    for (const old of Object.keys(remaps)) if (scriptCodes.has(Number(old))) throw new CardRemapValidationError(`Ambiguous retained prerelease passcode ${old}`);
   } finally { db.close(); }
   const history = options.historicalCards ? { cards: options.historicalCards, transitions: options.historicalGraduations ?? [] }
     : options.historyStart && !commit.startsWith(options.historyStart) ? await prereleaseHistory(options.historyStart, commit, directory) : { cards: [], transitions: [] };
@@ -152,20 +155,20 @@ export async function downloadReleasedCardData(commit: string, directory: string
     if (scriptCodes.has(row.code)) {
       const current = released.get(row.code) ?? keptIds.get(row.code);
       if (winner && winner.code !== row.code && current && identity(current) !== identity(row)) {
-        throw new Error(`Ambiguous retained historical prerelease passcode ${row.code}`);
+        throw new CardRemapValidationError(`Ambiguous retained historical prerelease passcode ${row.code}`);
       }
       continue;
     }
     if (winner && !overridden(row.code)) {
       const existing = remaps[row.code];
-      if (existing !== undefined && existing !== winner.code) throw new Error(`Ambiguous historical prerelease passcode ${row.code}`);
+      if (existing !== undefined && existing !== winner.code) throw new CardRemapValidationError(`Ambiguous historical prerelease passcode ${row.code}`);
       addRemap(row.code, winner.code);
     }
   }
   // Resolve detected edges through intermediate graduations to current retained
   // codes; never emit a target that disappeared in a later skipped weekly bump.
   const resolveTarget = (code: number, seen = new Set<number>()): number | undefined => {
-    if (seen.has(code)) throw new Error(`Cyclic historical prerelease passcode ${code}`);
+    if (seen.has(code)) throw new CardRemapValidationError(`Cyclic historical prerelease passcode ${code}`);
     if (scriptCodes.has(code)) return code;
     seen.add(code);
     const target = overridden(code) ? overrides[code] : remaps[code] ?? matched.remaps[code];
@@ -175,7 +178,7 @@ export async function downloadReleasedCardData(commit: string, directory: string
     const sources = historical.concat(previews).filter(row => row.code === Number(old));
     const current = target === null ? undefined : released.get(target) ?? keptIds.get(target);
     if (!sources.length || sources.some(row => !hasDedupeIdentity(row)) || scriptCodes.has(Number(old)) || (target !== null && (!current || !hasDedupeIdentity(current)))) {
-      throw new Error(`Invalid card remap override ${old} -> ${target}: source must be a supported removed main card; target must be a retained main card`);
+      throw new CardRemapValidationError(`Invalid card remap override ${old} -> ${target}: source must be a supported removed main card; target must be a retained main card`);
     }
     if (target === null) delete remaps[old];
     else remaps[old] = target;
@@ -209,7 +212,7 @@ export async function downloadReleasedCardData(commit: string, directory: string
   const remapBytes = JSON.stringify({ version: 1, remaps, prerelease, drops, overrides, overrideSource, unmatched }, null, 2) + "\n";
   await writeFile(join(directory, "card-remaps.json"), remapBytes);
   await rm(inputs, { recursive: true });
-  return { path, files, inputHashes, releaseCodes, prereleaseCodes: new Set([...prereleaseCodes].sort((a,b)=>a-b)), scriptCodes,
+  return { path, files, inputHashes, releaseCodes, prereleaseCodes: new Set([...prereleaseCodes].sort((a,b)=>a-b)), scriptCodes, rushCodes,
     remaps, remapBytes, prerelease, unmatched, overrides, overrideSource, released: [...released.values()], drops, bytes: await readFile(path) };
 }
 
