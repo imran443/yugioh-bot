@@ -16,7 +16,7 @@ import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { CardDataStatus } from "@yugidraft/shared/types";
 
-export type DuelHostOp = "engine-data-status" | "capabilities" | "view" | "start" | "respond" | "deck" | "validate-deck" | "validate-deck-master" | "cards" | "card-details" | "card-artworks" | "card-query" | "card-facets" | "surrender" | "add-bot" | "archive" | "cancel" | "replay" | "ready" | "unready" | "series-side" | "series-ready" | "series-unready" | "series-first" | "opening-pick" | "opening-choose" | "normalize-codes" | "check-deck" | "list-presets" | "start-preset" | "report" | "debug-trace" | "bug-context" | "chain-mode";
+export type DuelHostOp = "engine-data-status" | "capabilities" | "view" | "start" | "respond" | "deck" | "validate-deck" | "validate-deck-master" | "cards" | "card-details" | "card-artworks" | "card-query" | "card-facets" | "surrender" | "add-bot" | "archive" | "cancel" | "replay" | "owner-replay" | "ready" | "unready" | "series-side" | "series-ready" | "series-unready" | "series-first" | "opening-pick" | "opening-choose" | "normalize-codes" | "check-deck" | "list-presets" | "start-preset" | "report" | "debug-trace" | "bug-context" | "chain-mode";
 
 /** Dev scenario tools (presets page, Report button). Server side only. Exactly "1" turns them on. */
 export function scenariosEnabled(): boolean {
@@ -65,11 +65,12 @@ export function redactDuelResult<T>(data: T, guildId: string, playerId: number):
   return redactDuelTournamentMetadata(getDb, data, guildId, playerId);
 }
 
-function hostErrorBody(text: string): { error: string; code?: string } {
+function hostErrorBody(text: string): { error: string; code?: string; finalBoard?: "available" | "none" } {
   try {
     const parsed: unknown = JSON.parse(text);
     if (parsed && typeof parsed === "object" && "error" in parsed && typeof parsed.error === "string") {
-      return { error: parsed.error, ...("code" in parsed && typeof parsed.code === "string" ? { code: parsed.code } : {}) };
+      return { error: parsed.error, ...("code" in parsed && typeof parsed.code === "string" ? { code: parsed.code } : {}),
+        ...("finalBoard" in parsed && (parsed.finalBoard === "available" || parsed.finalBoard === "none") ? { finalBoard: parsed.finalBoard } : {}) };
     }
   } catch {
     // Host may return a plain-text error body.
@@ -94,6 +95,11 @@ export async function callDuelHost(input: {
   playerId: number;
   /** Trusted web session users.id. Owner operations must recheck its stored player mapping on the host. */
   userId?: number;
+  /** Replay contract and server card projection. Camera position stays in the browser. */
+  version?: 1 | 2;
+  visibility?: "mine" | "public";
+  /** owner-replay only: reveal hands/Extra Decks, keeping other fields and logs in the selected projection. */
+  reveal?: boolean;
   /** view only: an eliminated FFA player watches through the public view. */
   spectate?: boolean;
   command?: DuelCommand;
@@ -124,19 +130,28 @@ export async function callDuelHost(input: {
   /** chain-mode only: the response switch position for the caller's own seat. */
   chainMode?: DuelChainMode;
 }): Promise<{ ok: true; data: unknown } | { ok: false; response: NextResponse }> {
+  const replayOp = input.op === "replay" || input.op === "owner-replay";
+  const failure = (body: ReturnType<typeof hostErrorBody>, status: number): NextResponse => NextResponse.json({
+    ...body, ...(replayOp && !body.code && status >= 500 ? { code: "ENGINE_BUSY" } : {}),
+  }, { status: replayOp && status >= 500 ? 503 : status,
+    ...(replayOp ? { headers: { "cache-control": "private, no-store" } } : {}) });
   const cfg = { url: env.duelInternalUrl, secret: env.duelInternalSecret };
   const configProblem = duelHostConfigProblem(cfg);
   if (configProblem) {
     console.error(`[duel-host] ${configProblem}`);
-    return { ok: false, response: NextResponse.json({ error: configProblem }, { status: 503 }) };
+    return { ok: false, response: failure({ error: configProblem }, 503) };
   }
-  const transport = httpTransport({ ...cfg, ...(input.op === "engine-data-status" ? { timeoutMs: 5000 } : {}) });
+  const transport = httpTransport({ ...cfg, ...(input.op === "engine-data-status" ? { timeoutMs: 5000 }
+    : input.op === "replay" || input.op === "owner-replay" ? { timeoutMs: 30_000 } : {}) });
   const payload: Record<string, unknown> = {
     op: input.op,
     guildId: input.guildId,
     playerId: input.playerId,
   };
   if (input.userId !== undefined) payload.userId = input.userId;
+  if (input.version !== undefined) payload.version = input.version;
+  if (input.visibility !== undefined) payload.visibility = input.visibility;
+  if (input.reveal !== undefined) payload.reveal = input.reveal;
   if (input.slug) payload.slug = input.slug;
   if (input.op === "view" && input.spectate === true) payload.spectate = true;
   if (input.command) payload.command = input.command;
@@ -161,29 +176,48 @@ export async function callDuelHost(input: {
   if (!result.ok) {
     if (result.status < 400) {
       console.error(`[duel-host] ${input.op} failed: ${result.text || "no response"}`);
-      return { ok: false, response: NextResponse.json({ error: unreachableMessage(result.text) }, { status: 503 }) };
+      return { ok: false, response: failure({ error: unreachableMessage(result.text) }, 503) };
     }
     if (result.status === 401) {
       // The host answers 401 only for a bad signature.
       const error = "The duel engine refused the web server: their DUEL_INTERNAL_SECRET values do not match. Ask the server admin to fix .env and restart both services.";
       console.error(`[duel-host] ${error}`);
-      return { ok: false, response: NextResponse.json({ error }, { status: 503 }) };
+      return { ok: false, response: failure({ error }, 503) };
     }
     return {
       ok: false,
-      response: NextResponse.json(hostErrorBody(result.text), { status: result.status }),
+      response: failure(hostErrorBody(result.text), result.status),
     };
   }
   if (!result.text) {
-    return { ok: false, response: NextResponse.json({ error: "Empty engine response" }, { status: 502 }) };
+    return { ok: false, response: failure({ error: "Empty engine response" }, 502) };
   }
   let data: unknown;
   try {
     data = JSON.parse(result.text);
   } catch {
-    return { ok: false, response: NextResponse.json({ error: "Invalid engine response" }, { status: 502 }) };
+    return { ok: false, response: failure({ error: "Invalid engine response" }, 502) };
   }
   return { ok: true, data: redactDuelResult(data, input.guildId, input.playerId) };
+}
+
+/** Strict query parsing prevents private view flags from reaching the ordinary host operation. */
+export function readReplayQuery(request: Request, privileged = false) {
+  const query = new URL(request.url).searchParams;
+  const allowed = privileged ? ["version", "visibility", "seat", "reveal"] : ["version", "visibility"];
+  const invalid = () => ({ ok: false as const, response: NextResponse.json({ error: "Invalid replay request", code: "INVALID_CURSOR" },
+    { status: 400, headers: { "cache-control": "private, no-store" } }) });
+  if ([...query.keys()].some(key => !allowed.includes(key) || query.getAll(key).length !== 1)) return invalid();
+  const version = query.get("version"); const visibility = query.get("visibility");
+  const seat = query.get("seat"); const reveal = query.get("reveal");
+  if ((version !== null && (privileged ? version !== "2" : version !== "1" && version !== "2"))
+    || (visibility !== null && visibility !== "mine" && visibility !== "public")
+    || (seat !== null && !/^[0-3]$/.test(seat)) || (reveal !== null && reveal !== "0" && reveal !== "1")) return invalid();
+  return { ok: true as const, input: {
+    ...(version !== null ? { version: Number(version) as 1 | 2 } : privileged ? { version: 2 as const } : {}),
+    ...(visibility !== null ? { visibility: visibility as "mine" | "public" } : {}),
+    ...(seat !== null ? { seat: Number(seat) } : {}), ...(reveal !== null ? { reveal: reveal === "1" } : {}),
+  } };
 }
 
 export function sessionFromHost(data: unknown) {

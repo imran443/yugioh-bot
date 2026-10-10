@@ -1337,7 +1337,8 @@ describe("duel host replay", () => {
     }, { db });
     const res = await post(other.host, { op: "replay", slug: session.slug, guildId: "g1", playerId: p1 });
     expect(res.status).toBe(503);
-    expect(readHostError(res.data)).toBe("spawn failed");
+    expect(readHostError(res.data)).toBe("Replay engine is temporarily unavailable.");
+    expect(res.data).toMatchObject({ code: "ENGINE_BUSY" });
   });
 
   it("caches replays per viewer", async () => {
