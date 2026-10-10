@@ -61,7 +61,7 @@ describe("POST /api/duels/[slug]/unready", () => {
     const { POST } = await import("../app/api/duels/[slug]/unready/route");
     const res = await POST(...post(s.slug));
     expect(res.status).toBe(200);
-    expect(JSON.parse(hostCalls()[0][1].body as string)).toEqual({ op: "unready", slug: s.slug, guildId: "g1", playerId: s.host });
+    expect(JSON.parse(hostCalls()[0][1].body as string)).toEqual({ op: "unready", slug: s.slug, guildId: "g1", playerId: s.host, userId: fixtureUserId("u-host") });
     expect(await res.json()).toEqual({ session: { status: "lobby", seats: [{ ready: false }] } });
   });
 

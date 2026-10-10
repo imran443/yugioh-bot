@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
 const host = vi.hoisted(() => ({ requireDuelActor: vi.fn(), callDuelHost: vi.fn(), duelErrorResponse: vi.fn() }));
-vi.mock("@/lib/duel-host", () => host);
+vi.mock("@/lib/duel-host", async original => ({
+  ...await original<typeof import("../../src/lib/duel-host")>(), ...host,
+}));
 import { POST } from "../../app/api/duels/[slug]/deck/validate/route";
 
 const formats = ["1v1", "tag", "ffa3", "ffa4"];

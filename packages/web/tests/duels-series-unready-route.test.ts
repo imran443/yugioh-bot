@@ -72,7 +72,7 @@ describe("POST /api/duels/[slug]/series/unready", () => {
     const { POST } = await import("../app/api/duels/[slug]/series/unready/route");
     const res = await POST(...post(s.slug));
     expect(res.status).toBe(200);
-    expect(sentPayload()).toEqual({ op: "series-unready", slug: s.slug, guildId: "g1", playerId: s.host });
+    expect(sentPayload()).toEqual({ op: "series-unready", slug: s.slug, guildId: "g1", playerId: s.host, userId: fixtureUserId("u-host") });
     expect(await res.json()).toEqual({ series: { sideReady: [false, true] }, nextSlug: null });
   });
 

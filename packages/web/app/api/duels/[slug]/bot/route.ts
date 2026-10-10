@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { seatCountFor } from "@yugidraft/shared/duels";
-import { callDuelHost, duelErrorResponse, requireDuelActor, sessionFromHost } from "@/lib/duel-host";
+import { assertNormalDuelRequest, callDuelHost, duelErrorResponse, requireDuelActor, sessionFromHost } from "@/lib/duel-host";
 import { notifyDuelChange } from "@/lib/notify-duel";
 
 export const runtime = "nodejs";
@@ -30,6 +30,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const actor = await requireDuelActor();
   if (!actor.ok) return actor.response;
   const { slug } = await params;
+  try { assertNormalDuelRequest(request, actor.duels.room(slug, actor.guildId, actor.playerId)); }
+  catch (error) { return duelErrorResponse(error); }
 
   const parsed = await readSeat(request);
   if (!parsed.ok) return parsed.response;
@@ -53,7 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     op: "add-bot",
     slug,
     guildId: actor.guildId,
-    playerId: actor.playerId,
+    playerId: actor.playerId, ...(actor.userId !== undefined ? { userId: actor.userId } : {}),
     seat: parsed.seat,
   });
   if (!result.ok) return result.response;
@@ -65,6 +67,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
   const actor = await requireDuelActor();
   if (!actor.ok) return actor.response;
   const { slug } = await params;
+  try { assertNormalDuelRequest(request, actor.duels.room(slug, actor.guildId, actor.playerId)); }
+  catch (error) { return duelErrorResponse(error); }
 
   // Body is optional: `{ seat }` removes the bot in that seat (a table can hold several bots); with no body every bot goes.
   const parsed = await readSeat(request);
