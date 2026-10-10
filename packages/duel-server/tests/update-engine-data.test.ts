@@ -19,6 +19,15 @@ import * as history from "../scripts/prerelease-history.js";
 import * as releasedData from "../scripts/released-card-data.js";
 import { CardRemapValidationError } from "../scripts/prerelease-graduations.js";
 
+// Mocked upstream CDBs have no production BETB identities. Explicit policy tests
+// belong to released-card-data.test.ts; this suite exercises the updater.
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, readFile: (...args: Parameters<typeof actual.readFile>) =>
+    String(args[0]).endsWith("/card-remap-overrides.json")
+      ? Promise.resolve("{}\n") : actual.readFile(...args) };
+});
+
 const oldPins: Pins = { scripts: "a".repeat(40), database: "b".repeat(40), strings: "c".repeat(40) };
 const nextPins: Pins = { scripts: "d".repeat(40), database: "e".repeat(40), strings: "f".repeat(40) };
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");

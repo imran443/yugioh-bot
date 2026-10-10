@@ -764,6 +764,16 @@ export const GROUP_ONE: CatalogScenario[] = [
 
 /** Script evidence for the forbidden list (group c). The key is the passcode. */
 export const FORBIDDEN_EVIDENCE: Record<number, Evidence[]> = {
+  100200298: [
+    { file: "pre-release/c100200298.lua", line: 34, token: "Duel.GetAttacker():IsControler(1-tp)" },
+    { file: "pre-release/c100200298.lua", line: 35, token: "Duel.GetFieldGroupCount(tp,0,LOCATION_MZONE)" },
+    { file: "pre-release/c100200298.lua", line: 38, token: "event_player==1-tp" },
+    { file: "pre-release/c100200298.lua", line: 66, token: "Duel.SkipPhase(1-tp,PHASE_BATTLE" },
+  ],
+  101402094: [
+    { file: "pre-release/c101402094.lua", line: 52, token: "Duel.GetLocationCountFromEx(1-tp,tp,nil,c,ZONES_MMZ)" },
+    { file: "pre-release/c101402094.lua", line: 77, token: "Duel.SpecialSummon(spc,0,tp,1-tp" },
+  ],
   74519184: [ev(74519184, 16, "GetFieldGroupCount(tp,LOCATION_HAND,0)"), ev(74519184, 28, "Duel.GetTurnPlayer()"), ev(74519184, 39, "Duel.Draw(turnp,2")],
   72892473: [ev(72892473, 18, "GetFieldGroupCount(tp,0,LOCATION_HAND)"), ev(72892473, 27, "GetFieldGroup(tp,LOCATION_HAND,LOCATION_HAND)")],
   33508719: [ev(33508719, 19, "GetFieldGroup(tp,LOCATION_HAND,LOCATION_HAND)"), ev(33508719, 23, "Duel.Draw(1-tp,5")],

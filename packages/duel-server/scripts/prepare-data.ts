@@ -13,12 +13,13 @@ import { installCardScriptPatches } from "./card-script-patches.js";
 
 export const sources = {
   corePackage: "ocgcore-wasm@0.1.2",
-  scripts: "37f270dc813a12d123707ae255f2bda7922999c4",
-  database: "fdf92aea31033cd6c44afa89987c5e00665205e2",
+  scripts: "f593bb7514a2fda449dc645450dc301328e5a64d",
+  database: "a71a1d9ed1182d0e096a479bd15a57d374fd09f9",
   strings: "54a6e2395c532648ff762540e9615319fac4f51b",
   databaseFormat: "official-releases-prerelease-v4",
   // Immutable support boundary; abbreviated so the weekly pin rewrite never advances it.
-  prereleaseHistoryStart: "fdf92aea3103",
+  // Moved back to 52d5221df32c to recover BETB preview passcodes from prerelease-betb.cdb, removed on 2026-09-23.
+  prereleaseHistoryStart: "52d5221df32c",
 };
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 // integrity.multiScripts (the Lua overlay of duels with more than two seats) is not part of bundleVersion: the host pins

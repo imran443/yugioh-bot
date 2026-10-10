@@ -6626,8 +6626,8 @@
       "name": "Vaylantz World - Konig Wissen",
       "kind": "fix",
       "classes": [],
-      "stockSha256": "7080baa48c4a84b1c34dab70e6c880ed617820ebe2890a34e0724ed31a2d63d1",
-      "note": "R-FFA-THREE-COLUMNS: declare one living column opponent before card or zone choices for the named activated operation(s). Other formats keep stock behavior."
+      "stockSha256": "27f25b49e3f6ecacc933f7d9359609aee76b880bb39d5db7426cdcc1ac7417bc",
+      "note": "R-FFA-THREE-COLUMNS: declare one living column opponent before card or zone choices for the named activated operation(s). Other formats keep stock behavior. Reviewed 2026-10-10: upstream changed only s.activate to use Duel.PlaceFieldSpell; our overlay wraps only s.initial_effect and s.plop, so it remains compatible."
     },
     {
       "code": 75983808,
