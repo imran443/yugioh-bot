@@ -24,11 +24,13 @@ export type TableConnection = Pick<DuelWebsocketState, "connected" | "syncing" |
   actionBusy?: boolean;
 };
 
-export function TableSettings({ controller, preferences, connection, tools }: {
+export function TableSettings({ controller, preferences, connection, tools, replay = false }: {
   controller: TableController;
   preferences: DuelPreferences;
   connection?: TableConnection;
   tools?: ReactNode;
+  /** The table is a replay: no link back to the replay of this very duel, and no live-duel text. */
+  replay?: boolean;
 }) {
   const { room } = controller;
   const terminal = room.session.status !== "active";
@@ -93,7 +95,7 @@ export function TableSettings({ controller, preferences, connection, tools }: {
       ) : null}
       {connection ? <BugReportMenuButton room={room} /> : null}
       {tools}
-      {room.session.status === "completed" || room.session.status === "interrupted" ? <>
+      {!replay && (room.session.status === "completed" || room.session.status === "interrupted") ? <>
         <p>Finished. This duel is in Match history.</p>
         <Link href={`/duels/${room.session.slug}/replay`}>Watch replay</Link>
       </> : null}

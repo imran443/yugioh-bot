@@ -5,7 +5,7 @@ import { eliminationOrder } from "@/lib/duel/elimination-order";
 import { connectionLabel as labelForConnection } from "../connection-label";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
-import { Circle, Diamond, Eye, Radio, Volume2, VolumeX } from "lucide-react";
+import { Circle, Diamond, Eye, Film, Radio, Volume2, VolumeX } from "lucide-react";
 import type { DuelCard } from "@yugidraft/shared/duels";
 import { isCustomDomain } from "@yugidraft/shared/duels";
 import { BattleFx } from "../battle-fx";
@@ -71,7 +71,8 @@ import { useAimFlow } from "./use-aim-flow";
 import { useCamera } from "./use-camera";
 import { useTableDrawer } from "./use-table-drawer";
 import { useTableUi } from "./use-table-ui";
-import { SEAT_TONE_HEX, type CameraLockReason, type CameraState, type TableController, type TableFormat } from "./types";
+import { carriedCamera, useReadOnlyReplayController, useReplayCarry, type ReplayCarryRef } from "./replay-mode";
+import { SEAT_TONE_HEX, type CameraLockReason, type CameraState, type ReplayShellMode, type TableController, type TableFormat } from "./types";
 import hudStyles from "./grid-hud.module.css";
 import styles from "./table-shell.module.css";
 import { withDestroyCards } from "../destroy-cards";
@@ -127,6 +128,13 @@ export interface TableShellProps {
   chainMode?: ChainModeControl | null;
   /** The 4-way grid: where the phase hub sits, in the shared Extra Monster band (default) or in the middle of the table. */
   hubPlace?: "band" | "center";
+  /**
+   * Replay mode: the shell is a read-only viewer of one frame (see `ReplayShellMode` in types.ts). It cannot answer, and it
+   * draws no live result, series, clock, connection, Surrender or next-game control. `actions`, `headerTools`,
+   * `settingsTools`, `connection`, `chainMode`, `pickContinuation` and `modals` are ignored. A new `replay.resetKey`
+   * restarts the table clean; the chosen camera and the open panel stay. Do not switch this prop on a mounted shell.
+   */
+  replay?: ReplayShellMode;
 }
 
 /** No legal zones: a hidden panel prompt lights nothing on the field. */
@@ -145,11 +153,30 @@ function useLatch(on: boolean): boolean {
  * look (room.module.css). The room itself stays the owner of the live engine: it passes a controller.
  */
 export function TableShell(props: TableShellProps) {
+  return props.replay ? <ReplayTableShell {...props} replay={props.replay} /> : <TableShellRoot {...props} />;
+}
+
+/**
+ * The shell in replay mode. The controller is made read-only here, whatever the caller passes. A new reset key remounts
+ * the table, which drops everything of the old frame (loss order, running effects, camera locks, menus); the carry ref
+ * hands the next mount the camera the viewer chose and the panel they had open.
+ */
+function ReplayTableShell(props: TableShellProps & { replay: ReplayShellMode }) {
+  const carry = useReplayCarry();
+  const controller = useReadOnlyReplayController(props.controller);
+  // Created here, not in the keyed root, so a seek does not reload the viewer's preferences.
+  const own = useDuelPreferences();
+  return <TableShellRoot key={props.replay.resetKey} {...props} controller={controller} preferences={props.preferences ?? own} replayCarry={carry} />;
+}
+
+type TableShellRootProps = TableShellProps & { replayCarry?: ReplayCarryRef };
+
+function TableShellRoot(props: TableShellRootProps) {
   return props.preferences ? <TableShellBody {...props} preferences={props.preferences} /> : <TableShellOwnPreferences {...props} />;
 }
 
 /** A shell with no room above it (a preview): it keeps its own preferences, created once. */
-function TableShellOwnPreferences(props: TableShellProps) {
+function TableShellOwnPreferences(props: TableShellRootProps) {
   const preferences = useDuelPreferences();
   return <TableShellBody {...props} preferences={preferences} />;
 }
@@ -174,7 +201,9 @@ function TableShellBody({
   preferences,
   chainMode = null,
   hubPlace = "band",
-}: TableShellProps & { preferences: DuelPreferences }) {
+  replay,
+  replayCarry,
+}: TableShellRootProps & { preferences: DuelPreferences }) {
   // A hidden panel prompt (see fieldWaitsForReveal) must not be answered from the field, and nothing glows for it yet.
   // A field pick (zone, tribute, card on the board) takes the click at once: its zones glow from the first frame.
   const given = useMemo(() => {
@@ -184,7 +213,7 @@ function TableShellBody({
     return hidden ? { ...gated, legalKeys: NO_KEYS } : gated;
   }, [roomBusy, supplied]);
   const localPick = usePickContinuation(pickContinuation ? null : given.prompt, given.engine.revision);
-  const pick = pickContinuation ?? localPick;
+  const pick = replay ? localPick : pickContinuation ?? localPick;
   const onAnswer = useCallback<TableController["onAnswer"]>((answer) => {
     if (given.busy || !given.canAct || !given.prompt) return;
     if (!pickContinuation) pick.noteAnswer(given.prompt, answer);
@@ -204,8 +233,8 @@ function TableShellBody({
   // The 4-way grid on a wide screen swaps the bars and side columns for the floating HUD (grid-hud.tsx).
   const hud = !narrow && (grid || plazaHud);
   // The Card pane is a flyout in the HUD: a hover must not fill it, only a click or Inspect does.
-  const hudState = useHudPane({ camera: plazaHud });
-  const ui = useTableUi(tracked, { initialPane: grid && hud ? "log" : undefined, hud, onOpenCard: hudState.openCard, onPinCard: hudState.pinCard });
+  const hudState = useHudPane({ camera: plazaHud, initialPane: replayCarry?.current.hudPane });
+  const ui = useTableUi(tracked, { initialPane: replayCarry?.current.sidePane ?? (grid && hud ? "log" : undefined), hud, onOpenCard: hudState.openCard, onPinCard: hudState.pinCard });
   useHudEscape(hudState, hud, ui.suspended);
   usePinSync(hudState, tracked.engine.seats);
   const hudOpen = hud && (hudState.pane != null || hudState.pinned != null);
@@ -235,7 +264,17 @@ function TableShellBody({
   const suspended = inputSuspended || ui.suspended || (narrow && sheetOpen);
   const flow = useAimFlow(base, layout, rootRef, { suspended });
   const controller = flow.controller;
-  const camera = useCamera({ controller, layout, initial: initialCamera, initialLock, seatKeys: flow.seatKeys, suspended, uprightOnly: grid });
+  const camera = useCamera({ controller, layout, initial: replayCarry?.current.camera ?? initialCamera, initialLock: replay ? null : initialLock, seatKeys: flow.seatKeys, suspended, uprightOnly: grid });
+  // A replay seek remounts the table: remember what the viewer chose, so the next mount starts from it.
+  useEffect(() => {
+    if (replayCarry) replayCarry.current.camera = carriedCamera(camera.state);
+  }, [replayCarry, camera.state]);
+  useEffect(() => {
+    if (replayCarry) replayCarry.current.hudPane = hudState.pane;
+  }, [replayCarry, hudState.pane]);
+  useEffect(() => {
+    if (replayCarry) replayCarry.current.sidePane = ui.pane;
+  }, [replayCarry, ui.pane]);
   // The 4-way grid starts on the full table (all four fields). The turn strip and the keys (1 to 4, O, Esc) move the focus.
   const gridSeats = useMemo(() => gridCells(layout), [layout]);
   const gridShown = useMemo(() => engine.seats.filter((view) => !view.eliminated).map((view) => view.seat), [engine.seats]);
@@ -269,7 +308,7 @@ function TableShellBody({
     reducedMotion: controller.reducedMotion,
     board: boardRef,
   });
-  const showResult = !hideResult && resultReady && hasResult;
+  const showResult = !replay && !hideResult && resultReady && hasResult;
 
   // Who left, in order (groups: seats that left in one update share a place): the placings of a table of 3 or 4 read it.
   const [outOrder, setOutOrder] = useState<number[][]>(() => eliminationOrder(engine, initialOutOrder));
@@ -288,7 +327,8 @@ function TableShellBody({
   const headerPhase = battle ? `Battle Phase${stepName ? ` · ${stepName}` : ""}` : phaseTitle(engine.phase);
   const turnSeat = engine.turnSeat;
   const myTurn = !spectator && turnSeat === viewerSeat;
-  const turnText = myTurn ? "Your turn" : `${nameOf(turnSeat)}'s turn`;
+  // A replay has no player: the camera seat is not "you".
+  const turnText = myTurn && !replay ? "Your turn" : `${nameOf(turnSeat)}'s turn`;
   const soundLabel = preferences.soundEnabled ? "On" : "Off";
   const connectionLabel = labelForConnection(terminal, connection);
 
@@ -332,7 +372,7 @@ function TableShellBody({
     onAnswer: controller.onAnswer,
     caption: trackCaption,
     reducedMotion: controller.reducedMotion,
-    chainMode,
+    chainMode: replay ? null : chainMode,
   });
   // Who may answer the open chain, in order (the panel of the chain and the response prompt list it).
   const chainOpen = engine.chain.length > 0 && !terminal;
@@ -474,17 +514,24 @@ function TableShellBody({
   );
   const statusNode = (
     <div className={roomStyles.status}>
-      {headerTools}
-      <span className={roomStyles.connectionStatus} role="status" aria-live="polite" data-live={connectionLabel === "Live"}>
-        {connectionLabel === "Live" ? <i className={roomStyles.liveDot} aria-hidden /> : <Radio size={15} strokeWidth={1.75} aria-hidden />}
-        <span className={roomStyles.connectionText}>
-          {connectionLabel === "Live" ? spectator ? "Live duel · watching" : "Live duel" : connectionLabel}
+      {replay ? replay.tools : headerTools}
+      {replay ? (
+        <span className={roomStyles.connectionStatus} data-replay-label>
+          <Film size={15} strokeWidth={1.75} aria-hidden />
+          <span className={roomStyles.connectionText}>Replay</span>
         </span>
-      </span>
-      {hasResult && hideResult ? (
+      ) : (
+        <span className={roomStyles.connectionStatus} role="status" aria-live="polite" data-live={connectionLabel === "Live"}>
+          {connectionLabel === "Live" ? <i className={roomStyles.liveDot} aria-hidden /> : <Radio size={15} strokeWidth={1.75} aria-hidden />}
+          <span className={roomStyles.connectionText}>
+            {connectionLabel === "Live" ? spectator ? "Live duel · watching" : "Live duel" : connectionLabel}
+          </span>
+        </span>
+      )}
+      {!replay && hasResult && hideResult ? (
         <button type="button" className={roomStyles.tool} onClick={() => setHideResult(false)}><span>Show result</span></button>
       ) : null}
-      {hasResult && resultReady ? (
+      {!replay && hasResult && resultReady ? (
         <button type="button" className={roomStyles.tool} onClick={actions?.onExit}><span>Exit duel</span></button>
       ) : null}
       <button
@@ -559,7 +606,7 @@ function TableShellBody({
       {hud ? (
         <header className={hudStyles.top} data-testid="hud-top">
           <div className={hudStyles.topLeft}>{identityNode}</div>
-          {hudClockBank(room.clock, session, controller.reducedMotion)}
+          {replay ? null : hudClockBank(room.clock, session, controller.reducedMotion)}
           <div className={hudStyles.topMid} data-caption={finale.caption ? "true" : undefined}>
             {seatStripNode}
             {finale.caption ? (
@@ -586,8 +633,8 @@ function TableShellBody({
           {statusNode}
         </header>
       )}
-      {hud ? null : clockStrip(room.clock, session, controller.reducedMotion)}
-      {room.series && !showResult ? (
+      {hud || replay ? null : clockStrip(room.clock, session, controller.reducedMotion)}
+      {room.series && !showResult && !replay ? (
         <SeriesBanner
           room={room}
           slug={session.slug}
@@ -636,7 +683,7 @@ function TableShellBody({
               card={cardPanel}
               log={logPanel}
               masters={masterRail}
-              settings={<TableSettings controller={controller} preferences={preferences} connection={connection} tools={settingsTools} />}
+              settings={<TableSettings controller={controller} preferences={preferences} connection={replay ? undefined : connection} tools={replay ? undefined : settingsTools} replay={replay != null} />}
               onSelect={ui.setPane}
               onClose={() => drawer.close(true)}
               onKeyDown={drawer.onKeyDown}
@@ -795,8 +842,8 @@ function TableShellBody({
         </section>
       </div>
       {hud ? (
-        <div className={hudStyles.corner} data-testid="hud-corner">
-          {promptDockNode}
+        <div className={hudStyles.corner} data-testid="hud-corner" style={replay ? ({ "--hud-corner-w": "min(380px, 34vw)" } as CSSProperties) : undefined}>
+          {replay ? <div className={styles.replayCorner} data-testid="replay-transport">{replay.transport}</div> : promptDockNode}
           <StationTrack
             {...trackProps}
             phases="hub"
@@ -806,6 +853,8 @@ function TableShellBody({
           />
         </div>
       ) : (
+        <>
+        {replay ? <div className={styles.replayBar} data-testid="replay-transport">{replay.transport}</div> : null}
         <div className={roomStyles.track}>
           {narrow ? seatStripNode : null}
           <StationTrack
@@ -817,6 +866,7 @@ function TableShellBody({
             attackLock={attackLockAt(format, engine.seats.length, engine.turn, engine.prompt)}
           />
         </div>
+        </>
       )}
       {hud ? (
         <HudLayer
@@ -824,7 +874,7 @@ function TableShellBody({
           panels={{
             card: cardPanel,
             log: logPanel,
-            settings: <TableSettings controller={controller} preferences={preferences} connection={connection} tools={settingsTools} />,
+            settings: <TableSettings controller={controller} preferences={preferences} connection={replay ? undefined : connection} tools={replay ? undefined : settingsTools} replay={replay != null} />,
             camera: plazaHud ? <CameraControls {...cameraProps} variant="panel" view={{ open: true }} /> : undefined,
           }}
           chain={engine.chain}
@@ -851,7 +901,7 @@ function TableShellBody({
       {narrow ? <TablePhonePanes domain={domain} pane={ui.pane} open={sheetOpen} unread={logUnread}
         onClose={() => setSheetOpen(false)} onSelect={(pane) => { ui.setPane(pane); setSheetOpen(true); }}
         card={cardPanel} log={logPanel}
-        settings={<TableSettings controller={controller} preferences={preferences} connection={connection} tools={settingsTools} />}
+        settings={<TableSettings controller={controller} preferences={preferences} connection={replay ? undefined : connection} tools={replay ? undefined : settingsTools} replay={replay != null} />}
         masters={masterRail} /> : null}
       {ui.menu ? (
         <CardActionMenu
@@ -893,7 +943,7 @@ function TableShellBody({
           placings={standings.map((entry) => ({ seat: entry.seat, place: entry.place, label: placeLabel(entry.place) }))}
         />
       ) : null}
-      {modals}
+      {replay ? null : modals}
     </div>
   );
 }

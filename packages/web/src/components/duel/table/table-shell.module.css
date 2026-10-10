@@ -289,3 +289,19 @@
 .shell.shell [data-wide="true"][data-glide="none"] {
   --glide: 0s;
 }
+
+/* ---------- replay mode: the transport slot (ReplayShellMode) ---------- */
+/* Wide screen with the floating HUD: the transport sits in the bottom-right corner, where the prompt dock does live. */
+.replayCorner {
+  width: 100%;
+  min-width: 0;
+  pointer-events: auto;
+}
+/* Every other layout: a full-width row between the board and the station track. */
+.replayBar {
+  position: relative;
+  z-index: var(--duel-z-prompt);
+  flex: none;
+  min-width: 0;
+  padding: 4px 8px 0;
+}
