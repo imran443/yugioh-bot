@@ -62,6 +62,22 @@ function deckWith(...cards: number[]): DuelDeck {
 const FFA_TABLES: MultiplayerTable[] = ["ffa3", "ffa4"];
 
 describe("multiplayer forbidden list in deck validation", () => {
+  it.each([
+    [100200298, 'Counter Spell "Negate Attack"'],
+    [101402094, "Angelechy Opposition"],
+  ] as const)("blocks reviewed preview %s at every multiplayer table", (code, name) => {
+    for (const mode of ["normal", "domain"] as const) {
+      const deck = mode === "normal" ? deckWith(code) : {
+        main: [code, ...fillers(59)], extra: [], side: [], deckMaster: DARK_MAGICIAN,
+      };
+      for (const table of ["ffa3", "ffa4", "tag"] as const) {
+        const issues = inspectDeck(mode, deck, DATA, settings, { table }).issues;
+        expect(issues.some(issue => issue.message.startsWith(`${name} is forbidden in `)), `${mode} ${table}`).toBe(true);
+      }
+      expect(inspectDeck(mode, deck, DATA, settings, { table: "1v1" }).issues, mode).toEqual([]);
+    }
+  });
+
   it("does not change the default table", () => {
     const deck = deckWith(EXODIA, HAND_DESTRUCTION, CREATURE_SWAP, NIBIRU);
     expect(inspectDeck("normal", deck, DATA, settings)).toEqual(inspectDeck("normal", deck, DATA, settings, { table: "1v1" }));

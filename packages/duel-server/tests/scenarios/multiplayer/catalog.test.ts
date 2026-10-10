@@ -63,7 +63,7 @@ function evidenceProblems(evidence: Evidence[]): string[] {
   return problems;
 }
 
-const official = (code: number) => existsSync(join(scripts, "official", `c${code}.lua`));
+const hasScript = (code: number) => ["official", "pre-release"].some(folder => existsSync(join(scripts, folder, `c${code}.lua`)));
 const dup = <T>(values: T[]) => values.filter((value, index) => values.indexOf(value) !== index);
 // The live scenario data has more fields than ScenarioLike names. The table of a scenario is setup.format (1v1 when absent).
 const formatOf = async () =>
@@ -73,8 +73,8 @@ describe("multiplayer card catalog", () => {
   it("keeps 21 all-seat or ongoing cards and 45 one-opponent cards after the FFA rule change", () => {
     expect(GROUP_ALL).toHaveLength(21);
     expect(GROUP_ONE).toHaveLength(45);
-    expect(MULTIPLAYER_FORBIDDEN).toHaveLength(46);
-    expect(MULTIPLAYER_FORBIDDEN.filter((entry) => entry.formats.includes("tag"))).toHaveLength(24);
+    expect(MULTIPLAYER_FORBIDDEN).toHaveLength(48);
+    expect(MULTIPLAYER_FORBIDDEN.filter((entry) => entry.formats.includes("tag"))).toHaveLength(26);
   });
 
   it("puts opponent-field cards in the one-opponent group with the declaration or response rule", () => {
@@ -134,13 +134,13 @@ describe("multiplayer card catalog", () => {
     for (const row of GROUP_ONE) expect(row.id).toBe(`mp-one-${row.code}`);
   });
 
-  it("uses only passcodes that exist in cards.cdb and have an official script", () => {
+  it("uses only passcodes that exist in cards.cdb and have an official or retained prerelease script", () => {
     const codes = [
       ...SCENARIOS.map((scenario) => scenario.code),
       ...MULTIPLAYER_FORBIDDEN.map((entry) => entry.code),
       ...MULTIPLAYER_CARD_RULES.map((entry) => entry.code),
     ];
-    const bad = codes.filter((code) => cardName(code) === undefined || !official(code));
+    const bad = codes.filter((code) => cardName(code) === undefined || !hasScript(code));
     expect(bad).toEqual([]);
   });
 

@@ -139,6 +139,15 @@ Option A: Hand Destruction (74519184), Card Destruction (72892473), Chaos Empero
 
 This is the owner's format-specific safety decision. The [Domain Format Complete Rulebook v1.4](https://docs.google.com/document/d/1QsBNFfEYHRavu93guIL1eV92Wgt-Ts-vFNnDbLWllQc/export?format=txt), checked on 2026-10-06, says in “Banlist” that there are currently no banned cards; it does not forbid these nine cards in Tag. Their Tag legality is therefore not a difference from that rulebook.
 
+## Engine data review decisions (2026-10-10)
+
+Counter Spell "Negate Attack" (`100200298`) and Angelechy Opposition (`101402094`) are blocked in FFA3, FFA4 and Tag through `MULTIPLAYER_FORBIDDEN`, pending tested multiplayer support. This is the conservative safety decision requested for the BETB data update under the [engine data review guide](../deployment/engine-data-updates.md#review-the-report).
+
+- **Counter Spell "Negate Attack": block FFA3/FFA4/Tag.** Its free-chain target callback compares field counts, checks the attacker and chain event player, and skips the Battle Phase through `1-tp`; it has no reviewed overlay proving that all these operations use the triggering opponent at 3+ seats. FFA must follow R-FFA-OPP-RESPONSE and R-FFA-NEGATE; Tag must respect R-TAG-PARTNER and the team field comparison in Q2.
+- **Angelechy Opposition: block FFA3/FFA4/Tag.** Its summon eligibility, Extra Deck zone count and final destination use `1-tp` without a reviewed choice of an eligible opposing recipient. The opponent-field summon decision above requires choosing one opponent who can receive the monster, including an opposing member in Tag.
+
+Reviewed both retained `pre-release/cNNN.lua` scripts against the [Domain Format Complete Rulebook v1.4](https://docs.google.com/document/d/1QsBNFfEYHRavu93guIL1eV92Wgt-Ts-vFNnDbLWllQc/export?format=txt), checked on 2026-10-10, "Conditions and Activations with your opponent" and "Activated/Triggered Effects with Your Opponent", together with the format-specific decisions in this ADR. Rulebook responses apply to the opponent whose action or resources met the requirement; other opponent effects require choosing their recipient. Existing generic engine support and initialization smoke checks do not prove these callbacks correct. Script-line evidence is recorded in `FORBIDDEN_EVIDENCE` in the multiplayer scenario catalog.
+
 ## Domain deck rules (2026-10-02)
 
 Domain uses exactly 60 Main Deck cards and at most 15 Extra Deck cards. Main and Extra are singleton by card identity, including alternate art and treated-as names. The Deck Master is separate from these counts and cannot also be in the decks. There is no Side Deck and no banlist by default; the host may choose a banlist, and the multiplayer safety list still applies.

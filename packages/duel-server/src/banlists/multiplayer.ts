@@ -44,6 +44,7 @@ export const MULTIPLAYER_FORBIDDEN: readonly MultiplayerForbidden[] = [
   { code: 14057297, name: "Multiple Destruction", category: "hand-swap", reason: "It reads two hands and two LP totals only. Other players are not part of the cost or the draw.", formats: ALL },
   { code: 17484499, name: "Exchange of the Spirit", category: "hand-swap", reason: "The script swaps the Deck and GY of exactly two players. The condition reads one GY on each side.", formats: ALL },
   // --- symmetry
+  { code: 100200298, name: 'Counter Spell "Negate Attack"', category: "symmetry", reason: "Its free-chain options compare two fields and use 1-tp for the event player and Battle Phase skip; binding those operations to the triggering opponent is unproven at 3+ seats.", formats: ALL },
   { code: 82301904, name: "Chaos Emperor Dragon - Envoy of the End", category: "symmetry", reason: "It sends both sides and damages both players. More than two players have no defined split.", formats: FFA, tagDecision: { allowed: true, source: "owner 2026-10-06, option A" } },
   { code: 35059553, name: "Kaiser Colosseum", category: "symmetry", reason: "It compares the monster count of two sides to limit summons.", formats: FFA, tagDecision: { allowed: true, source: "owner 2026-10-06, option A" } },
   { code: 98139712, name: "Skull Invitation", category: "symmetry", reason: "Damage goes by card owner to 'you' and 'the opponent' only.", formats: FFA },
@@ -85,6 +86,7 @@ export const MULTIPLAYER_FORBIDDEN: readonly MultiplayerForbidden[] = [
   { code: 27204311, name: "Nibiru, the Primal Being", category: "global-state", reason: "It counts summons in a flag for each of two players and reads the flag of 'the opponent'.", formats: FFA, tagDecision: { allowed: true, source: "owner 2026-10-06, option A" } },
   { code: 94145021, name: "Droll & Lock Bird", category: "global-state", reason: "It keeps a two-slot table of draws for each player.", formats: FFA },
   // --- chooser
+  { code: 101402094, name: "Angelechy Opposition", category: "chooser", reason: "Its Extra Deck summon checks zones and summons to 1-tp without a reviewed eligible-opponent choice; recipient selection and zone checks are unproven at 3+ seats.", formats: ALL },
   { code: 57728570, name: "Crush Card Virus", category: "chooser", reason: "It reads the opponent hand, field and Deck, and asks one opponent to choose.", formats: FFA, tagDecision: { allowed: true, source: "owner 2026-10-06, option A" } },
   // --- control-swap
   { code: 15305240, name: "Creature Seizure", category: "control-swap", reason: "The script swaps control between the activator and one named opponent.", formats: FFA, tagDecision: { allowed: true, source: "owner 2026-10-06, option A" } },
