@@ -211,6 +211,11 @@ export interface DuelCard {
   linkRating?: number;
   linkMarker?: number;
   counters?: Array<{ type: number; count: number }>;
+  /**
+   * True on a face-up monster or Spell/Trap on the field whose effects are negated (the core's STATUS_DISABLED:
+   * a negating effect or a continuous one such as Skill Drain). Absent otherwise. A face-down card never carries it.
+   */
+  negated?: boolean;
   materials?: DuelCard[];
   /**
    * Set on a card that is equipped to a monster (an Equip Spell, a Union monster, or any card the
@@ -401,6 +406,9 @@ export interface DuelEvent {
   /** target: the link's complete current target list (including [] when cleared). Coordinates only;
    * identities must come from the viewer's redacted board. Also accepted on activation events. */
   targets?: DuelZoneRef[];
+  /** target announcements: public labels at targeting time, already filtered for hidden cards.
+   * Omitted on ordinary coordinate updates; [] announces that the link has no targets. */
+  targetLabels?: string[];
   text: string;
   description?: string;
   /** toss: public outcomes; `card` names the resolving source when known. */

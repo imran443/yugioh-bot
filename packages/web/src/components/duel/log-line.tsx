@@ -23,7 +23,7 @@ export function logKind(text: string): LogKind {
   if (/ wins \(|^Draw \(/.test(text)) return "result";
   if (/ takes \d+ damage| pays \d+ LP/.test(text)) return "loss";
   if (/ gains \d+ LP/.test(text)) return "gain";
-  if (/ is activating$|^(A|Player \d+'s) chain link was negated$|^Chain ended$/.test(text)) return "chain";
+  if (/ is activating$|^(A|Player \d+'s) chain link was negated$|^Chain ended$|^Chain Link \d+: .+ targets |^Only legal target: /.test(text)) return "chain";
   return "line";
 }
 

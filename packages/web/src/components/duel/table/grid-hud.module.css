@@ -720,6 +720,9 @@
   line-height: 1.4;
 }
 .previewExtras li { padding: 3px 0; border-top: 1px solid rgb(255 255 255 / 0.08); overflow-wrap: anywhere; }
+/* "Effects negated" in the pinned peek: the slashed circle of the card mark, then the words. */
+.previewExtras li.previewNegated { display: flex; align-items: center; gap: 0.4em; color: var(--duel-ink, #efe7d5); }
+.previewNegated svg { flex: none; width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .previewClose {
   position: absolute;
   top: 8px;

@@ -1077,6 +1077,40 @@
   pointer-events: none;
 }
 
+/* ---------- negated cards ----------
+   A face-up card whose effects are negated (the core's disabled status: Effect Veiler, Destined Rivals, Skill Drain
+   and the like) is dimmed and gets a slashed circle on a dark disc. The art loses colour and light, so the card still
+   reads; the mark is neutral ink, because purple and gold mean active states. Static: nothing here animates. The
+   mark is a share of the card width with a floor, so the smallest board still shows it. */
+.artWrap[data-negated="true"] .art {
+  filter: saturate(0.25) brightness(0.62);
+}
+
+.negationMark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  width: clamp(14px, 44%, 40px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.7));
+}
+
+.negationDisc {
+  fill: rgb(6 9 18 / 0.74);
+}
+
+.negationRing,
+.negationSlash {
+  fill: none;
+  stroke: var(--ink, #efe7d5);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
 /* ---------- the far side of the table ----------
    Cards the top player controls (zones, hand, piles) face the bottom player: the picture turns half
    way, like a card laid down by someone sitting across the table. Only the picture turns. The card

@@ -543,7 +543,7 @@ export const COMPARE_GAP_SCENARIOS: Scenario[] = [
       // R-FFA-OPP-ONE: p2's two effect monsters keep the target choice open.
       expectPickOptions([{ card: BUG, seat: "p2" }, { card: WITCH, seat: "p2" }], "p0"),
       select(BUG),
-      expectEvents({ kind: "target", by: "p0", text: "targets 1 card" }),
+      expectEvents({ kind: "target", by: "p0", text: "targets Man-Eater Bug" }),
       expectPrompt({ by: "p0", title: "Choose an action", context: "action" }),
       expectEliminated("p1"),
       everySeat("ffa3", {
@@ -579,7 +579,7 @@ export const COMPARE_GAP_SCENARIOS: Scenario[] = [
       zone("p0", "s0", "p0"),
       expectPickOptions([{ card: BUG, seat: "p2" }, { card: WITCH, seat: "p2" }], "p0"),
       select(BUG),
-      expectEvents({ kind: "target", by: "p0", text: "targets 1 card" }),
+      expectEvents({ kind: "target", by: "p0", text: "targets Man-Eater Bug" }),
       expectPrompt({ by: "p0", title: "Choose an action", context: "action" }),
       expectEliminated("p1"),
       everySeat("ffa4", {

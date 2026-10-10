@@ -437,6 +437,17 @@ export class Session {
         }
         return;
       }
+      case "expectLogSeen": {
+        const log = this.game.view(step.viewer === "spectator" ? null : seatOf(step.viewer)).log;
+        for (const text of step.has ?? []) {
+          if (!log.some((entry) => entry.text.includes(text))) this.fail(stepNo, step, `${step.viewer} log has no line with "${text}".\nLog:\n${log.slice(-15).map((e) => `  #${e.id} ${e.text}`).join("\n")}`, false);
+        }
+        for (const text of step.lacks ?? []) {
+          const hit = log.find((entry) => entry.text.includes(text));
+          if (hit) this.fail(stepNo, step, `${step.viewer} log has an unexpected line: #${hit.id} "${hit.text}".`, false);
+        }
+        return;
+      }
       case "expectNoLog": {
         const hit = this.game.view(0).log.find((entry) => entry.text.includes(step.text));
         if (hit) this.fail(stepNo, step, `Unexpected log line: #${hit.id} "${hit.text}".`, false);
@@ -927,6 +938,9 @@ export class Session {
       }
       if (expect.defense != null && card.defense !== expect.defense) {
         problems.push(`${label}: expected DEF ${expect.defense}, got ${card.defense}`);
+      }
+      if (expect.negated != null && (card.negated ?? false) !== expect.negated) {
+        problems.push(`${label}: expected negated ${expect.negated}, got ${card.negated ?? false}`);
       }
       const faceDown = (card.position & (0x02 | 0x08)) !== 0;
       if (expect.pos === "atk" && card.position !== 0x01) problems.push(`${label}: expected face-up attack, position is ${card.position}`);

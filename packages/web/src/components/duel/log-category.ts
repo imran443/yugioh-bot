@@ -136,6 +136,9 @@ const TEXT_RULES: ReadonlyArray<readonly [RegExp, LogCategory]> = [
   [/ is activating$/, "chain"],
   [/^(A|Player \d+'s) chain link was negated$/, "chain"],
   [/^Chain ended$/, "chain"],
+  // "Chain Link 2: Effect Veiler targets Black Luster Soldier ..." and the private "Only legal target: ..." note.
+  [/^Chain Link \d+: .+ targets /, "chain"],
+  [/^Only legal target: /, "chain"],
   [/^(A monster|Player \d+) declares (an|a direct) attack$/, "battle"],
   [/^Player \d+ attacks Player \d+ directly$/, "battle"],
   [/^Player \d+ is attacked directly$/, "battle"],

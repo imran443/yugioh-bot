@@ -230,6 +230,9 @@ export function ZoneSlot({
   const defense = card != null && isDefenseAt(card.location, card.position);
   const equipRole = useEquipRole(card);
   const equipText = equipSentence(equipRole);
+  // A face-up card whose effects are negated: the art is dimmed and marked (CardFace); the name says it too.
+  const negated = card?.negated === true;
+  const name = [label, equipText, negated ? "Effects negated" : null].filter(Boolean).join(". ");
 
   return (
     <div
@@ -240,6 +243,7 @@ export function ZoneSlot({
       data-selected={selected ? "true" : "false"}
       data-occupied={card ? "true" : "false"}
       data-equip={equipRole?.role}
+      data-negated={negated ? "true" : undefined}
       data-defense={defense ? "true" : "false"}
       data-side={flip ? "opp" : "you"}
       data-disabled={offId ? "true" : undefined}
@@ -248,7 +252,7 @@ export function ZoneSlot({
       <button
         type="button"
         className={styles.zoneHit}
-        aria-label={equipText ? `${label}. ${equipText}` : label}
+        aria-label={name}
         aria-pressed={selected}
         onClick={(event) => onActivate(keys, card, event.currentTarget)}
         onMouseEnter={(event) => onHoverCard?.(card, event.currentTarget)}

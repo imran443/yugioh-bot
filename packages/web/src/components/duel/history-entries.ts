@@ -376,6 +376,7 @@ function sentenceFor(tile: HistoryTile, who: HistoryViewOptions["who"], mySeat: 
     case "activate":
       parts.push(`${actor} activated ${name ?? "a card"}.`);
       if (tile.chain && tile.chain.size > 1) parts.push(`Chain link ${tile.chain.index} of ${tile.chain.size}.`);
+      if (tile.chain?.targets) parts.push(`Targeting ${tile.chain.targets}.`);
       if (tile.chain?.status === "negated") parts.push("Negated.");
       else if (tile.chain?.status === "resolved") parts.push("Resolved.");
       else if (tile.chain?.status === "resolving") parts.push("Resolving.");
@@ -469,6 +470,8 @@ function tagsFor(tile: HistoryTile): HistoryTag[] {
     const label = { resolving: "Resolving", resolved: "Resolved", negated: "Negated" }[tile.chain.status];
     tags.push({ label, tone: tile.chain.status === "negated" ? "loss" : "quiet" });
   }
+  // The link's target, worded for this viewer; plain so a long card name wraps instead of being cut.
+  if (tile.chain?.targets) tags.push({ label: `Targets ${tile.chain.targets}`, tone: "chain", plain: true });
   if (tile.kind === "destroy") {
     // The row is the destroyed card, so its verb already says "Destroyed": the tag only gives the reason.
     const loss = tile.destroyed[0];

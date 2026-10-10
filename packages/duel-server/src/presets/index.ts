@@ -15,6 +15,8 @@ import { preset as turnPlayerLast } from "./ffa3-turn-player-last.js";
 import { preset as thirdResponse } from "./ffa3-third-response.js";
 import { preset as jinzo } from "./jinzo-stops-trap.js";
 import { preset as mindCrush } from "./mind-crush-ffa4-pick.js";
+import { preset as negationVeiler } from "./negation-veiler-ffa4.js";
+import { preset as negationVeiler1v1 } from "./negation-veiler-1v1.js";
 import { preset as mindCrush3 } from "./ffa3-mind-crush-pick.js";
 import { presets as raigekiDarkHole } from "./raigeki-dark-hole.js";
 import { preset as solemn } from "./solemn-judgment-summon.js";
@@ -30,8 +32,10 @@ export const PRESETS: readonly Preset[] = [
   dustTornado,
   solemn,
   jinzo,
+  negationVeiler1v1,
   ...raigekiDarkHole,
   mindCrush,
+  negationVeiler,
   mindCrush3,
   tagSolemn,
   tagJinzo,
