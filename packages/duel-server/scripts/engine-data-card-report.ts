@@ -23,6 +23,9 @@ interface CardGroup {
   name: string; code?: string; tcgDate?: string; ocgDate?: string;
   cards: ReportCard[];
 }
+interface ReleasedSetPreview {
+  code: string; name: string; tcgDate: string; cards: number[]; files: string[];
+}
 export interface CardUpdate {
   comparisonAvailable: boolean;
   metadataUnavailable: boolean;
@@ -31,10 +34,14 @@ export interface CardUpdate {
   graduated: Array<ReportCard & { oldCode: number; oldName: string }>;
   /** Previous rows still in the candidate preview pool, before script smoke. */
   retainedPreviews?: ReportCard[];
+  /** Advisory upstream status, independent of additions or prepare-time exclusions. */
+  releasedSets?: ReleasedSetPreview[];
+  releasedSetMetadataUnavailable?: boolean;
 }
 const byName = (a: ReportCard, b: ReportCard) => a.name.localeCompare(b.name, "en") || a.code - b.code;
 const productCode = (code: string) => code.split("-")[0]!.toUpperCase();
-const date = (value?: string) => typeof value === "string" && /^[1-9]\d{3}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+const date = (value?: string) => typeof value === "string" && /^[1-9]\d{3}-\d{2}-\d{2}$/.test(value) &&
+  Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : undefined;
 const sourceCode = (file: string) => /^(?:release|prerelease)-(.+?)(?:-en)?\.cdb$/i.exec(file)?.[1]?.toUpperCase();
 const identity = (card: SourceCard) => `${card.name.trim().toLowerCase()}\0${card.type}`;
 function reportCard(card: SourceCard, prerelease: boolean, info?: ApiCard): ReportCard {
@@ -48,9 +55,11 @@ function reportCard(card: SourceCard, prerelease: boolean, info?: ApiCard): Repo
 
 /** CDB rows determine membership/names. Public catalogs only enrich the display;
  * two bounded requests avoid per-card rate limits and unknown-ID batch failures. */
-export async function cardUpdate(previous: CardSnapshot | null, next: CardSnapshot, request: typeof fetch = fetch): Promise<CardUpdate> {
-  const changes: CardUpdate = { comparisonAvailable: previous !== null, metadataUnavailable: false, added: [], removed: [], graduated: [] };
-  if (!previous) return changes;
+export async function cardUpdate(previous: CardSnapshot | null, next: CardSnapshot, request: typeof fetch = fetch,
+  today = new Date().toISOString().slice(0, 10)): Promise<CardUpdate> {
+  const changes: CardUpdate = { comparisonAvailable: previous !== null, metadataUnavailable: false, added: [], removed: [], graduated: [],
+    releasedSets: [], releasedSetMetadataUnavailable: false };
+  previous ??= { released: [], prerelease: [], remaps: {} };
   const oldCards = [...previous.released, ...previous.prerelease];
   const nextCards = [...next.released, ...next.prerelease];
   const oldPreviewCodes = new Set(previous.prerelease.map(card => card.code)), previewCodes = new Set(next.prerelease.map(card => card.code));
@@ -66,7 +75,7 @@ export async function cardUpdate(previous: CardSnapshot | null, next: CardSnapsh
   const graduatedCodes = new Set(graduations.map(card => card.old.code));
   const added = nextCards.filter(card => !oldCodes.has(card.code));
   const removed = oldCards.filter(card => !nextCodes.has(card.code) && !graduatedCodes.has(card.code));
-  if (!added.length && !removed.length && !graduations.length) {
+  if (!added.length && !removed.length && !graduations.length && !next.prerelease.length) {
     changes.retainedPreviews = retainedPreviews.map(card => reportCard(card, oldPreviewCodes.has(card.code)));
     return changes;
   }
@@ -81,9 +90,9 @@ export async function cardUpdate(previous: CardSnapshot | null, next: CardSnapsh
   if (setsResult.status === "fulfilled" && Array.isArray(setsResult.value)) {
     for (const set of setsResult.value) {
       if (set && typeof set.set_code === "string" && typeof set.set_name === "string") sets.set(productCode(set.set_code), set);
-      else changes.metadataUnavailable = true;
+      else { changes.metadataUnavailable = true; changes.releasedSetMetadataUnavailable = true; }
     }
-  } else changes.metadataUnavailable = true;
+  } else { changes.metadataUnavailable = true; changes.releasedSetMetadataUnavailable = true; }
   const data = cardsResult.status === "fulfilled" ? (cardsResult.value as { data?: unknown } | null)?.data : undefined;
   if (Array.isArray(data)) {
     for (const entry of data) {
@@ -96,6 +105,30 @@ export async function cardUpdate(previous: CardSnapshot | null, next: CardSnapsh
       if (misc && Number.isSafeInteger(misc.beta_id) && !cards.has(misc.beta_id)) cards.set(misc.beta_id, entry);
     }
   } else changes.metadataUnavailable = true;
+
+  // Merge-selected previews have no released counterpart. Check again so callers
+  // with unreconciled snapshots cannot report a graduated card as waiting.
+  const releasedCodes = new Set(next.released.map(card => card.code));
+  const pendingSets = new Map<string, ReleasedSetPreview>();
+  for (const card of next.prerelease) {
+    if (releasedCodes.has(card.code) || (!card.alias && !(card.type & 0x4000) && mainReleased.has(identity(card)))) continue;
+    const source = sourceCode(card.file);
+    const printings = cards.get(card.code)?.card_sets;
+    const codes = source && source !== "OTHERS" && source !== "CARDS" ? [source]
+      : Array.isArray(printings) ? printings.filter(set => typeof set?.set_code === "string").map(set => productCode(set.set_code)) : [];
+    if (!codes.length && !Array.isArray(data)) changes.releasedSetMetadataUnavailable = true;
+    for (const code of new Set(codes)) {
+      const product = sets.get(code), tcgDate = date(product?.tcg_date);
+      if (!product || !tcgDate || tcgDate > today) continue;
+      const group = pendingSets.get(code) ?? { code, name: product.set_name, tcgDate, cards: [], files: [] };
+      if (!group.cards.includes(card.code)) group.cards.push(card.code);
+      if (!group.files.includes(card.file)) group.files.push(card.file);
+      pendingSets.set(code, group);
+    }
+  }
+  changes.releasedSets = [...pendingSets.values()].sort((a, b) => a.code.localeCompare(b.code, "en"));
+  for (const group of changes.releasedSets) { group.cards.sort((a, b) => a - b); group.files.sort(); }
+  if (!changes.comparisonAvailable) return changes;
 
   const enrich = (card: SourceCard, prerelease: boolean) => reportCard(card, prerelease, cards.get(card.code));
   const groups = new Map<string, CardGroup>();
@@ -139,6 +172,15 @@ const attribute = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, 
 // GitHub renders summary contents as HTML text; Markdown backslashes are literal.
 const summaryText = (value: string) => attribute(value).replace(/[@#\\`*_{}\[\]|]/g,
   character => `&#${character.charCodeAt(0)};`).replace(/[\r\n]+/g, " ");
+export function renderReleasedSets(changes: CardUpdate): string {
+  const lines = ["## Released TCG sets still in pre-release CDBs", "",
+    "Product release dates use YGOPRODeck cardsets.php tcg_date through today (UTC). These cards still wait for Ignis to move them into released CDB rows; this note does not trigger a bump by itself.", ""];
+  if (changes.releasedSetMetadataUnavailable) lines.push("Released-set metadata unavailable (best effort); this list may be incomplete.", "");
+  const sets = changes.releasedSets ?? [];
+  if (!sets.length && !changes.releasedSetMetadataUnavailable) lines.push("No released TCG sets found with cards only in upstream pre-release CDBs.", "");
+  for (const set of sets) lines.push(`- ${safe(set.name)} (${safe(set.code)}) — TCG release: ${set.tcgDate}; ${set.cards.length} cards — ${set.files.map(file => `\`${safe(file)}\``).join(", ")}`);
+  return lines.join("\n") + "\n";
+}
 function cardLine(card: ReportCard, old?: { oldCode: number; oldName: string }): string {
   const dates = [card.tcgDate ? `TCG first release: ${card.tcgDate}` : "", card.ocgDate ? `OCG first release: ${card.ocgDate}` : ""].filter(Boolean);
   return `- <img src="${attribute(card.image)}" width=80 alt="Card ${card.code}"> ${safe(card.name)} — \`${old ? `${old.oldCode} → ${card.code}` : card.code}\`${card.prerelease ? " — **pre-release**" : ""}${old && old.oldName !== card.name ? ` (previously ${safe(old.oldName)})` : ""}${dates.length ? ` — ${dates.join("; ")}` : ""}`;

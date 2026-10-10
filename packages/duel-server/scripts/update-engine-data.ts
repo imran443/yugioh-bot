@@ -12,7 +12,7 @@ import { applyPrereleaseSmokeResult } from "./prerelease-script-exclusions.js";
 import { installCardScriptPatches } from "./card-script-patches.js";
 import { probeEngineData } from "./probe-engine-data.js";
 import { withValidation, prereleaseUpdateReport, prereleaseScriptReport, prodScriptErrorReport } from "./engine-data-report.js";
-import { cardUpdate, renderCardUpdate, withPreviewExclusions, withCardUpdate } from "./engine-data-card-report.js";
+import { cardUpdate, renderCardUpdate, renderReleasedSets, withPreviewExclusions, withCardUpdate } from "./engine-data-card-report.js";
 import { listIndex, reconcile, scanText } from "./scan-multiplayer-scripts.js";
 import { discoverReleasedDatabases, downloadReleasedCardData, restrictPrereleaseScripts } from "./released-card-data.js";
 import { compareLoadedData, loadedScriptTree, readCardRows, renderRelevantChanges } from "./engine-data-relevance.js";
@@ -198,7 +198,8 @@ export async function runUpdate(options: Options = {}) {
     }
     let cardChanges = await cardUpdate(oldDatabase, database, request);
     report.splice(report.indexOf("## Upstream commits"), 0,
-      renderRelevantChanges(relevance, cardChanges.added.flatMap(group => group.code ? [group.code] : [])), "", renderCardUpdate(cardChanges), "");
+      renderRelevantChanges(relevance, cardChanges.added.flatMap(group => group.code ? [group.code] : [])), "",
+      renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
     const playableCodes = new Set([...(oldDatabase?.scriptCodes ?? []), ...database.scriptCodes]);
     const rushCodes = new Set([...(oldDatabase?.rushCodes ?? []), ...database.rushCodes]);
     const diff = diffScripts(loadedScriptTree(oldTree, playableCodes, rushCodes), loadedScriptTree(newTree, playableCodes, rushCodes));
