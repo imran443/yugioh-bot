@@ -30,9 +30,10 @@ import type {
   DuelSettings,
   DuelScriptErrorMode,
   ReplayEngineView,
+  ReplaySource,
 } from "@yugidraft/shared/duels";
 import {
-  CardQueryError, duel1v1EngineForMode, isFirstChoice, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled, toOrdinaryReplayView,
+  CardQueryError, duel1v1EngineForMode, isFirstChoice, isReplaySeed, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled, toOrdinaryReplayView,
   COIN_TIMING, COIN_CHAIN_BEAT_MAX_MS, MIN_DUEL_FX_SPEED, coinTossDurationMs,
   CHAIN_MODE_JOURNAL_LIMIT, CHAIN_MODE_PROMPT_PREFIX, chainModeOf, isDuelChainMode, normalizeDuelSettings, opponentSeatsOf, parseCardQuery, seatCountFor, teamOfSeat, DUEL_OPENING_PICK_MS, DUEL_RPS_MOVES,
 } from "@yugidraft/shared/duels";
@@ -47,6 +48,7 @@ import { loadCardDatabase } from "./cards.js";
 import { cardFacets, queryCards, deckCardUnavailableReason } from "./card-search.js";
 import { activeMultiScriptsHash, loadMultiScriptsFor, pinnedEngineVersion } from "./multi-scripts.js";
 import { firstTurnDrawFor, savedFirstTurnDraw } from "./first-turn-draw.js";
+import { JournalRunnerError, runJournalPrefix } from "./journal-runner.js";
 import { botTableOf, buildPracticeBotDeck, choosePracticeBotAnswer, chooseSurrenderedAnswer, PracticeBotError } from "./practice-bot.js";
 import {
   freezeContinueClock,
@@ -144,13 +146,6 @@ function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> 
 
 class RequestError extends Error {
   constructor(message: string, readonly status: number, readonly code?: DuelErrorCode) { super(message); }
-}
-
-class ReplayMismatchError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ReplayMismatchError";
-  }
 }
 
 type BotOutcome = { kind: "stop" } | { kind: "replan" } | { kind: "acted"; visible: boolean };
@@ -473,13 +468,13 @@ export function createDuelHost(options: {
     return hasStartupScripts ? "pinned" : duel1v1EngineForMode(mode);
   }
 
-  /**
-   * The engine a saved 1v1 table runs on again (recover, replay): the one it started on, whatever `DUEL_1V1_ENGINE` says now.
-   * A table with no record started before this field existed: it ran on the legacy engine. Other formats have none.
-   */
-  function engineOfSavedTable(format: DuelFormat, setup: { engine?: DuelEngineChoice; startupScripts?: string[] } | undefined): DuelEngineChoice | undefined {
-    if (format !== "1v1") return undefined;
-    return setup?.engine ?? (setup?.startupScripts?.length ? "pinned" : "legacy");
+  /** Lift the recorded identity; keep clocks and private fork metadata outside the runner. */
+  function journalSourceOf(state: DuelPrivateState): ReplaySource {
+    if (!isReplaySeed(state.seed)) throw new JournalRunnerError("Saved seed must contain four nonzero decimal uint64 words", "REPLAY_MISMATCH");
+    if (!state.bundleVersion) throw new JournalRunnerError("Source engine resources are not available", "ENGINE_UNAVAILABLE_FOR_SOURCE");
+    const { engineIdentity, replayFork: _fork, ...setup } = state.setup ?? {};
+    return { session: state.session, decks: state.decks, seed: state.seed, bundleVersion: state.bundleVersion,
+      setup, engineIdentity: engineIdentity ?? null, commands: state.commands };
   }
 
   function drawRuleOf(state: ReturnType<typeof service.privateState>): boolean {
@@ -1136,74 +1131,31 @@ export function createDuelHost(options: {
       await afterGameEnded(slug, guildId);
       throw new RequestError("Duel interrupted: engine resource version changed", 409);
     }
-    let firstTurnDraw: boolean;
     try {
-      firstTurnDraw = drawRuleOf(state);
+      drawRuleOf(state);
     } catch (error) {
       service.interrupt(slug, guildId, (error as Error).message);
       await emitChange(slug, guildId);
       throw error;
     }
-    const game = spawn(state.session.id);
+    let game: DuelGameWorker | undefined;
     try {
-      await game.create(workerCreateOptions(
-        state.session.mode,
-        state.decks,
-        state.seed,
-        state.session.masterRule,
-        state.session.settings,
-        state.session.format,
-        state.setup?.startupScripts,
-        engineOfSavedTable(state.session.format, state.setup),
-        firstTurnDraw,
-        state.setup?.scriptErrorMode ?? "tolerant",
-      ));
+      const result = await runJournalPrefix({
+        source: journalSourceOf(state),
+        resources: { dataDirectory: options.dataDirectory, bundleVersion: manifest.bundleVersion },
+        prefixCount: state.commands.length,
+        createWorker: () => (game = spawn(state.session.id)),
+      });
+      game = result.worker;
     } catch (error) {
-      await safeClose(game);
-      if (await interruptEngineLoop(slug, guildId, error)) return game;
-      throw new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
-    }
-    try {
-      for (const input of state.commands) {
-        let view: DuelEngineView;
-        try {
-          view = await game.view(input.seat);
-        } catch (error) {
-          await safeClose(game);
-          throw new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
-        }
-        const elimination = eliminationReasonOf(input.command);
-        const chainMode = chainModeOf(input.command.promptId);
-        if (view.revision !== input.command.revision || (elimination === null && chainMode === null && view.prompt?.id !== input.command.promptId)) {
-          throw new ReplayMismatchError("Duel recovery did not reproduce the saved prompt");
-        }
-        try {
-          if (chainMode !== null) {
-            if (!game.setChainMode) throw new ReplayMismatchError("Duel recovery needs an engine that can set a chain response mode");
-            await game.setChainMode(input.seat, chainMode);
-          } else if (elimination === null) await game.answer(input.seat, input.command.promptId, input.command.answer);
-          else if (game.eliminate) await game.eliminate(input.seat, elimination, eliminationAtTurnEnd(input.command.promptId));
-          else throw new ReplayMismatchError("Duel recovery needs an engine that can eliminate a duelist");
-        } catch (error) {
-          if (error instanceof EngineLoopError) throw error;
-          if (error instanceof ReplayMismatchError) throw error;
-          if (!game.running) {
-            await safeClose(game);
-            throw new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
-          }
-          throw new ReplayMismatchError(error instanceof Error ? error.message : "Duel recovery could not replay a saved choice");
-        }
-      }
-    } catch (error) {
-      await safeClose(game);
-      if (await interruptEngineLoop(slug, guildId, error)) return game;
-      if (error instanceof ReplayMismatchError) {
+      if (await interruptEngineLoop(slug, guildId, error) && game) return game;
+      if (error instanceof JournalRunnerError && error.code !== "ENGINE_BUSY") {
         service.interrupt(slug, guildId, "The saved engine state could not be recovered.");
         await emitChange(slug, guildId);
         await afterGameEnded(slug, guildId);
         throw new RequestError(error.message, 409);
       }
-      throw error;
+      throw new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
     }
     games.set(slug, {
       game,
@@ -1447,7 +1399,7 @@ export function createDuelHost(options: {
         409,
       );
     }
-    const firstTurnDraw = drawRuleOf(state);
+    drawRuleOf(state);
     const viewer = room.mySeat;
     const mismatch = () =>
       new RequestError("Replay could not reproduce this duel. The final board is still available.", 409);
@@ -1455,52 +1407,28 @@ export function createDuelHost(options: {
       new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
     const frames: DuelReplayFrame[] = [];
     const seen = { log: 0, events: 0 };
-    const game = spawn();
+    let game: DuelGameWorker | undefined;
     let lastView: DuelEngineView;
     try {
-      try {
-        await game.create(workerCreateOptions(session.mode, state.decks, state.seed, session.masterRule, session.settings, session.format, state.setup?.startupScripts, engineOfSavedTable(session.format, state.setup), firstTurnDraw, state.setup?.scriptErrorMode ?? "tolerant"));
-      } catch (error) {
-        throw transport(error);
-      }
-      try {
-        lastView = await game.view(viewer);
-      } catch (error) {
-        throw transport(error);
-      }
-      frames.push({ step: 0, actorSeat: null, view: deltaView(lastView, seen) });
-      for (let i = 0; i < state.commands.length; i++) {
-        const input = state.commands[i]!;
-        try {
-          const before = await game.view(input.seat);
-          const elimination = eliminationReasonOf(input.command);
-          const chainMode = chainModeOf(input.command.promptId);
-          if (before.revision !== input.command.revision || (elimination === null && chainMode === null && before.prompt?.id !== input.command.promptId)) throw mismatch();
-          try {
-            if (chainMode !== null) {
-              if (!game.setChainMode) throw mismatch();
-              await game.setChainMode(input.seat, chainMode);
-            } else if (elimination === null) await game.answer(input.seat, input.command.promptId, input.command.answer);
-            else if (game.eliminate) await game.eliminate(input.seat, elimination, eliminationAtTurnEnd(input.command.promptId));
-            else throw mismatch();
-          } catch (error) {
-            if (error instanceof RequestError) throw error;
-            if (!game.running) throw transport(error);
-            throw mismatch();
-          }
-          lastView = await game.view(viewer);
-          // A mode change that passed nothing leaves the duel exactly as it was: no frame, so the replay never shows it.
-          if (chainMode !== null && lastView.revision === before.revision) continue;
-        } catch (error) {
-          if (error instanceof RequestError) throw error;
-          throw transport(error);
-        }
-        // Numbered by the frames emitted so far: a skipped mode change must leave no gap (a gap shows how many private
-        // changes there were, and where).
-        frames.push({ step: frames.length, actorSeat: input.seat, view: deltaView(lastView, seen) });
-      }
+      const result = await runJournalPrefix({
+        source: journalSourceOf(state),
+        resources: { dataDirectory: options.dataDirectory, bundleVersion: manifest.bundleVersion },
+        prefixCount: state.commands.length,
+        createWorker: () => (game = spawn()),
+        checkpointSeat: viewer,
+        onCheckpoint: ({ view, input, actorSeat, beforeRevision }) => {
+          // No-op mode changes stay in the prefix but must not expose private journal counts through frame gaps.
+          if (input && chainModeOf(input.command.promptId) !== null && view.revision === beforeRevision) return;
+          frames.push({ step: frames.length, actorSeat, view: deltaView(view, seen) });
+        },
+      });
+      lastView = viewer === null ? result.views.public : result.views.seats[viewer]!;
+    } catch (error) {
+      if (error instanceof JournalRunnerError && error.code !== "ENGINE_BUSY") throw mismatch();
+      throw transport(error);
     } finally {
-      await safeClose(game);
+      // The runner closes failures. A successful replay owns and closes its detached worker here.
+      if (game?.running) await safeClose(game);
     }
     if (!lastView.result) {
       const step = frames.length;
