@@ -45,7 +45,7 @@ describe("GET /api/tournaments includes completed", () => {
   it("returns pending, active, and completed but not cancelled", async () => {
     await setupDb();
     const { GET } = await import("../app/api/tournaments/route");
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/tournaments"));
     expect(res.status).toBe(200);
     const { items: json } = (await res.json()) as { items: Array<{ name: string; status: string }> };
     const byStatus = Object.fromEntries(json.map((t) => [t.status, t.name]));

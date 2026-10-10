@@ -33,6 +33,10 @@ export class CardImageValidationError extends Error {}
 export async function validateCardImage(buffer: Buffer): Promise<Buffer> {
   if (buffer.length > MAX_CARD_IMAGE_BYTES) throw new CardImageValidationError("Card image exceeds 5 MiB");
   try {
+    const jpeg = buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+    const png = buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const webp = buffer.subarray(0, 4).equals(Buffer.from("RIFF")) && buffer.subarray(8, 12).equals(Buffer.from("WEBP"));
+    if (!jpeg && !png && !webp) throw new Error("Unsupported card image format");
     const image = sharp(buffer);
     const { format } = await image.metadata();
     if (format !== "jpeg" && format !== "png" && format !== "webp") throw new Error("Unsupported card image format");

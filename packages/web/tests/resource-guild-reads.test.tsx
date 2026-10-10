@@ -44,7 +44,7 @@ describe("resource reads stay in the configured guild", () => {
 
   it("lists only configured-guild tournaments in the API", async () => {
     const { GET } = await import("../app/api/tournaments/route");
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/tournaments"));
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.items).toHaveLength(3);
@@ -71,7 +71,7 @@ describe("resource reads stay in the configured guild", () => {
 
   it("excludes foreign drafts from the draft listing API", async () => {
     const { GET } = await import("../app/api/drafts/route");
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/drafts"));
     const body = await response.json();
     expect(body.items).toHaveLength(3);
     expect(body.nextCursor).toBeNull();

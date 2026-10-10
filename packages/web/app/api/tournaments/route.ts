@@ -8,11 +8,11 @@ const VALID_FORMATS = ["round_robin", "single_elim"] as const;
 
 export const runtime = "nodejs";
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   try {
     const actor = await requireWebAccess();
     if (!actor.ok) return actor.response;
-    const cursor = request ? new URL(request.url).searchParams.get("cursor") : null;
+    const cursor = new URL(request.url).searchParams.get("cursor");
     return NextResponse.json(findTournamentListPage(getDb(), env.discordGuildId, actor.userId, cursor));
   } catch (error) {
     if (error instanceof InvalidListCursorError) return NextResponse.json({ error: error.message }, { status: 400 });

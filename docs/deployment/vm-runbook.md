@@ -49,11 +49,12 @@ Host yugioh-bot
 
 Then `ssh yugioh-bot` works.
 
-The deploy workflow requires these GitHub Actions secrets:
+Deploy jobs run in the `production` / `staging` GitHub Environments and require these GitHub Actions secrets:
 
 - `VM_HOST`
 - `VM_USER`
 - `VM_SSH_PRIVATE_KEY`
+- `VM_SSH_KNOWN_HOSTS` (pinned VM host keys in OpenSSH known_hosts format)
 - `VM_PORT` (optional, defaults to 22)
 
 ## Deployment Pipeline

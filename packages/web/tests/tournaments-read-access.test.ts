@@ -31,7 +31,7 @@ describe("tournament read authorization", () => {
   afterEach(() => { state.db!.close(); vi.restoreAllMocks(); });
   it("requires auth on the tournament list", async () => {
     const { GET } = await import("../app/api/tournaments/route");
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/tournaments"));
     expect(response.status).toBe(401);
   });
   for (const kind of Object.keys(routes) as (keyof typeof routes)[]) {
@@ -53,7 +53,7 @@ describe("tournament read authorization", () => {
     vi.spyOn(state.db!, "prepare").mockImplementation(() => { throw new Error("DB unavailable"); });
     for (const kind of Object.keys(routes) as (keyof typeof routes)[]) expect((await get(kind,"cup")).status).toBe(401);
     const { GET } = await import("../app/api/tournaments/route");
-    expect((await GET()).status).toBe(401);
+    expect((await GET(new Request("http://localhost/api/tournaments"))).status).toBe(401);
   });
   it("returns 503 when signing is unavailable after the read access check", async () => {
     state.signedIn = true; state.secret = "";

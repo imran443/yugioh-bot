@@ -6,6 +6,7 @@ const worktreeRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  poweredByHeader: false,
   // The "N" badge covers the corner of the board in screenshots and in the 3D mode preview (dev only; no effect in a build).
   devIndicators: false,
   ...(process.env.E2E_NEXT_DIST_DIR ? { distDir: process.env.E2E_NEXT_DIST_DIR } : {}),
@@ -15,25 +16,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: worktreeRoot,
   transpilePackages: ["@yugidraft/shared"],
   serverExternalPackages: ["better-sqlite3", "sharp"],
-  images: {
-    // Card art is immutable — cache optimized variants for a year instead of
-    // the 60s default so previews stay warm. WebP only: AVIF's slower cold
-    // encode is exactly the cold-start cost we are trying to reduce.
-    minimumCacheTTL: 31536000,
-    formats: ["image/webp"],
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "images.ygoprodeck.com",
-        pathname: "/images/cards/**",
-      },
-      {
-        protocol: "https",
-        hostname: "images.ygoprodeck.com",
-        pathname: "/images/cards_small/**",
-      },
-    ],
-  },
+  images: { unoptimized: true },
 };
 
 export default nextConfig;

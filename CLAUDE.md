@@ -153,7 +153,7 @@ Drafts are started from the web dashboard; the shelved bot retains its command i
 
 ### Card catalog
 
-Card data is fetched from ygoprodeck.com and cached in `card_catalog`. The worker syncs set metadata at `SETS_SYNC_CRON` (default `0 6 * * *`, `SETS_SYNC_TIMEZONE=UTC`). Bot images, the web card-image route and the worker share the same absolute `CARD_IMAGE_CACHE_DIR` (Compose: `/app/data/card-images`). Worker startup and cron cleanup evict oldest files over `CARD_IMAGE_CACHE_MAX_BYTES` (default `16106127360`, 15 GiB) on `IMAGE_CLEANUP_CRON` (default `0 4 * * *`, `IMAGE_CLEANUP_TIMEZONE=UTC`). Next's optimized images have a separate cache with a 1-year minimum TTL (`packages/web/next.config.ts`).
+Card data is fetched from ygoprodeck.com and cached in `card_catalog`. The worker syncs set metadata at `SETS_SYNC_CRON` (default `0 6 * * *`, `SETS_SYNC_TIMEZONE=UTC`). Bot images, the web card-image route and the worker share the same absolute `CARD_IMAGE_CACHE_DIR` (Compose: `/app/data/card-images`). Worker startup and cron cleanup evict oldest files over `CARD_IMAGE_CACHE_MAX_BYTES` (default `16106127360`, 15 GiB) on `IMAGE_CLEANUP_CRON` (default `0 4 * * *`, `IMAGE_CLEANUP_TIMEZONE=UTC`). Next image optimization is off (`packages/web/next.config.ts`).
 
 ## Design context (`.impeccable.md`)
 

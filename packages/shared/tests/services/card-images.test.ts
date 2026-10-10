@@ -17,6 +17,38 @@ describe("card image validation", () => {
     expect(await validateCardImage(buffer).then(() => false, () => true)).toBe(true);
   });
 
+  it.each([
+    ["empty", Buffer.alloc(0)],
+    ["unknown", Buffer.from("not an image")],
+    ["GIF", Buffer.from("GIF89a")],
+    ["TIFF", Buffer.from([0x49, 0x49, 0x2a, 0x00])],
+    ["SVG", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="24"/>')],
+    ["short JPEG", Buffer.from([0xff, 0xd8])],
+    ["incorrect JPEG", Buffer.from([0xff, 0xd8, 0x00])],
+    ["short PNG", Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+    ["incorrect PNG", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0a, 0x1a, 0x0a])],
+    ["short WebP", Buffer.from("RIFF\0\0\0\0WEB")],
+    ["other RIFF", Buffer.from("RIFF\0\0\0\0WAVE")],
+    ["incorrect WebP", Buffer.from("NOPE\0\0\0\0WEBP")],
+  ] as const)("rejects %s signatures before decoding", async (_name, buffer) => {
+    vi.resetModules();
+    const decode = vi.fn(sharp);
+    vi.doMock("sharp", () => ({ default: decode }));
+    try {
+      const { validateCardImage: validate, CardImageValidationError } = await import("../../src/services/card-images.js");
+      await expect(validate(buffer)).rejects.toBeInstanceOf(CardImageValidationError);
+      expect(decode).not.toHaveBeenCalled();
+    } finally { vi.doUnmock("sharp"); vi.resetModules(); }
+  });
+
+  it.each([
+    ["JPEG", Buffer.from([0xff, 0xd8, 0xff])],
+    ["PNG", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+    ["WebP", Buffer.from("RIFF\0\0\0\0WEBP")],
+  ] as const)("rejects incomplete %s images with valid signatures", async (_name, buffer) => {
+    await expect(validateCardImage(buffer)).rejects.toThrow("Invalid card image");
+  });
+
   it("rejects a valid image padded beyond 5 MiB", async () => {
     const jpeg = await sharp({ create: { width: 16, height: 24, channels: 3, background: "white" } }).jpeg().toBuffer();
     expect(await validateCardImage(Buffer.concat([jpeg, Buffer.alloc(5 * 1024 * 1024)])).then(() => false, () => true)).toBe(true);

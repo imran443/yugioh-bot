@@ -31,6 +31,7 @@ jobs:
     name: Deploy to Production VM
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 90
     env:
       VM_HOST: ${{ secrets.VM_HOST }}
@@ -207,10 +208,18 @@ jobs:
           printf '%s\n' "$VM_SSH_PRIVATE_KEY" > ~/.ssh/vm_deploy_key
           chmod 600 ~/.ssh/vm_deploy_key
 
-      - name: Trust VM host key
+      - name: Configure pinned VM host keys
         if: ${{ env.VM_DEPLOY_ENABLED == 'true' }}
+        env:
+          VM_SSH_KNOWN_HOSTS: ${{ secrets.VM_SSH_KNOWN_HOSTS }}
         run: |
-          ssh-keyscan -p "$VM_PORT" -H "$VM_HOST" >> ~/.ssh/known_hosts
+          set -eu
+          if [ -z "$VM_SSH_KNOWN_HOSTS" ]; then
+            echo "Set the VM_SSH_KNOWN_HOSTS secret with the pinned VM host keys." >&2
+            exit 1
+          fi
+          printf '%s\n' "$VM_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy over SSH
         if: ${{ env.VM_DEPLOY_ENABLED == 'true' }}
@@ -227,28 +236,28 @@ jobs:
           cleanup_transfer() {
             rm -f "$bundle_tar"
             if [ -n "$remote_bundle" ]; then
-              ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+              ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
                 "rm -f -- '$remote_bundle'" || true
             fi
             if [ -n "$remote_guard" ]; then
-              ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+              ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
                 "rm -f -- '$remote_guard'" || true
             fi
           }
           trap cleanup_transfer EXIT
-          remote_bundle=$(ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+          remote_bundle=$(ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
             'mktemp /tmp/yugidraft-duel-engine.XXXXXX.tar.gz')
           printf '%s' "$remote_bundle" | grep -Eq '^/tmp/yugidraft-duel-engine\.[A-Za-z0-9]{6}\.tar\.gz$' || exit 1
-          remote_guard=$(ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+          remote_guard=$(ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
             'mktemp /tmp/yugidraft-activity-guard.XXXXXX.py')
           printf '%s' "$remote_guard" | grep -Eq '^/tmp/yugidraft-activity-guard\.[A-Za-z0-9]{6}\.py$' || exit 1
-          scp -i ~/.ssh/vm_deploy_key -P "$VM_PORT" \
+          scp -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -P "$VM_PORT" \
             "$RUNNER_TEMP/check-prod-activity.py" "$VM_USER@$VM_HOST:$remote_guard"
           tar -C "$RUNNER_TEMP/deploy-bundle" -czf "$bundle_tar" .
-          scp -i ~/.ssh/vm_deploy_key -P "$VM_PORT" \
+          scp -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -P "$VM_PORT" \
             "$bundle_tar" \
             "$VM_USER@$VM_HOST:$remote_bundle"
-          ssh -i ~/.ssh/vm_deploy_key \
+          ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key \
             -p "$VM_PORT" \
             "$VM_USER@$VM_HOST" \
             "env DEPLOY_COMMIT='$DEPLOY_COMMIT' DEPLOY_BUNDLE='$remote_bundle' DEPLOY_GUARD='$remote_guard' DEPLOY_FORCE='$DEPLOY_FORCE' DEPLOY_ROLLBACK='$DEPLOY_ROLLBACK' NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY' sh -s" <<'REMOTE'

@@ -6,6 +6,7 @@ services:
       context: .
       target: ws
     restart: unless-stopped
+    mem_limit: ${WS_MEM_LIMIT:-384m}
     user: *user
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite

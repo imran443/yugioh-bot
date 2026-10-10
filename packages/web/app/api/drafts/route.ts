@@ -18,11 +18,11 @@ import { themeDraftsEnabled, themeDraftSetupError } from "@/lib/theme-drafts";
 
 export const runtime = "nodejs";
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   try {
     const actor = await requireWebAccess();
     if (!actor.ok) return actor.response;
-    const cursor = request ? new URL(request.url).searchParams.get("cursor") : null;
+    const cursor = new URL(request.url).searchParams.get("cursor");
     const result = findDraftListPage(getDb(), env.discordGuildId, actor.userId, cursor);
     const items = result.items.map(({ configJson, ...item }) => ({
       ...item, config: parseDraftConfig(configJson, item.status), createdAt: toUtcIso(item.createdAt), endedAt: toUtcIso(item.endedAt),

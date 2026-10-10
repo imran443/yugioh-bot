@@ -46,6 +46,7 @@ jobs:
     name: Staging stack on the VM
     if: github.ref == 'refs/heads/main' && (github.event_name != 'push' || vars.STAGING_AUTO_DEPLOY == '1')
     runs-on: ubuntu-latest
+    environment: staging
     timeout-minutes: 90
     env:
       VM_HOST: ${{ secrets.VM_HOST }}
@@ -238,8 +239,17 @@ jobs:
           printf '%s\n' "$VM_SSH_PRIVATE_KEY" > ~/.ssh/vm_deploy_key
           chmod 600 ~/.ssh/vm_deploy_key
 
-      - name: Trust VM host key
-        run: ssh-keyscan -p "$VM_PORT" -H "$VM_HOST" >> ~/.ssh/known_hosts
+      - name: Configure pinned VM host keys
+        env:
+          VM_SSH_KNOWN_HOSTS: ${{ secrets.VM_SSH_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          if [ -z "$VM_SSH_KNOWN_HOSTS" ]; then
+            echo "Set the VM_SSH_KNOWN_HOSTS secret with the pinned VM host keys." >&2
+            exit 1
+          fi
+          printf '%s\n' "$VM_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       # remote-deploy.sh runs in /opt/yugioh-bot-staging. All values were checked in the first step.
       - name: Run on the VM
@@ -251,28 +261,28 @@ jobs:
           cleanup_transfer() {
             if [ -n "$bundle_tar" ]; then rm -f "$bundle_tar"; fi
             if [ -n "$remote_bundle" ]; then
-              ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+              ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
                 "rm -f -- '$remote_bundle'" || true
             fi
             if [ -n "$remote_guard" ]; then
-              ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+              ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
                 "rm -f -- '$remote_guard'" || true
             fi
           }
           trap cleanup_transfer EXIT
           if [ "$INPUT_ACTION" = deploy ]; then
             bundle_tar=$(mktemp "$RUNNER_TEMP/yugidraft-staging-bundle.XXXXXX.tar.gz")
-            remote_bundle=$(ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+            remote_bundle=$(ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
               'mktemp /tmp/yugidraft-staging-bundle.XXXXXX.tar.gz')
             printf '%s' "$remote_bundle" | grep -Eq '^/tmp/yugidraft-staging-bundle\.[A-Za-z0-9]{6}\.tar\.gz$' || exit 1
             tar -C "$RUNNER_TEMP/staging-bundle" -czf "$bundle_tar" .
-            scp -i ~/.ssh/vm_deploy_key -P "$VM_PORT" "$bundle_tar" "$VM_USER@$VM_HOST:$remote_bundle"
-            remote_guard=$(ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+            scp -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -P "$VM_PORT" "$bundle_tar" "$VM_USER@$VM_HOST:$remote_bundle"
+            remote_guard=$(ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
               'mktemp /tmp/yugidraft-staging-guard.XXXXXX.py')
             printf '%s' "$remote_guard" | grep -Eq '^/tmp/yugidraft-staging-guard\.[A-Za-z0-9]{6}\.py$' || exit 1
-            scp -i ~/.ssh/vm_deploy_key -P "$VM_PORT" "$RUNNER_TEMP/staging-activity-guard.py" "$VM_USER@$VM_HOST:$remote_guard"
+            scp -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -P "$VM_PORT" "$RUNNER_TEMP/staging-activity-guard.py" "$VM_USER@$VM_HOST:$remote_guard"
           fi
-          ssh -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+          ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -i ~/.ssh/vm_deploy_key -p "$VM_PORT" "$VM_USER@$VM_HOST" \
             "env STAGING_ACTION='$INPUT_ACTION' STAGING_REF='$INPUT_REF' STAGING_COMMIT='$DEPLOY_COMMIT' STAGING_REFRESH_DB='$INPUT_REFRESH_DB' STAGING_IGNORE_PROD_ACTIVITY='$INPUT_IGNORE_PROD_ACTIVITY' STAGING_HOST='$STAGING_HOST' STAGING_DOMAIN='$STAGING_DOMAIN' STAGING_HTTP_PORT='$STAGING_HTTP_PORT' STAGING_BUNDLE='$remote_bundle' STAGING_GUARD='$remote_guard' STAGING_CLERK_ENV='$STAGING_CLERK_ENV' sh -s" \
             < "$RUNNER_TEMP/staging-remote-deploy.sh" | tee "$RUNNER_TEMP/staging-deploy.log"
 

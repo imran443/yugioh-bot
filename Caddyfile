@@ -1,6 +1,13 @@
 {$SITE_DOMAIN} {
     # The private app must stay out of search, including on the current host.
     header >X-Robots-Tag "noindex, nofollow"
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-Frame-Options "DENY"
+        Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' https://clerk.app.duelingdomain.com https://challenges.cloudflare.com https://*.protect.clerk.com; connect-src 'self' wss://{$SITE_DOMAIN} https://clerk.app.duelingdomain.com https://*.protect.clerk.com:* https://clerk-telemetry.com https://*.clerk-telemetry.com https://img.clerk.com; img-src 'self' data: blob: https://img.clerk.com https://images.ygoprodeck.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src https://challenges.cloudflare.com https://*.protect.clerk.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    }
     handle /robots.txt {
         header Content-Type "text/plain; charset=utf-8"
         respond "User-agent: *
