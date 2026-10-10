@@ -185,3 +185,27 @@ export interface TableStageProps {
 }
 export type TagStageProps = TableStageProps;
 export type FxLockRule = (event: DuelEvent) => { reason: CameraLockReason; ms: number } | null;
+
+/**
+ * Replay mode of the shared shells (`TableShell`, `TagShell`). Pass it as `replay` and the shell becomes a read-only
+ * viewer of one engine frame. Rules the shell enforces itself, whatever controller it is given:
+ * - No prompt, no legal or selected keys, no seat pick, no aim and an answer callback that does nothing, so it can never
+ *   send an action (the controller is cleaned by `readOnlyReplayController`).
+ * - No clock, series banner, result screen, next-game action, Surrender or connection prompt. `headerTools`,
+ *   `settingsTools`, `connection`, `chainMode`, `pickContinuation` and `actions` are ignored; the header says "Replay".
+ * - The camera, card inspection, piles and the log stay.
+ * - The shell reads "completed" from the frame's own result, not from the saved duel status, so a chain, a prompt line
+ *   or a phase of a middle frame is not drawn as a finished duel.
+ */
+export interface ReplayShellMode {
+  /** The transport bar (first, previous, play, next, last, slider, speed). It takes the place of the live prompt dock. */
+  transport: ReactNode;
+  /**
+   * Changes on every seek, rewind, camera seat change or card visibility change, and stays the same while playing
+   * forward. A new value restarts the table clean: loss order, running effects, pending camera locks, open menus and
+   * the effect schedule are dropped. The camera the viewer chose and the open panel stay.
+   */
+  resetKey: string | number;
+  /** Extra header controls for the replay (for example Jump in). Shown in place of `headerTools`. */
+  tools?: ReactNode;
+}

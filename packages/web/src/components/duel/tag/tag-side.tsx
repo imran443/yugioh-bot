@@ -83,6 +83,8 @@ export type TagSideProps = Pick<TableShellProps, "connection" | "settingsTools">
   mastersClassName?: string;
   /** The floating HUD (wide screens only). Leave out for the columns and the phone panes. */
   hud?: TagSideHud;
+  /** Replay mode: the Settings tab leaves out the replay link of the duel it is showing. */
+  replay?: boolean;
 };
 
 /**
@@ -103,6 +105,7 @@ export function TagSide({
   leftClassName,
   mastersClassName,
   hud,
+  replay = false,
 }: TagSideProps) {
   const { engine, room, viewerSeat, nameOf, prompt } = controller;
   const session = room.session;
@@ -157,7 +160,7 @@ export function TagSide({
       </details>
     </div>
   );
-  const settingsPanel = <TableSettings controller={controller} preferences={preferences} connection={connection} tools={settingsTools} />;
+  const settingsPanel = <TableSettings controller={controller} preferences={preferences} connection={connection} tools={settingsTools} replay={replay} />;
 
   // Deck Masters: your own, with your partner's above it (read-only). A spectator sees the anchor seat's master.
   const partner = viewerSeat == null ? undefined : seatsOfTeam("tag", tagTeamOf(viewerSeat)).find((seat) => seat !== viewerSeat);

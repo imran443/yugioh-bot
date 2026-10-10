@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
-import { Eye, Radio, Volume2, VolumeX } from "lucide-react";
+import { Eye, Film, Radio, Volume2, VolumeX } from "lucide-react";
 import { isCustomDomain, teamOfSeat, type DuelEngineView, type DuelSession } from "@yugidraft/shared/duels";
 import { connectionLabel as labelForConnection } from "../connection-label";
 import { isBattlePhase, phaseTitle } from "../constants";
@@ -40,6 +40,8 @@ export interface TagHeaderProps {
    */
   /** `clock`: the clock block pill (hudClockBank), right of the identity pill. */
   hud?: { baton: ReactNode; clock?: ReactNode };
+  /** Replay mode: the connection label reads "Replay", `tools` replace `headerTools`, and "Your turn" reads as a name (the camera seat is not a player). */
+  replay?: { tools?: ReactNode };
 }
 
 /** The mode label of the pill: "Domain", "Custom Domain" or "MR5". */
@@ -52,10 +54,11 @@ export function tagModeLabel(session: Pick<DuelSession, "mode" | "masterRule" | 
  * The header of the live Rooftop: title, mode, "Turn N" (its own node, so e2e can match it), the phase, who plays,
  * header tools, the connection label and the sound switch. Styles come from the shell's tokens (--duel-*).
  */
-export function TagHeader({ session, engine, viewerSeat, nameOf, teamNames, preferences, connection, headerTools, onExit, onShowResult, hud }: TagHeaderProps) {
+export function TagHeader({ session, engine, viewerSeat, nameOf, teamNames, preferences, connection, headerTools, onExit, onShowResult, hud, replay }: TagHeaderProps) {
   const spectator = viewerSeat == null;
   const turnSeat = engine.turnSeat;
   const myTurn = !spectator && turnSeat === viewerSeat;
+  const youTurn = myTurn && !replay;
   const terminal = session.status !== "active";
   const connectionLabel = labelForConnection(terminal, connection);
   const live = connectionLabel === "Live";
@@ -87,7 +90,7 @@ export function TagHeader({ session, engine, viewerSeat, nameOf, teamNames, pref
         style={{ "--turn": hexToRgbTriplet(tone.main) } as CSSProperties}
       >
         <span className={styles.turnLabel}>
-          {spectator ? `${nameOf(turnSeat)} to play` : myTurn ? "Your turn" : `${nameOf(turnSeat)}'s turn`}
+          {spectator ? `${nameOf(turnSeat)} to play` : youTurn ? "Your turn" : `${nameOf(turnSeat)}'s turn`}
         </span>
         <small>&middot; {teamNames[turnTeam]}</small>
       </span>
@@ -95,13 +98,20 @@ export function TagHeader({ session, engine, viewerSeat, nameOf, teamNames, pref
   );
   const statusNode = (
     <div className={styles.status}>
-      {headerTools}
-      <span className={roomStyles.connectionStatus} role="status" aria-live="polite" data-live={live}>
-        {live ? <i className={roomStyles.liveDot} aria-hidden /> : <Radio size={15} strokeWidth={1.75} aria-hidden />}
-        <span className={roomStyles.connectionText}>
-          {live ? (spectator ? "Live duel · watching" : "Live duel") : connectionLabel}
+      {replay ? replay.tools : headerTools}
+      {replay ? (
+        <span className={roomStyles.connectionStatus} data-replay-label>
+          <Film size={15} strokeWidth={1.75} aria-hidden />
+          <span className={roomStyles.connectionText}>Replay</span>
         </span>
-      </span>
+      ) : (
+        <span className={roomStyles.connectionStatus} role="status" aria-live="polite" data-live={live}>
+          {live ? <i className={roomStyles.liveDot} aria-hidden /> : <Radio size={15} strokeWidth={1.75} aria-hidden />}
+          <span className={roomStyles.connectionText}>
+            {live ? (spectator ? "Live duel · watching" : "Live duel") : connectionLabel}
+          </span>
+        </span>
+      )}
       {onShowResult ? <button type="button" className={styles.tool} onClick={onShowResult}><span>Show result</span></button> : null}
       {onExit ? <button type="button" className={styles.tool} onClick={onExit}><span>Exit duel</span></button> : null}
       <button
