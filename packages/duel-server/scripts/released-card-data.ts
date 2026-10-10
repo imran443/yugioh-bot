@@ -62,6 +62,7 @@ export async function downloadReleasedCardData(commit: string, directory: string
   await mkdir(inputs, { recursive: true });
   const inputHashes: string[] = [];
   const rows: Row[] = [];
+  const rushCodes = new Set<number>();
   for (const file of files) {
     const response = await download(`https://raw.githubusercontent.com/ProjectIgnis/BabelCDB/${commit}/${encodeURIComponent(file)}`, request);
     const bytes = Buffer.from(await response.arrayBuffer());
@@ -70,6 +71,8 @@ export async function downloadReleasedCardData(commit: string, directory: string
     await writeFile(path, bytes);
     const db = new Database(path, { readonly: true });
     try {
+      // Rush base rows can lack texts, but are still removed from the merged DB.
+      for (const row of db.prepare("SELECT id FROM datas WHERE (ot & 1536)!=0").all() as { id: number }[]) rushCodes.add(row.id);
       const columns = new Set((db.prepare("PRAGMA table_info(datas)").all() as { name: string }[]).map(row => row.name));
       const textColumns = new Set((db.prepare("PRAGMA table_info(texts)").all() as { name: string }[]).map(row => row.name));
       const stats = ["atk", "def", "level", "attribute"].filter(column => columns.has(column)).map(column => `, d.${column}`).join("")
@@ -209,7 +212,7 @@ export async function downloadReleasedCardData(commit: string, directory: string
   const remapBytes = JSON.stringify({ version: 1, remaps, prerelease, drops, overrides, overrideSource, unmatched }, null, 2) + "\n";
   await writeFile(join(directory, "card-remaps.json"), remapBytes);
   await rm(inputs, { recursive: true });
-  return { path, files, inputHashes, releaseCodes, prereleaseCodes: new Set([...prereleaseCodes].sort((a,b)=>a-b)), scriptCodes,
+  return { path, files, inputHashes, releaseCodes, prereleaseCodes: new Set([...prereleaseCodes].sort((a,b)=>a-b)), scriptCodes, rushCodes,
     remaps, remapBytes, prerelease, unmatched, overrides, overrideSource, released: [...released.values()], drops, bytes: await readFile(path) };
 }
 

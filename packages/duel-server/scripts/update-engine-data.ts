@@ -1,4 +1,4 @@
-/** Weekly card-data updates only. Core, Lua, WASM and toolchain pins are never advanced here. */
+/** Scheduled card-data updates only. Core, Lua, WASM and toolchain pins are never advanced here. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -15,6 +15,7 @@ import { withValidation, prereleaseUpdateReport, prereleaseScriptReport, prodScr
 import { cardUpdate, renderCardUpdate, withPreviewExclusions, withCardUpdate } from "./engine-data-card-report.js";
 import { listIndex, reconcile, scanText } from "./scan-multiplayer-scripts.js";
 import { discoverReleasedDatabases, downloadReleasedCardData, restrictPrereleaseScripts } from "./released-card-data.js";
+import { compareLoadedData, loadedScriptTree, readCardRows, renderRelevantChanges } from "./engine-data-relevance.js";
 
 export type Pins = { scripts: string; database: string; strings: string };
 const repositories: Record<keyof Pins, string> = { scripts: "CardScripts", database: "BabelCDB", strings: "Distribution" };
@@ -170,7 +171,37 @@ export async function runUpdate(options: Options = {}) {
       return new Map(tree.tree.filter((entry) => entry.type === "blob").map((entry) => [entry.path, entry.sha]));
     };
     const [oldTree, newTree] = await Promise.all([treeAt(old.scripts), treeAt(next.scripts)]);
-    const diff = diffScripts(oldTree, newTree);
+    const preparation = await readFile(join(root, preparePath), "utf8");
+    const historyStart = /prereleaseHistoryStart:\s*"([a-f0-9]{12,40})"/.exec(preparation)?.[1];
+    let oldDataError: string | undefined;
+    const [database, oldDatabase] = await Promise.all([
+      downloadReleasedCardData(next.database, temporary, download, { historyStart }),
+      downloadReleasedCardData(old.database, join(temporary,"old-data"), download, { historyStart }).catch((error: unknown) => {
+        if (!(error instanceof Error) || !/^Ambiguous\b/.test(error.message)) throw error;
+        oldDataError = error.message;
+        return null;
+      }),
+    ]);
+    const stringsAt = async (sha: string) => Buffer.from(await (await download(`https://raw.githubusercontent.com/ProjectIgnis/Distribution/${sha}/config/strings.conf`)).arrayBuffer());
+    const nextStrings = await stringsAt(next.strings);
+    const oldStrings = old.strings === next.strings ? nextStrings : await stringsAt(old.strings);
+    const candidateScripts = loadedScriptTree(newTree, database.scriptCodes, database.rushCodes);
+    const previousScripts = loadedScriptTree(oldTree, oldDatabase?.scriptCodes ?? database.scriptCodes, oldDatabase?.rushCodes ?? database.rushCodes);
+    const relevance = compareLoadedData({ cards: oldDatabase ? readCardRows(oldDatabase.path) : null, scripts: previousScripts,
+      strings: sha256(oldStrings), remaps: oldDatabase?.remaps ?? null },
+      { cards: readCardRows(database.path), scripts: candidateScripts, strings: sha256(nextStrings), remaps: database.remaps });
+    if (!relevance.relevant) {
+      report.splice(report.indexOf("## Upstream commits"), 0, renderRelevantChanges(relevance, []), "");
+      await saveReport();
+      console.log("no update: upstream changes do not affect loaded engine data");
+      return { changed: false, next, reportPath, files: [] as string[], changedPaths: [] as string[], relevance };
+    }
+    let cardChanges = await cardUpdate(oldDatabase, database, request);
+    report.splice(report.indexOf("## Upstream commits"), 0,
+      renderRelevantChanges(relevance, cardChanges.added.flatMap(group => group.code ? [group.code] : [])), "", renderCardUpdate(cardChanges), "");
+    const playableCodes = new Set([...(oldDatabase?.scriptCodes ?? []), ...database.scriptCodes]);
+    const rushCodes = new Set([...(oldDatabase?.rushCodes ?? []), ...database.rushCodes]);
+    const diff = diffScripts(loadedScriptTree(oldTree, playableCodes, rushCodes), loadedScriptTree(newTree, playableCodes, rushCodes));
     const archive = join(temporary, "scripts.tar.gz");
     await writeFile(archive, Buffer.from(await (await download(`https://codeload.github.com/ProjectIgnis/CardScripts/tar.gz/${next.scripts}`)).arrayBuffer()));
     const extracted = join(temporary, "card-scripts");
@@ -178,19 +209,6 @@ export async function runUpdate(options: Options = {}) {
     execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", extracted]);
     const stock = new Map<string, string>();
     for (const path of newTree.keys()) if (path.endsWith(".lua")) stock.set(path, await readFile(join(extracted, path), "utf8"));
-    const preparation = await readFile(join(root, preparePath), "utf8");
-    const historyStart = /prereleaseHistoryStart:\s*"([a-f0-9]{12,40})"/.exec(preparation)?.[1];
-    let oldDataError: string | undefined;
-    const [database, oldDatabase] = await Promise.all([
-      downloadReleasedCardData(next.database, temporary, download, { historyStart }),
-      downloadReleasedCardData(old.database, join(temporary,"old-data"), download, { overrideBytes: "{}\n" }).catch((error: unknown) => {
-        if (!(error instanceof Error) || !/^Ambiguous\b/.test(error.message)) throw error;
-        oldDataError = error.message;
-        return null;
-      }),
-    ]);
-    let cardChanges = await cardUpdate(oldDatabase, database, request);
-    report.splice(report.indexOf("## Upstream commits"), 0, renderCardUpdate(cardChanges), "");
     const oldDatabases = oldDatabase?.files ?? await discoverReleasedDatabases(old.database, download);
     const releases = database.files.filter(path => path.startsWith("release-"));
     const loadedCodes = new Set([...database.releaseCodes, ...database.prereleaseCodes]);
@@ -235,8 +253,7 @@ export async function runUpdate(options: Options = {}) {
     const risks = findNewRisks(stock, [...diff.added, ...diff.changed, ...releasePaths], undefined, loadedCodes);
     report.push("", `## New multiplayer risks (${risks.length})`, "", "scan-multiplayer-scripts: new/changed or released cards flagged F or ambiguous O, absent from MULTIPLAYER_FORBIDDEN / MULTIPLAYER_CARD_RULES.", "",
       ...(risks.length ? risks.map((card) => `- \`c${card.code}.lua\` ${markdown(names.get(card.code) ?? card.name)} — **${card.cls}**, ${card.rules.map((rule) => `\`${rule}\``).join(", ")}`) : ["None."]));
-    const shared = [...new Set([...oldTree.keys(), ...newTree.keys()])]
-      .filter((path) => path.endsWith(".lua") && !official(path) && oldTree.get(path) !== newTree.get(path)).sort();
+    const shared = relevance.changedScripts.filter(path => !official(path) && oldTree.get(path) !== newTree.get(path));
     report.push("", `## Changed shared scripts (${shared.length})`, "",
       ...(shared.length ? shared.map((path) => `- \`${path}\` (${!newTree.has(path) ? "removed" : !oldTree.has(path) ? "added" : "changed"})`) : ["None."]));
     if (shared.some((path) => /(?:^|\/)(?:.*utility.*|proc_.*|constant|cards_specific_functions)\.lua$/.test(path))) {
@@ -249,7 +266,7 @@ export async function runUpdate(options: Options = {}) {
     // Probe those scripts too, and omit pre-release card scripts removed from the prepared bundle.
     const allowed = (path: string) => !/^pre-release\/c\d+\.lua$/.test(path) ||
       (database.scriptCodes.has(codeOf(path)) && !stock.has(`official/c${codeOf(path)}.lua`));
-    const changedPaths = [...new Set([...stock.keys()].filter(path => newTree.get(path) !== oldTree.get(path)).concat(releasePaths))].filter(allowed);
+    const changedPaths = [...new Set([...candidateScripts.keys()].filter(path => newTree.get(path) !== oldTree.get(path)).concat(releasePaths))].filter(allowed);
     report[0] = `Needs review: ${conflicts.length + patchConflicts.length} conflicts, ${risks.length} risks, ${shared.length} shared-script changes, probe errors not run, overlay check exit not run`;
     report.push("", "## Core compatibility", "", "Pending installed npm ocgcore-wasm@0.1.2 probe against candidate data.");
     if (patchConflicts.length) {
@@ -263,7 +280,7 @@ export async function runUpdate(options: Options = {}) {
       // Match prepare-data: reviewed shared patches are part of the effective
       // scripts being gated, after stock conflicts have already blocked the run.
       installCardScriptPatches(extracted, join(root, packagePath, "card-script-patches"));
-      await writeFile(join(temporary, "strings.conf"), Buffer.from(await (await download(`https://raw.githubusercontent.com/ProjectIgnis/Distribution/${next.strings}/config/strings.conf`)).arrayBuffer()));
+      await writeFile(join(temporary, "strings.conf"), nextStrings);
       try {
         await applyPrereleaseSmokeResult(database, await smokePrereleaseScripts(temporary, [...database.prereleaseCodes]));
         const smoke = JSON.parse(database.remapBytes).scriptSmoke;
@@ -297,7 +314,7 @@ export async function runUpdate(options: Options = {}) {
     await saveReport();
     if (!options.dryRun) await rewritePins(root, old, next, false);
     console.log(`${options.dryRun ? "dry run" : "update"}: ${diff.added.length} new, ${diff.changed.length} changed, ${diff.removed.length} removed official scripts; ${conflicts.length} overlay conflicts; ${risks.length} new multiplayer risks. Report: ${reportPath}`);
-    return { changed, next, reportPath, files, changedPaths, cardChanges };
+    return { changed, next, reportPath, files, changedPaths, cardChanges, relevance };
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
