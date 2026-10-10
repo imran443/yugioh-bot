@@ -88,3 +88,8 @@ describe("duel connection tokens", () => {
     expect(verifyDuelConnectionToken(createDuelConnectionToken(claims(), SECRET), "")).toBeNull();
   });
 });
+
+it("rejects unsafe player identities and seats outside the four-seat contract", () => {
+  expect(() => createDuelConnectionToken(claims({ playerId: Number.MAX_SAFE_INTEGER + 1 }), SECRET)).toThrow();
+  expect(() => createDuelConnectionToken(claims({ seat: 4 }), SECRET)).toThrow();
+});

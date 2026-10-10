@@ -6,6 +6,7 @@ export type DuelConnectionTokenClaims = {
   slug: string;
   guildId: string;
   playerId: number;
+  /** Stored connection identity. A fork always uses creator seat 0, never its acting seat. */
   seat: number | null;
   expiresAt: number;
 };
@@ -47,9 +48,9 @@ function isDuelConnectionTokenClaims(v: unknown): v is DuelConnectionTokenClaims
     return false;
   }
   if (!isNonEmptyString(o.slug) || !isNonEmptyString(o.guildId)) return false;
-  if (typeof o.playerId !== "number" || !Number.isInteger(o.playerId) || o.playerId <= 0) return false;
+  if (typeof o.playerId !== "number" || !Number.isSafeInteger(o.playerId) || o.playerId <= 0) return false;
   if (o.seat !== null) {
-    if (typeof o.seat !== "number" || !Number.isInteger(o.seat) || o.seat < 0) return false;
+    if (typeof o.seat !== "number" || !Number.isInteger(o.seat) || o.seat < 0 || o.seat > 3) return false;
   }
   if (typeof o.expiresAt !== "number" || !Number.isInteger(o.expiresAt) || !Number.isFinite(o.expiresAt)) {
     return false;

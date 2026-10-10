@@ -70,3 +70,5 @@ export * from "./tournament-access.js";
 export * from "./paged-lists.js";
 
 export { createTournamentVisibilityService, TournamentVisibilityServiceError, isTournamentVisibility } from "./tournament-visibility.js";
+
+export * from "./duel-access.js";
