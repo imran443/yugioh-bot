@@ -148,7 +148,7 @@ describe("create-flow capabilities", () => {
     vi.stubEnv("THEME_DRAFTS", value);
     const drafts = await import("../app/api/drafts/route");
     const cubes = await import("../app/api/cubes/route");
-    expect((await (await drafts.GET()).json()).themeDraftsEnabled).toBe(value === "on");
+    expect((await (await drafts.GET(new Request("http://localhost/api/drafts"))).json()).themeDraftsEnabled).toBe(value === "on");
     expect((await (await cubes.GET()).json()).themeDraftsEnabled).toBe(value === "on");
   });
 });
