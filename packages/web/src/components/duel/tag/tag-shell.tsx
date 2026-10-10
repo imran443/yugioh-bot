@@ -399,6 +399,7 @@ function TagShellBody(props: TagShellRootProps & { preferences: DuelPreferences 
             <MoveSourceBoundary events={engine.events} duelKey={session.slug} root={boardRef}>
               <TagStage
                 inspectIdleCards={hud}
+                replay={replay != null}
                 aimSeats={flow.aimSeats}
                 controller={controller}
                 layout={layout}

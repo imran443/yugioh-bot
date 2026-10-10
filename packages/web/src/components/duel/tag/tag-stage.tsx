@@ -53,6 +53,8 @@ export interface TagBoardProps extends Omit<TagStageProps, "camera"> {
   teamNames?: readonly [string, string];
   /** The HUD pins an idle card's peek while its field comes into focus. */
   inspectIdleCards?: boolean;
+  /** Replay: the camera seat is not "you". No YOU tag on the plate, and the partner hand does not claim to be team-only. */
+  replay?: boolean;
 }
 
 const TAG = "tag" as const;
@@ -122,7 +124,7 @@ const STRIP_OWN_HAND = '[data-hand-seat][data-side="you"] [data-zones]';
  * the chain hub and the hands. It draws the fields only through `renderSeatField`. FX, the prompt panel and any overlay
  * are slots over the whole box, so they measure the real screen position of `[data-zones]` and `[data-lp-seat]` nodes.
  */
-export function TagStage({ controller, layout, camera, dispatchCamera, renderSeatField, fx, promptCenter, overlay, hub: phaseHub, teamNames, inspectIdleCards = false }: TagBoardProps) {
+export function TagStage({ controller, layout, camera, dispatchCamera, renderSeatField, fx, promptCenter, overlay, hub: phaseHub, teamNames, inspectIdleCards = false, replay = false }: TagBoardProps) {
   const { engine, room, viewerSeat, nameOf, legalKeys, selectedKeys, reducedMotion, prompt, promptSeat } = controller;
   const [phone, setPhone] = useState(false);
   const [chainSize, setChainSize] = useState<ChainStripSize | null>(null);
@@ -645,7 +647,7 @@ export function TagStage({ controller, layout, camera, dispatchCamera, renderSea
         code: layout.slots.find((s) => s.seat === seat)?.code ?? `${team + 1}${i === 0 ? "A" : "B"}`,
         rgb: tone.rgb,
         ink: tone.ink,
-        you: seat === viewerSeat,
+        you: !replay && seat === viewerSeat,
         hand: view?.hand.length ?? 0,
         deck: view?.deckCount ?? 0,
         clockMs: room.clock?.remainingMs[seat] ?? null,
@@ -795,6 +797,7 @@ export function TagStage({ controller, layout, camera, dispatchCamera, renderSea
             onHoverCard={controller.onHoverCard}
             label={`${nameOf(partnerView.seat)} hand`}
             partnerName={nameOf(partnerView.seat).split(" ")[0]}
+            teamOnly={!replay}
           />
         ) : null}
         {camera.mode === "focus" && !camera.lock ? (
