@@ -26,6 +26,7 @@ import {
   useReplayController,
   useReplayData,
 } from "./replay-controller";
+import { ReplayTag } from "./replay-tag";
 import { buildReplayTimeline, type ReplayLogEntry } from "./replay-timeline";
 import { formatLabel } from "./table-format";
 import type { TableController } from "./table/types";
@@ -174,6 +175,11 @@ export function DuelReplayView({ slug }: { slug: string }) {
   }
 
   const session = model.session;
+  // Tag draws the Rooftop table (four seats, team LP, shared Extra Monster zones) in its own page.
+  if (session.format === "tag") {
+    return <ReplayTag slug={slug} model={model} timeline={timeline} engine={engine} controller={controller}
+      visibility={visibility} onVisibilityChange={changeVisibility} notice={notice} />;
+  }
   const frame = timeline.frame(index);
   const domain = session.mode === "domain";
   const focusSeat = resolveFocusSeat(session, camera, focusChoice);

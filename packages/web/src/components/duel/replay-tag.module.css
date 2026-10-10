@@ -1,0 +1,64 @@
+/* The Tag replay: transport panel (bottom-right corner of the roof) and the header view controls.
+   Colors follow the replay page (replay.module.css): dark panels, gold rule, purple only for the active state. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px 9px;
+  background: rgb(12 18 28 / 0.92);
+  border: 1px solid rgb(201 168 96 / 0.28);
+  color: #e7edf6;
+  font-size: 13px;
+}
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 1px solid #8a7348;
+  background: #241d12;
+  overflow-wrap: anywhere;
+}
+.result strong { font-family: var(--font-display); font-size: 15px; line-height: 1.25; color: #f0d9a0; }
+.result span { color: #c5d0de; }
+.actor { margin: 0; color: #ddc389; font-weight: 600; overflow-wrap: anywhere; }
+.buttons { display: flex; align-items: center; gap: 4px; }
+.icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #3a3348;
+  background: #121822;
+  color: #e7edf6;
+}
+.icon:hover:not(:disabled) { border-color: #d1ad6e; background: #2a2438; }
+.icon:disabled { color: #6d7a8a; }
+.play { background: #352052; border-color: #b48bea; }
+.icon:focus-visible, .slider:focus-visible, .select:focus-visible, .link:focus-visible, .segmented button:focus-visible {
+  outline: 2px solid #c4a35a;
+  outline-offset: 2px;
+}
+.speed { margin-left: auto; }
+.scrub { display: flex; align-items: center; gap: 8px; }
+.slider { flex: 1 1 auto; min-width: 0; height: 28px; accent-color: #9b72d9; cursor: pointer; }
+.count { color: #b6c7d9; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.select { border: 1px solid #61738b; padding: 4px 6px; height: 32px; max-width: 100%; background: #142130; color: #e7edf6; font-size: 13px; }
+
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.field { display: flex; align-items: center; gap: 6px; color: #b6c7d9; font-size: 12px; }
+.segmented { display: inline-flex; border: 1px solid #3a3348; }
+.segmented button { min-height: 32px; padding: 0 10px; background: #121822; color: #c5d0de; font-size: 12px; }
+.segmented button + button { border-left: 1px solid #3a3348; }
+.segmented button:hover { background: #2a2438; }
+.segmented button[aria-pressed="true"] { color: #f4edff; background: #352052; box-shadow: inset 0 0 10px rgb(139 92 246 / 0.25); }
+.link { color: #bca1e7; font-size: 12px; text-decoration: underline; white-space: nowrap; }
+.notices { display: flex; flex-direction: column; gap: 4px; }
+.note { margin: 0; padding: 4px 8px; background: rgb(12 18 28 / 0.88); border: 1px solid rgb(201 168 96 / 0.2); color: #b9c8d9; font-size: 12px; }
+.note[role="alert"] { color: #ffb2b9; }
+@media (max-width: 640px) {
+  .field span { display: none; }
+  .select { height: 36px; }
+  .icon { width: 40px; height: 40px; }
+}
