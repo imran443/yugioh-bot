@@ -18,7 +18,7 @@ export const sources = {
   strings: "54a6e2395c532648ff762540e9615319fac4f51b",
   databaseFormat: "official-releases-prerelease-v4",
   // Immutable support boundary; abbreviated so the weekly pin rewrite never advances it.
-  prereleaseHistoryStart: "fdf92aea3103",
+  prereleaseHistoryStart: "52d5221df32c",
 };
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 // integrity.multiScripts (the Lua overlay of duels with more than two seats) is not part of bundleVersion: the host pins
