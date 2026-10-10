@@ -13,6 +13,10 @@ export interface DuelWorkerCreateOptions {
   settings?: DuelSettings;
   /** Seat and team layout; `decks` holds one deck per seat. Default `1v1`. */
   format?: DuelFormat;
+  /** Original saved draw rule for recovery and replay. */
+  firstTurnDraw?: boolean;
+  /** Server-selected exact overlay; never a path supplied by a browser. */
+  multiScriptsDirectory?: string;
   /** Lua chunks that run before the duel starts (hand scenarios). */
   startupScripts?: EngineStartupScript[];
   /**
