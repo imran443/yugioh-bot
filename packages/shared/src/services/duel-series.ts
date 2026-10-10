@@ -278,7 +278,9 @@ export function createSeriesStore(db: Database.Database) {
   const selectSeries = db.prepare<[number], SeriesRow>("select * from duel_series where id = ?");
   const selectUnrecordedResults = db.prepare<[string], SeriesRow & { needsReconciliation: number }>(
     `select *, (${NEEDS_RECONCILIATION_FILTER}) as needsReconciliation
-      from duel_series where guild_id = ? and ${UNRECORDED_RESULT_FILTER} order by id`,
+      from duel_series where guild_id = ?
+        and not exists (select 1 from duels f where f.series_id = duel_series.id and f.kind != 'play')
+        and ${UNRECORDED_RESULT_FILTER} order by id`,
   );
   const selectSupersededResult = db.prepare<[number], { id: number }>(
     `select id from duel_series where id = ? and ${SUPERSEDED_RESULT_FILTER}`,
@@ -369,6 +371,19 @@ export function createSeriesStore(db: Database.Database) {
       and player_id in (?, ?)
   `);
 
+  const assertPlaySeries = (seriesId: number) => {
+    if (db.prepare("select 1 from duels where series_id = ? and kind != 'play' limit 1").get(seriesId)) {
+      throw new DuelServiceError("Replay forks cannot be linked to a series", 409);
+    }
+  };
+  const storedPlayDuel = (duelId: number): SeriesDuelRef => {
+    const row = db.prepare<[number], SeriesDuelRef & { kind: string }>("select * from duels where id = ?").get(duelId);
+    if (!row) throw new DuelServiceError("Source duel not found", 404);
+    if (row.kind !== "play") throw new DuelServiceError("Replay forks cannot change a series", 409);
+    if (row.series_id !== null) assertPlaySeries(row.series_id);
+    return row;
+  };
+
   const byId = (seriesId: number): SeriesRow | undefined => selectSeries.get(seriesId);
 
   const requireSeries = (seriesId: number, guildId?: string): SeriesRow => {
@@ -376,12 +391,14 @@ export function createSeriesStore(db: Database.Database) {
     if (!row || (guildId !== undefined && row.guild_id !== guildId)) {
       throw new DuelServiceError("Duel series not found", 404);
     }
+    assertPlaySeries(row.id);
     return row;
   };
 
   const playerName = (playerId: number): string => selectPlayerName.get(playerId)?.display_name ?? "";
 
   const summarize = (row: SeriesRow): DuelSeriesSummary => {
+    assertPlaySeries(row.id);
     const latest = selectLatestGame.get(row.id);
     const link = row.tournament_match_id !== null ? selectTournamentLink.get(row.tournament_match_id) : undefined;
     const deck0 = parseSeriesDeck(row.deck0_json);
@@ -456,6 +473,7 @@ export function createSeriesStore(db: Database.Database) {
   };
 
   const cancelTx = db.transaction((seriesId: number, guildId: string) => {
+    assertPlaySeries(seriesId);
     const changed = cancelSeries.run(seriesId, guildId).changes > 0;
     if (!changed) return { changedSlugs: [] as string[] };
     const games = selectLobbyGames.all(seriesId);
@@ -470,6 +488,7 @@ export function createSeriesStore(db: Database.Database) {
 
   /** Game 1 starts: attach an open table to a new series, preload challenge decks, lock tournament decks. */
   const onActivate = (duel: SeriesDuelRef, settings: DuelSettings) => {
+    duel = storedPlayDuel(duel.id);
     const seats = selectSeatDecks.all(duel.id);
     if (duel.series_id === null) {
       const [first, second] = seats;
@@ -547,8 +566,13 @@ export function createSeriesStore(db: Database.Database) {
   // Inside finalization or retry, this savepoint isolates all recording writes,
   // including bracket progression, scoring and the series link.
   const recordResultTx = db.transaction((series: SeriesRow, winnerPlayerId: number): Match => {
+    assertPlaySeries(series.id);
+    const source = selectLatestGame.get(series.id);
+    if (!source) throw new DuelServiceError("Source duel not found", 409);
+    storedPlayDuel(source.id);
     const match = matches.recordConfirmedResult({
       guildId: series.guild_id,
+      sourceDuelId: source.id,
       playerOneId: series.player0_id,
       playerTwoId: series.player1_id,
       winnerId: winnerPlayerId,
@@ -588,6 +612,7 @@ export function createSeriesStore(db: Database.Database) {
     winnerPlayerId: number | null,
     winnerIsBot = false,
   ) => {
+    duel = storedPlayDuel(duel.id);
     if (duel.series_id === null) return;
     const series = selectSeries.get(duel.series_id);
     if (!series || series.status !== "active") return;
@@ -824,6 +849,7 @@ export function createDuelSeriesService(db: Database.Database): DuelSeriesServic
       select id as seriesId, guild_id as guildId
       from duel_series
       where status = 'between_games'
+        and not exists (select 1 from duels f where f.series_id = duel_series.id and f.kind != 'play')
         and ((side_ready0 = 1 and side_ready1 = 1 and (first_chooser is null or first_choice is not null))
           or (next_game_at is not null and next_game_at <= ?))
       order by id asc
@@ -835,7 +861,8 @@ export function createDuelSeriesService(db: Database.Database): DuelSeriesServic
       select d.web_slug as slug, d.guild_id as guildId
       from duels d
       join duel_series s on s.id = d.series_id
-      where d.status = 'lobby'
+      where d.kind = 'play' and d.status = 'lobby'
+        and not exists (select 1 from duels f where f.series_id = s.id and f.kind != 'play')
         and s.status = 'active'
         and (select count(*) from duel_seats x where x.duel_id = d.id and x.ready = 1) = 2
       order by d.id asc

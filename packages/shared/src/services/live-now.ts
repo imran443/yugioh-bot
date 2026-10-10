@@ -47,7 +47,7 @@ const OWN_SQL = `
     coalesce(d.last_activity_at, d.created_at) as activity
   from duels d
   join duel_seats me on me.duel_id = d.id and me.player_id = @viewer
-  where d.guild_id = @guild
+  where d.kind = 'play' and d.guild_id = @guild
     and ${duelSeriesTournamentReadScope("d.series_id")}
     and d.archived_at is null
     and (
@@ -55,7 +55,7 @@ const OWN_SQL = `
       or (d.status = 'lobby' and (select count(*) from duel_seats c where c.duel_id = d.id) >= 2)
     )
   union all
-  select (select g.web_slug from duels g where g.series_id = s.id order by g.game_number desc, g.id desc limit 1) as slug,
+  select (select g.web_slug from duels g where g.kind = 'play' and g.series_id = s.id order by g.game_number desc, g.id desc limit 1) as slug,
     'between' as state,
     0 as needs_me,
     case when s.vs_bot = 1 then @bot else op.display_name end as opponent,
@@ -63,6 +63,7 @@ const OWN_SQL = `
   from duel_series s
   left join players op on op.id = case when s.player0_id = @viewer then s.player1_id else s.player0_id end
   where s.guild_id = @guild
+    and not exists (select 1 from duels f where f.series_id = s.id and f.kind != 'play')
     and ${duelSeriesTournamentReadScope("s.id")}
     and s.status = 'between_games'
     and (s.player0_id = @viewer or s.player1_id = @viewer)
@@ -75,7 +76,7 @@ const OWN_SQL = `
 const COUNT_SQL = `
   select count(*) as n
   from duels
-  where guild_id = @guild
+  where kind = 'play' and guild_id = @guild
     and ${duelSeriesTournamentReadScope("duels.series_id", "coalesce(@user, (select viewer.user_id from players viewer where viewer.id = @viewer and viewer.guild_id = @guild))")}
     and status = 'active'
     and archived_at is null
@@ -109,7 +110,7 @@ export function createLiveNowService(db: Database.Database): LiveNowService {
     select x.seat, case when x.is_bot = 1 then @bot else p.display_name end as name, x.is_bot
     from duels d join duel_seats x on x.duel_id = d.id
     left join players p on p.id = x.player_id
-    where d.guild_id = @guild and d.web_slug = @slug
+    where d.kind = 'play' and d.guild_id = @guild and d.web_slug = @slug
       and (x.player_id is null or x.player_id != @viewer)
     order by x.seat
   `);
