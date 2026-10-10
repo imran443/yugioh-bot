@@ -15,7 +15,8 @@ async function fixture(){
  };
  create("cards.cdb",[[12,0,"Released"]]);create("prerelease-a.cdb",[[22,0,"Broken"],[100000001,0,"Broken"],[100000050,100000001,"Broken artwork"],[23,0,"Healthy"]]);
  const request=async(url:string)=>url.includes("/git/trees/")?Response.json({truncated:false,tree:["cards.cdb","prerelease-a.cdb"].map(path=>({path,type:"blob"}))}):new Response(new Uint8Array(await readFile(join(root,url.split("/").pop()!))));
- return downloadReleasedCardData("a".repeat(40),join(root,"bundle"),request);
+ // Synthetic cards must not consume the repository's production remap overrides.
+ return downloadReleasedCardData("a".repeat(40),join(root,"bundle"),request,{overrideBytes:"{}\n"});
 }
 it("excludes only broken previews/artwork families and suppresses remaps whose destination was excluded",async()=>{
  const database=await fixture();expect(database.remaps).toEqual({100000001:22});
