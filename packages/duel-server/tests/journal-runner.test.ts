@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultDuelSettings, seatCountFor, type DuelAnswer, type DuelChainMode, type DuelEngineView,
   type DuelFormat, type EngineIdentity, type ReplaySource } from "@yugidraft/shared/duels";
 import { EngineLoopError } from "../src/engine-loop-error.js";
+import { EngineResourceUnavailableError } from "../src/engine-resource-resolver.js";
 import { applyWorkerJournalCommand } from "../src/journal-command.js";
 import { runJournalPrefix, type JournalResources } from "../src/journal-runner.js";
 import { multiScriptsFolderHash, pinnedEngineVersion } from "../src/multi-scripts.js";
@@ -178,6 +179,21 @@ describe("journal prefix runner", () => {
     }
     expect(createWorker).not.toHaveBeenCalled();
     await expect(runJournalPrefix({ source: input, resources: { ...resources(), engineIdentity: identity() }, prefixCount: 0, createWorker })).resolves.toBeDefined();
+  });
+
+  it("passes verified identity to the worker for its resource recheck", async () => {
+    const input = source(); input.engineIdentity = identity(); const worker = new TestWorker();
+    await runJournalPrefix({ source: input, resources: { ...resources(), engineIdentity: identity() },
+      prefixCount: 0, createWorker: () => worker });
+    expect(worker.created?.engineIdentity).toEqual(input.engineIdentity);
+  });
+
+  it("keeps the resource error when files change before worker creation", async () => {
+    const input = source(); input.engineIdentity = identity(); const worker = new TestWorker();
+    worker.failAt = "create"; worker.failure = new EngineResourceUnavailableError("resources changed");
+    await expect(runJournalPrefix({ source: input, resources: { ...resources(), engineIdentity: identity() },
+      prefixCount: 0, createWorker: () => worker })).rejects.toMatchObject({ code: "ENGINE_UNAVAILABLE_FOR_SOURCE" });
+    expect(worker.running).toBe(false);
   });
 
   it.each([

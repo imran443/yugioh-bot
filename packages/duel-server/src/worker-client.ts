@@ -12,7 +12,6 @@ const PROMPT_LOG_LIMIT = 5_000;
 
 export interface GameOptions {
   engineIdentity?: EngineIdentity;
-  multiScriptsDirectory?: string;
   scriptErrorMode?: DuelScriptErrorMode;
   mode: DuelMode;
   decks: DuelDeck[];

@@ -398,6 +398,25 @@ describe("duel host rooms", () => {
     expect(other.duels.get(other.session.slug, "g1").status).toBe("interrupted");
   });
 
+  it("interrupts active recovery when the journal uses a retired loss rule", async () => {
+    const db = new Database(":memory:");
+    migrate(db);
+    const { p1, p2 } = seedPlayers(db);
+    const { session, duels } = readyLobby(db, p1, p2);
+    duels.activate(session.slug, "g1", p1, ["1", "2", "3", "4"], MANIFEST.bundleVersion, null);
+    duels.recordCommand(session.slug, "g1", 0, { promptId: "eliminate-eot:3", revision: 1, answer: {} }, null);
+    const workers: FakeWorker[] = [];
+    const changes: Array<[string, string]> = [];
+    const { host } = openHost(() => {
+      const worker = new FakeWorker(); workers.push(worker); return worker;
+    }, { db, onChange: (slug, guildId) => { changes.push([slug, guildId]); } });
+    const response = await post(host, { op: "view", slug: session.slug, guildId: "g1", playerId: p1 });
+    expect(response).toMatchObject({ status: 409, data: { code: "ENGINE_UNAVAILABLE_FOR_SOURCE" } });
+    expect(duels.get(session.slug, "g1").status).toBe("interrupted");
+    expect(workers).toHaveLength(0);
+    expect(changes).toContainEqual([session.slug, "g1"]);
+  });
+
   it("does not complete when a final board snapshot fails, then recovers", async () => {
     const db = new Database(":memory:");
     migrate(db);

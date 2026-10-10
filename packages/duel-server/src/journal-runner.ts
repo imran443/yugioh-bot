@@ -6,6 +6,7 @@ import {
 import { eliminationAtTurnEnd } from "./engine.js";
 import { EngineLoopError } from "./engine-loop-error.js";
 import { savedFirstTurnDraw } from "./first-turn-draw.js";
+import { EngineResourceUnavailableError } from "./engine-resource-resolver.js";
 import { applyWorkerJournalCommand, isPromptlessCommand } from "./journal-command.js";
 import { multiScriptsFolderHash, pinnedEngineVersion, resolveMultiScriptsDirectory } from "./multi-scripts.js";
 import type { DuelGameWorker, GameOptions } from "./worker-client.js";
@@ -133,6 +134,7 @@ function creationOptions({ source, resources, prefixCount, checkpointSeat, targe
   return {
     mode: session.mode, decks: structuredClone(source.decks), seed: [...source.seed], dataDirectory: resources.dataDirectory,
     masterRule: session.masterRule, settings: structuredClone(session.settings), firstTurnDraw, scriptErrorMode,
+    ...(resources.engineIdentity ? { engineIdentity: resources.engineIdentity } : {}),
     ...(engine ? { engine } : { format: session.format, multiScriptsDirectory }),
     ...(setup?.startupScripts?.length ? { startupScripts: setup.startupScripts.map((content, index) => ({ name: `startup-${index}.lua`, content })) } : {}),
   };
@@ -184,6 +186,9 @@ export async function runJournalPrefix(options: JournalRunOptions): Promise<Jour
     const code = stage === "command" && worker.running ? "REPLAY_MISMATCH" : "ENGINE_BUSY";
     try { await worker.close(); } catch { /* Keep the original failure if the worker already exited. */ }
     if (error instanceof JournalRunnerError || error instanceof EngineLoopError || stage === "capture") throw error;
+    if (error instanceof EngineResourceUnavailableError) {
+      throw new JournalRunnerError(error.message, error.code, error);
+    }
     throw new JournalRunnerError(error instanceof Error ? error.message : "Engine worker request failed", code, error);
   }
 }

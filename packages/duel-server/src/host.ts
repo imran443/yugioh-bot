@@ -1187,14 +1187,12 @@ export function createDuelHost(options: {
       game = result.worker;
     } catch (error) {
       if (await interruptEngineLoop(slug, guildId, error) && game) return game;
-      if (error instanceof JournalRunnerError && error.code === "ENGINE_UNAVAILABLE_FOR_SOURCE") {
-        throw new RequestError(error.message, 409, error.code);
-      }
       if (error instanceof JournalRunnerError && error.code !== "ENGINE_BUSY") {
         service.interrupt(slug, guildId, "The saved engine state could not be recovered.");
         await emitChange(slug, guildId);
         await afterGameEnded(slug, guildId);
-        throw new RequestError(error.message, 409);
+        throw new RequestError(error.message, 409,
+          error.code === "ENGINE_UNAVAILABLE_FOR_SOURCE" ? error.code : undefined);
       }
       throw new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
     }

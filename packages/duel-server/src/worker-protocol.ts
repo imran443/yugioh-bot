@@ -8,8 +8,6 @@ export const ENGINE_PROTOCOL_VERSION = "duel-worker-1";
 
 export interface DuelWorkerCreateOptions {
   engineIdentity?: EngineIdentity;
-  multiScriptsDirectory?: string;
-  firstTurnDraw?: boolean;
   scriptErrorMode?: DuelScriptErrorMode;
   mode: DuelMode;
   decks: DuelDeck[];
