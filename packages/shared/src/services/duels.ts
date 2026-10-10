@@ -424,6 +424,12 @@ function parseSetup(raw: string | null | undefined, kind: DuelKind, format: Duel
     if (parsed == null) return undefined;
     const input = parsed as Record<string, unknown>;
     if (Object.hasOwn(input, "engineIdentity") && !isEngineIdentity(input.engineIdentity)) throw new Error("Invalid engine identity");
+    if (kind === "replay-fork") {
+      return validateSetup(input, {
+        replayFork: input.replayFork as ReplayForkSetup,
+        ...(isEngineIdentity(input.engineIdentity) ? { engineIdentity: input.engineIdentity } : {}),
+      });
+    }
     const setup: DuelSetup = {};
     if (isEngineIdentity(input.engineIdentity)) setup.engineIdentity = input.engineIdentity;
     if (isReplayForkSetup(input.replayFork)) setup.replayFork = input.replayFork;

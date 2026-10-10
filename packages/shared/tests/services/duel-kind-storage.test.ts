@@ -55,6 +55,12 @@ describe("persisted duel kind and setup", () => {
     expect(() => duels.get("fixture", "g")).toThrow(/invalid/);
   });
 
+  it.each([{ firstTurnDraw: "yes" }, { startupScripts: [1] }, { scriptErrorMode: "ignore" }, { engine: "unknown" }, { extraField: true }])
+    ("rejects invalid saved fork engine rules: %j", rules => {
+      const { duels } = fixture("replay-fork", { replayFork, ...rules });
+      expect(() => duels.privateState("fixture", "g")).toThrow(/invalid/);
+    });
+
   it("keeps creator and origin when a host setup update omits them", () => {
     const { duels } = fixture("replay-fork", { replayFork, engine: "legacy" });
     duels.setSetup("fixture", "g", { engine: "legacy", surrenderedSeats: [1] });
