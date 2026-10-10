@@ -125,4 +125,3 @@ export const TARGET_NAMING_SCENARIOS: Scenario[] = [
     ],
   }),
 ];
-NEGATION_INDICATOR_SCENARIOS.push(...TARGET_NAMING_SCENARIOS);

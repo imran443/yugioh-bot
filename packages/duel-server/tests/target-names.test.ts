@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { OcgLocation, OcgMessageType, OcgPosition, type OcgMessage } from "ocgcore-wasm";
 import { chainTargetPhrase, parseTargetCardNote, publicTargetLabel, TARGET_CARD_NOTE_PREFIX } from "../src/target-names.js";
 import { isNegatedOnField as isNegatedMulti } from "../src/views.js";
@@ -7,6 +7,7 @@ import * as mainViews from "../src/views.js";
 import * as legacyViews from "../src/legacy/views.js";
 import { loadCardDatabase, type CardDatabase } from "../src/cards.js";
 import { engineDataDirectory } from "./engine-data-dir.js";
+import { describeWithCores, needs } from "./support/cores.js";
 
 describe("target names", () => {
   it("parses a note and rejects malformed ones", () => {
@@ -47,8 +48,9 @@ function targetTrackingTests<Context>(name: string, views: {
   targetEventText(link: mainViews.StoredChainLink): string;
   targetEventLabels(link: mainViews.StoredChainLink): string[];
 }) {
-  describe(`target tracking (${name})`, () => {
-    const cards = loadCardDatabase(engineDataDirectory);
+  describeWithCores(`target tracking (${name})`, [needs.cards(engineDataDirectory)], () => {
+    let cards: CardDatabase;
+    beforeAll(() => { cards = loadCardDatabase(engineDataDirectory); });
     const grave = (sequence: number) => ({ controller: 0 as const, location: OcgLocation.GRAVE, sequence });
     const field = (sequence: number) => ({ controller: 0 as const, location: OcgLocation.MZONE, sequence });
     const link = (): mainViews.StoredChainLink => ({ index: 1, seat: 0, code: 83764718, zone: field(0), targets: [] });
