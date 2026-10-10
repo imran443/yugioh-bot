@@ -24,6 +24,11 @@ export type DuelFieldProps = {
   onHoverCard?: DuelHoverHandler;
   bottomName: string;
   topName: string;
+  /**
+   * Replay camera: the seat drawn in the bottom half when it is not `mySeat` (a spectator, or a player looking from
+   * another seat). Default: `mySeat`, or seat 0 for a spectator. Pair it with `mySeat: null` so labels use the names.
+   */
+  bottomSeat?: number | null;
   /** 3 and 4 seat tables: the seat shown in the top half. Default: the other seat of a 1v1. */
   topSeat?: number | null;
   /** 3 and 4 seat tables: owner name in the top half's aria labels (default "Opponent"). */
@@ -48,7 +53,7 @@ export type DuelFieldProps = {
 export function useDuelFieldModel(props: DuelFieldProps & { boardRef: RefObject<HTMLElement | null> }) {
   const { engine, mySeat, masterRule, reducedMotion, legalKeys, selectedKeys, onActivate, onInspect, onHoverCard,
     bottomName, topName, topSeat, topLabel: topLabelOverride, priorityLive, boardRef } = props;
-  const bottomIndex = mySeat ?? 0;
+  const bottomIndex = props.bottomSeat ?? mySeat ?? 0;
   const topIndex = topSeat ?? (bottomIndex === 0 ? 1 : 0);
   const bottom = engine.seats.find((seat) => seat.seat === bottomIndex);
   const top = engine.seats.find((seat) => seat.seat === topIndex);
