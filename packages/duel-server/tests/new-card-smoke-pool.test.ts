@@ -10,6 +10,29 @@ import { resolveCard } from "../src/presets/catalog.js";
 import { smokeExitCode } from "../scripts/new-card-smoke.js";
 import { itWithCores, needs } from "./support/cores.js";
 
+const loopTimeoutMs = 700;
+const healthyTimeoutMs = 30000;
+
+// Only the loop card gets a short watchdog. After it expires, the next card
+// has ample time to finish, even when real workers share a busy CI runner.
+function watchLoopTimeouts() {
+  const schedule = globalThis.setTimeout;
+  let loopCard = true;
+  let healthyCardPending = true;
+  const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args) => {
+    if (delay !== loopTimeoutMs) return schedule(callback, delay, ...args);
+    return schedule(() => {
+      if (healthyCardPending) loopCard = false;
+      callback(...args);
+    }, loopCard ? loopTimeoutMs : healthyTimeoutMs);
+  });
+  return {
+    retryLoop: () => { loopCard = true; healthyCardPending = false; },
+    restart: () => { loopCard = true; healthyCardPending = true; },
+    restore: () => timers.mockRestore(),
+  };
+}
+
 it("reports missing activations as WARN and script errors as FAIL, with replay seeds", () => {
   const card = { code: 42, name: "Needs | conditions", type: 33, description: "You can draw 1 card." };
   const test = { id: "normal/1v1/grave", seed: 7, steps: 3, offered: [], activated: [], replayed: true, expected: [{ id: "effect", label: "Draw" }] };
@@ -119,6 +142,7 @@ itWithCores("uses bounded real workers and retains results in input order", [nee
 }, 30000);
 itWithCores("stops synchronous Lua loops and starts a fresh worker for the next card", [needs.standard(), needs.domain(), needs.cards()], async () => {
   const directory = process.env.DUEL_DATA_DIR!, root = await mkdtemp(join(tmpdir(), "smoke-watchdog-"));
+  const watchdog = watchLoopTimeouts();
   try {
     for (const file of ["cards.cdb", "strings.conf", "card-remaps.json", "manifest.json", "ocgcore.standard.wasm", "ocgcore.domain.wasm"]) await cp(join(directory, file), join(root, file));
     execFileSync("cp", ["-al", join(directory, "card-scripts"), join(root, "card-scripts")]);
@@ -131,21 +155,24 @@ local e=Effect.CreateEffect(c); e:SetType(EFFECT_TYPE_ACTIVATE); e:SetCode(EVENT
 e:SetOperation(function() while true do end end); c:RegisterEffect(e)
 end`);
     const completionOrder: number[] = [];
-    const report = await runSmokePool([code, 55144522], root, { jobs: 1, timeoutMs: 700, cardTimeoutMs: 6000,
-      onCard: card => completionOrder.push(card.code), limits: { maxSteps: 100, maxTurns: 2 } });
+    const report = await runSmokePool([code, 55144522], root, { jobs: 1, timeoutMs: loopTimeoutMs, cardTimeoutMs: 60000,
+      onCard: card => { completionOrder.push(card.code); if (card.code === 55144522) watchdog.retryLoop(); },
+      limits: { maxSteps: 100, maxTurns: 2 } });
     expect(report.cards[0]?.status).toBe("FAIL"); expect(report.cards[0]?.reason).toContain("time limit");
     expect(report.cards[0]?.cases.some(c => c.timeoutRetried)).toBe(true);
     expect(report.timeoutRetries).toBe(1);
     expect(completionOrder).toEqual([55144522, code]);
     expect(report.cards[1]?.status).toBe("PASS");
-    const exact = await runSmokePool([code], root, { jobs: 1, timeoutMs: 700, cardTimeoutMs: 6000,
+    watchdog.retryLoop();
+    const exact = await runSmokePool([code], root, { jobs: 1, timeoutMs: loopTimeoutMs, cardTimeoutMs: 60000,
       caseId: "normal/1v1/hand/branch-1", seed: 7, limits: { maxSteps: 100, maxTurns: 2 } });
     expect(exact.cards[0]?.reason).toContain("case time limit reached after isolated retry");
     expect(exact.cards[0]?.reason).not.toContain("Unknown recovery case");
-  } finally { await rm(root, { recursive: true, force: true }); }
-}, 30000);
+  } finally { watchdog.restore(); await rm(root, { recursive: true, force: true }); }
+}, 60000);
 itWithCores("fails an unconfirmed case timeout when the suite ends before its isolated retry", [needs.standard(), needs.cards()], async () => {
   const directory = process.env.DUEL_DATA_DIR!, root = await mkdtemp(join(tmpdir(), "smoke-watchdog-"));
+  const watchdog = watchLoopTimeouts();
   try {
     for (const file of ["cards.cdb", "strings.conf", "card-remaps.json", "manifest.json", "ocgcore.standard.wasm"]) await cp(join(directory, file), join(root, file));
     execFileSync("cp", ["-al", join(directory, "card-scripts"), join(root, "card-scripts")]);
@@ -157,12 +184,12 @@ function s.initial_effect(c)
 local e=Effect.CreateEffect(c); e:SetType(EFFECT_TYPE_ACTIVATE); e:SetCode(EVENT_FREE_CHAIN)
 e:SetOperation(function() while true do end end); c:RegisterEffect(e)
 end`);
-    const now = performance.now.bind(performance);
     let elapsed = 0;
-    const clock = vi.spyOn(performance, "now").mockImplementation(() => now() + elapsed);
+    const suiteTimeoutMs = 60000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => elapsed);
     try {
-      const exhausted = await runSmokePool([code, 55144522], root, { jobs: 1, timeoutMs: 700, cardTimeoutMs: 6000, suiteTimeoutMs: 10000, caseId: "normal/1v1/hand",
-        onCard: card => { if (card.code === 55144522) elapsed = 10000; }, limits: { maxSteps: 100, maxTurns: 2 } });
+      const exhausted = await runSmokePool([code, 55144522], root, { jobs: 1, timeoutMs: loopTimeoutMs, cardTimeoutMs: 60000, suiteTimeoutMs, caseId: "normal/1v1/hand",
+        onCard: card => { if (card.code === 55144522) elapsed = suiteTimeoutMs; }, limits: { maxSteps: 100, maxTurns: 2 } });
       expect(exhausted.timeoutRetries).toBe(0);
       expect(exhausted.incomplete).toBe(true);
       expect(exhausted.cards[0]?.status).toBe("FAIL");
@@ -171,17 +198,17 @@ end`);
       expect(renderSmokeMarkdown(exhausted)).toContain("case timeout not confirmed");
       expect(smokeExitCode(exhausted)).toBe(1);
       elapsed = 0;
-      const started = now();
-      const interrupted = await runSmokePool([code, 55144522], root, { jobs: 1, timeoutMs: 700, cardTimeoutMs: 6000, suiteTimeoutMs: 10000,
-        caseId: "normal/1v1/hand", onCard: card => { if (card.code === 55144522) elapsed = 9850 - (now() - started); },
+      watchdog.restart();
+      const interrupted = await runSmokePool([code, 55144522], root, { jobs: 1, timeoutMs: loopTimeoutMs, cardTimeoutMs: 60000, suiteTimeoutMs,
+        caseId: "normal/1v1/hand", onCard: card => { if (card.code === 55144522) elapsed = suiteTimeoutMs - 1; },
         limits: { maxSteps: 100, maxTurns: 2 } });
       expect(interrupted.timeoutRetries).toBe(1);
       expect(interrupted.cards[0]?.reason).toContain("case timeout not confirmed");
       expect(interrupted.cards[0]?.cases.some(c => c.failure === "case timeout not confirmed" && c.timeoutRetried)).toBe(true);
       expect(smokeExitCode(interrupted)).toBe(1);
     } finally { clock.mockRestore(); }
-  } finally { await rm(root, { recursive: true, force: true }); }
-}, 30000);
+  } finally { watchdog.restore(); await rm(root, { recursive: true, force: true }); }
+}, 60000);
 itWithCores("keeps tokens out of decks and puts only monster companions in monster zones", [needs.cards()], () => {
   const directory = process.env.DUEL_DATA_DIR!, cards = loadCardDatabase(directory);
   for (const code of [3064783, 39053882, 41458361, 11895663]) for (const test of smokeCasesForCard(code, directory, ["1v1"])) {
@@ -200,18 +227,33 @@ itWithCores("places the named Umi support face-up in the Field Zone", [needs.car
   expect(cards.cardData(field.card)!.type & 0x80000).toBeTruthy();
 });
 itWithCores("reports a suite deadline as incomplete without failing untested cards", [needs.standard(), needs.domain(), needs.cards()], async () => {
-  const report = await runSmokePool([55144522, 5318639], process.env.DUEL_DATA_DIR!, { jobs: 1, suiteTimeoutMs: 1 });
-  expect(report.incomplete).toBe(true);
-  expect(report.incompleteCodes).toContain(5318639);
-  expect(report.cards.some(c => c.status === "FAIL")).toBe(false);
-  expect(smokeExitCode(report)).toBe(3);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+  try {
+    const running = runSmokePool([55144522, 5318639], process.env.DUEL_DATA_DIR!, { jobs: 1, suiteTimeoutMs: 1 });
+    clock.mockReturnValue(1);
+    vi.advanceTimersByTime(1);
+    const report = await running;
+    expect(report.incomplete).toBe(true);
+    expect(report.incompleteCodes).toContain(5318639);
+    expect(report.cards.some(c => c.status === "FAIL")).toBe(false);
+    expect(smokeExitCode(report)).toBe(3);
+  } finally { clock.mockRestore(); vi.useRealTimers(); }
 });
 itWithCores("reports an aggregate card budget as incomplete, while continuing the pool", [needs.standard(), needs.domain(), needs.cards()], async () => {
-  const report = await runSmokePool([55144522, 5318639], process.env.DUEL_DATA_DIR!, { jobs: 1, cardTimeoutMs: 1 });
-  expect(report.incomplete).toBe(true);
-  expect(report.incompleteCodes).toEqual([5318639, 55144522]);
-  expect(report.cards.some(c => c.status === "FAIL")).toBe(false);
-  expect(smokeExitCode(report)).toBe(3);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const running = runSmokePool([55144522, 5318639], process.env.DUEL_DATA_DIR!, { jobs: 1, cardTimeoutMs: 1 });
+    // Flush each card's budget before allowing its real worker to answer.
+    vi.advanceTimersByTime(1);
+    await Promise.resolve();
+    vi.advanceTimersByTime(1);
+    const report = await running;
+    expect(report.incomplete).toBe(true);
+    expect(report.incompleteCodes).toEqual([5318639, 55144522]);
+    expect(report.cards.some(c => c.status === "FAIL")).toBe(false);
+    expect(smokeExitCode(report)).toBe(3);
+  } finally { vi.useRealTimers(); }
 });
 itWithCores("gives Endgame Problem five real Angelechy Monster Cards and Seneschal legal Synchro materials", [needs.cards()], () => {
   const directory = process.env.DUEL_DATA_DIR!, cards = loadCardDatabase(directory);
