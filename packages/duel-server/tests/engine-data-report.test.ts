@@ -51,6 +51,13 @@ it("retains active blocks ahead of top nonblocked errors when long names hit the
   expect(report).toContain("truncated"); expect(Buffer.byteLength(report)).toBeLessThanOrEqual(12000);
 });
 describe("engine update report publishing", () => {
+  it("keeps relevance counts and new set codes when the PR body is truncated", () => {
+    const report = "Needs review: 0\n" + "data\n".repeat(20000) + "\n## Relevance gate\n\nNew cards: 3. Changed cards: 2. Changed scripts: 1.\nNew set codes: BETB.\n";
+    const body = boundedReport(report, run, 60000);
+    expect(body).toContain("New cards: 3. Changed cards: 2. Changed scripts: 1.");
+    expect(body).toContain("New set codes: BETB.");
+    expect(Buffer.byteLength(body)).toBeLessThanOrEqual(60000);
+  });
   it("keeps the first line and review warnings within the PR body limit", () => {
     const report = "Needs review: 1 conflicts\n" + "card data\n".repeat(10_000) + "\n## Deployment\n\nLive-duel warning; replay loss.\n\n## Golden hashes\n\nRe-record hashes.\n";
     const body = boundedReport(report, run, 60_000);

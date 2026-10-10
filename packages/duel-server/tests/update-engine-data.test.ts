@@ -42,6 +42,73 @@ async function fixture() {
 }
 
 describe("engine data update", () => {
+  it.each(["irrelevant", "rush-row", "rush-orphan", "card-text", "script", "strings"])("gates moved pins using loaded data (%s)", async change => {
+    const { root } = await fixture();
+    const manifestPath = join(root, "packages/duel-server/domain-core/multi-scripts/MANIFEST.json");
+    await mkdir(dirname(manifestPath), { recursive: true });
+    await writeFile(manifestPath, '{"cards":[]}');
+    const corpus = join(root, "corpus");
+    await mkdir(join(corpus, "official"), { recursive: true });
+    await writeFile(join(corpus, "official/c1.lua"), "-- playable");
+    await mkdir(join(corpus, "rush"));
+    await writeFile(join(corpus, "rush/c999.lua"), "-- rush");
+    await writeFile(join(corpus, "official/c999.lua"), "-- rush");
+    const archive = execFileSync("tar", ["-czf", "-", "-C", root, "corpus"]);
+    const bytes: Buffer[] = [];
+    for (const candidate of [false, true]) {
+      const path = join(root, `${candidate}.cdb`), db = new Database(path);
+      db.exec("CREATE TABLE datas(id INTEGER PRIMARY KEY,ot INTEGER,alias INTEGER,type INTEGER); CREATE TABLE texts(id INTEGER PRIMARY KEY,name TEXT,desc TEXT); INSERT INTO datas VALUES(1,3,0,33),(999,512,0,33); INSERT INTO texts VALUES(1,'Playable','Effect'),(999,'Rush','Effect')");
+      if (change === "rush-orphan") {
+        db.exec("DELETE FROM texts WHERE id=999");
+        if (candidate) db.exec("UPDATE datas SET type=17 WHERE id=999");
+      }
+      if (candidate && change === "rush-row") db.exec("UPDATE texts SET desc='Rush edit' WHERE id=999");
+      if (candidate && change === "card-text") db.exec("UPDATE texts SET desc='Playable edit' WHERE id=1");
+      db.close(); bytes.push(await readFile(path));
+    }
+    const request = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input), candidate = Object.values(nextPins).some(sha => url.includes(sha));
+      if (url.includes("/compare/")) return Response.json({ ahead_by: 1, behind_by: 0, status: "ahead" });
+      if (url.includes("/git/trees/")) return Response.json({ truncated: false, tree: url.includes("BabelCDB") ? [
+        { path: "cards.cdb", type: "blob", sha: candidate ? "new-db" : "old-db" },
+        { path: "prerelease-rush.cdb", type: "blob", sha: candidate ? "new-rush" : "old-rush" },
+        { path: "unused.cdb", type: "blob", sha: candidate ? "new-unused" : "old-unused" },
+      ] : [
+        { path: "official/c1.lua", type: "blob", sha: candidate && change === "script" ? "fix" : "unchanged" },
+        ...(change === "rush-orphan" ? [] : [{ path: "rush/c999.lua", type: "blob", sha: candidate ? "new-rush" : "old-rush" }]),
+        { path: "official/c999.lua", type: "blob", sha: candidate ? "new-rush" : "old-rush" },
+        { path: "README.md", type: "blob", sha: candidate ? "new-docs" : "old-docs" },
+      ] });
+      if (url.endsWith("/cards.cdb")) return new Response(new Uint8Array(bytes[candidate ? 1 : 0]!));
+      if (url.endsWith("/strings.conf")) return new Response(candidate && change === "strings" ? "changed" : "strings");
+      if (url.includes("codeload.github.com")) return new Response(new Uint8Array(archive));
+      if (url.includes("ygoprodeck")) return Response.json(url.includes("cardsets.php") ? [] : { data: [] });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false, report: ".status/report.md" });
+    const relevant = !["irrelevant", "rush-row", "rush-orphan"].includes(change);
+    expect(result.changed).toBe(relevant);
+    expect(await readPins(root)).toEqual(relevant ? nextPins : oldPins);
+    const report = await readFile(result.reportPath, "utf8");
+    expect(report).toContain("## Relevance gate");
+    if (!relevant) {
+      expect(result.files).toEqual([]);
+      expect(githubOutput(result)).toContain("changed=false");
+      expect(report).toContain("upstream pins moved, but no loaded card rows, scripts, strings or remaps changed");
+      expect(request.mock.calls.some(([url]) => String(url).includes("codeload"))).toBe(false);
+      await writeFile(join(dirname(result.reportPath), "update.json"), JSON.stringify(result));
+      const summaryPath = join(root, "summary.md");
+      execFileSync(process.execPath, ["--import", "tsx", resolve(import.meta.dirname, "../scripts/validate-engine-data.ts")], {
+        cwd: process.cwd(), env: { ...process.env, UPDATE_ARTIFACT_DIR: dirname(result.reportPath), DUEL_DATA_DIR: join(root, "absent-bundle"),
+          GITHUB_STEP_SUMMARY: summaryPath, GITHUB_REPOSITORY: "test/repo", GITHUB_RUN_ID: "1" },
+      });
+      expect(await readFile(summaryPath, "utf8")).toContain("upstream pins moved, but no loaded card rows, scripts, strings or remaps changed");
+    } else {
+      expect(report).toContain(`Changed cards: ${change === "card-text" ? 1 : 0}`);
+      expect(report).toContain(`Changed scripts: ${change === "script" ? 1 : 0}`);
+      expect(report).not.toContain("Changed shared scripts (1)");
+    }
+  });
   it("scans newly playable release scripts for multiplayer risk while excluding unrelated pre-release cards", () => {
     const stock = new Map([
       ["pre-release/c17242022.lua", "Duel.GetFieldGroup(tp,LOCATION_HAND,LOCATION_HAND)"],
@@ -242,6 +309,7 @@ describe("engine data update", () => {
     expect(await readPins(root)).toEqual(dryRun ? oldPins : overrides);
     const report = await readFile(result.reportPath, "utf8");
     expect(report).toContain("## New cards in this update");
+    expect(report).toContain("## Released TCG sets still in pre-release CDBs");
     expect(report.indexOf("## New cards in this update")).toBeLessThan(report.indexOf("## Released databases"));
     expect(result.cardChanges).toBeDefined();
     const finalized = withCardUpdate(report, result.cardChanges!);

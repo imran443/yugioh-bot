@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { cardUpdate, renderCardUpdate, withPreviewExclusions, withCardUpdate, type CardSnapshot } from "../scripts/engine-data-card-report.js";
 import { boundedReport } from "../scripts/engine-data-report.js";
+import * as cardReport from "../scripts/engine-data-card-report.js";
 
 const run = "https://github.com/example/repo/actions/runs/123";
 const empty: CardSnapshot = { released: [], prerelease: [], remaps: {} };
@@ -18,6 +19,77 @@ const metadata = [
 const request = () => vi.fn(async (url: string | URL | Request) => String(url).includes("cardsets.php")
   ? Response.json([{ set_name: "Beyond the Brave", set_code: "BETB", tcg_date: "2026-10-08" }])
   : Response.json({ data: metadata }));
+
+describe("released TCG sets still in upstream previews", () => {
+  it("reports existing previews during a script-only update, deduplicating English set variants", async () => {
+    const previews = { ...empty, prerelease: [card(101402090, "Angelechy", "prerelease-betb-en.cdb"),
+      card(101402091, "Another card", "prerelease-betb.cdb")] };
+    const fetchMetadata = request();
+    const changes = await cardUpdate(previews, previews, fetchMetadata, "2026-10-10");
+    expect(fetchMetadata).toHaveBeenCalledTimes(2);
+    const body = cardReport.renderReleasedSets(changes);
+    expect(body).toContain("## Released TCG sets still in pre-release CDBs");
+    expect(body).toContain("Beyond the Brave (BETB)");
+    expect(body).toContain("TCG release: 2026-10-08; 2 cards");
+    expect(body).toContain("prerelease-betb-en.cdb");
+    expect(body).toContain("prerelease-betb.cdb");
+    expect(body).toContain("still wait for Ignis");
+    expect((body.match(/Beyond the Brave/g) ?? []).length).toBe(1);
+  });
+  it("uses product tcg_date, including today UTC, and ignores future, unknown and invalid dates", async () => {
+    const fetchMetadata = vi.fn(async (url: string | URL | Request) => String(url).includes("cardsets.php") ? Response.json([
+      { set_code: "TODAY", set_name: "Today set", tcg_date: "2026-10-10" },
+      { set_code: "FUTURE", set_name: "Future set", tcg_date: "2026-10-11" },
+      { set_code: "UNKNOWN", set_name: "Unknown date" },
+      { set_code: "INVALID", set_name: "Invalid date", tcg_date: "2026-02-30" },
+    ]) : Response.json({ data: [{ id: 2, misc_info: [{ tcg_date: "2025-01-01" }] }] }));
+    const next = { ...empty, prerelease: ["today", "future", "unknown", "invalid"].map((set, i) => card(i + 1, set, `prerelease-${set}.cdb`)) };
+    const body = cardReport.renderReleasedSets(await cardUpdate(empty, next, fetchMetadata, "2026-10-10"));
+    expect(body).toContain("Today set (TODAY)");
+    expect(body).not.toContain("Future set");
+    expect(body).not.toContain("Unknown date");
+    expect(body).not.toContain("Invalid date");
+  });
+  it("finds products for generic previews by explicit beta IDs and printing codes", async () => {
+    const fetchMetadata = vi.fn(async (url: string | URL | Request) => String(url).includes("cardsets.php")
+      ? Response.json([{ set_code: "BETB", set_name: "Beyond the Brave", tcg_date: "2026-10-08" }])
+      : Response.json({ data: [{ id: 12, card_sets: [{ set_code: "BETB-EN090", set_name: "Beyond the Brave" }], misc_info: [{ beta_id: 101402090 }] }] }));
+    const next = { ...empty, prerelease: [card(101402090, "Preview", "prerelease-others.cdb")] };
+    expect(cardReport.renderReleasedSets(await cardUpdate(empty, next, fetchMetadata, "2026-10-10"))).toContain("Beyond the Brave (BETB)");
+  });
+  it("omits previews whose identity or passcode is also in released rows", async () => {
+    const next = { ...empty, released: [card(1, "Same name"), card(2, "Same code")], prerelease: [
+      card(100000001, " SAME NAME ", "prerelease-betb-en.cdb"), card(2, "Same code", "prerelease-betb.cdb"),
+    ] };
+    expect(cardReport.renderReleasedSets(await cardUpdate(empty, next, request(), "2026-10-10"))).toContain("No released TCG sets");
+  });
+  it("reports released-set metadata independently of an unavailable previous snapshot", async () => {
+    const next = { ...empty, prerelease: [card(101402090, "Preview", "prerelease-betb-en.cdb")] };
+    const changes = await cardUpdate(null, next, request(), "2026-10-10");
+    expect(renderCardUpdate(changes)).toContain("could not be determined");
+    expect(cardReport.renderReleasedSets(changes)).toContain("Beyond the Brave (BETB)");
+  });
+  it("labels a failed set lookup as unavailable, while a valid empty result says none", async () => {
+    const next = { ...empty, prerelease: [card(101402090, "Preview", "prerelease-betb-en.cdb")] };
+    const failed = vi.fn(async () => new Response("offline", { status: 503 }));
+    const unavailable = cardReport.renderReleasedSets(await cardUpdate(empty, next, failed, "2026-10-10"));
+    expect(unavailable).toContain("Released-set metadata unavailable");
+    expect(unavailable).not.toContain("No released TCG sets");
+    const blank = vi.fn(async (url: string | URL | Request) => Response.json(String(url).includes("cardsets.php") ? [] : { data: [] }));
+    expect(cardReport.renderReleasedSets(await cardUpdate(empty, next, blank, "2026-10-10"))).toContain("No released TCG sets");
+  });
+  it("escapes upstream set names and keeps the note in a bounded PR body", async () => {
+    const fetchMetadata = vi.fn(async (url: string | URL | Request) => Response.json(String(url).includes("cardsets.php")
+      ? [{ set_code: "BETB", set_name: "Set <tag> @everyone | #123", tcg_date: "2026-10-08" }] : { data: [] }));
+    const next = { ...empty, prerelease: [card(101402090, "Preview", "prerelease-betb-en.cdb")] };
+    const note = cardReport.renderReleasedSets(await cardUpdate(empty, next, fetchMetadata, "2026-10-10"));
+    expect(note).not.toContain("<tag>"); expect(note).not.toContain("@everyone"); expect(note).not.toContain("#123");
+    const body = boundedReport("Needs review: 0\n" + "data\n".repeat(20000) + "\n" + note, run, 60000);
+    expect(body).toContain("Released TCG sets still in pre-release CDBs");
+    expect(body).toContain("BETB");
+    expect(Buffer.byteLength(body)).toBeLessThanOrEqual(60000);
+  });
+});
 
 describe("weekly card additions", () => {
   it("uses HTML entities without Markdown backslashes inside summary labels", async () => {
