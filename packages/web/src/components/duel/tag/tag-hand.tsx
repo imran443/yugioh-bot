@@ -91,7 +91,7 @@ export function OwnHand({ seat, cards, legalKeys, selectedKeys, onActivate, onIn
  * carry `data-side="you"`: the e2e helpers read `[data-hand-seat][data-side='you']` (board.ts) and `data-side="you"`
  * zones as the viewer's own, so the partner hand must not match them. It keeps `data-hand-seat` for the FX hooks.
  */
-export function PartnerHand({ seat, cards, legalKeys, onInspect, onHoverCard, partnerName }: Omit<HandProps, "selectedKeys" | "onActivate" | "reducedMotion"> & { partnerName: string }) {
+export function PartnerHand({ seat, cards, legalKeys, onInspect, onHoverCard, partnerName, teamOnly = true }: Omit<HandProps, "selectedKeys" | "onActivate" | "reducedMotion"> & { partnerName: string; teamOnly?: boolean }) {
   return (
     <div
       className={`${styles.hud} ${styles.phand}`}
@@ -108,7 +108,7 @@ export function PartnerHand({ seat, cards, legalKeys, onInspect, onHoverCard, pa
           <circle cx="12" cy="12" r="3" />
         </svg>
         <span data-partner-caption>
-          <b>{partnerName}</b>&rsquo;s hand &middot; only your team sees it
+          <b>{partnerName}</b>&rsquo;s hand{teamOnly ? " \u00b7 only your team sees it" : ""}
         </span>
       </div>
       <div className={styles.prow}>

@@ -344,7 +344,7 @@ function TagShellBody(props: TagShellRootProps & { preferences: DuelPreferences 
       tray={tray}
       leftClassName={styles.left}
       mastersClassName={styles.masters}
-      hud={hud ? { state: hudState, hover: ui.hover, rowCard: rowPreview.card, trayVisible: promptTrayVisible(prompt, viewerSeat, !terminal && !viewerOut, centered), menuCard: ui.menu?.card ?? null, camera: cameraDock } : undefined}
+      hud={hud ? { state: hudState, hover: ui.hover, rowCard: rowPreview.card, trayVisible: !replay && promptTrayVisible(prompt, viewerSeat, !terminal && !viewerOut, centered), menuCard: ui.menu?.card ?? null, camera: cameraDock } : undefined}
     />
   );
 
@@ -399,6 +399,7 @@ function TagShellBody(props: TagShellRootProps & { preferences: DuelPreferences 
             <MoveSourceBoundary events={engine.events} duelKey={session.slug} root={boardRef}>
               <TagStage
                 inspectIdleCards={hud}
+                replay={replay != null}
                 aimSeats={flow.aimSeats}
                 controller={controller}
                 layout={layout}
@@ -414,7 +415,7 @@ function TagShellBody(props: TagShellRootProps & { preferences: DuelPreferences 
                     battleStep={battleStep}
                     turn={engine.turn}
                     turnSeat={engine.turnSeat}
-                    mySeat={viewerSeat}
+                    mySeat={replay ? null : viewerSeat}
                     playerName={nameOf}
                     tone={engine.turnSeat != null ? toneOf(engine.turnSeat) : null}
                     actionOptions={promptMine ? actionOptions : []}
@@ -501,13 +502,15 @@ function TagShellBody(props: TagShellRootProps & { preferences: DuelPreferences 
       {hud ? (
         <div className={`${hudStyles.bottom} ${styles.tagBottom}`} data-testid="hud-bottom" data-tag-track>
           {replay ? <div className={styles.replayCorner} data-testid="replay-transport">{replay.transport}</div> : null}
-          <StationTrack
-            {...trackProps}
-            phases="hub"
-            clock={null}
-            attackLock={attackLockAt("tag", engine.seats.length || 4, engine.turn, prompt)}
-            attackLockTestId="tag-attack-lock"
-          />
+          {replay ? null : (
+            <StationTrack
+              {...trackProps}
+              phases="hub"
+              clock={null}
+              attackLock={attackLockAt("tag", engine.seats.length || 4, engine.turn, prompt)}
+              attackLockTestId="tag-attack-lock"
+            />
+          )}
         </div>
       ) : (
         <>
@@ -518,7 +521,7 @@ function TagShellBody(props: TagShellRootProps & { preferences: DuelPreferences 
             prompt={prompt}
             toneOf={toneOf}
           >
-            <StationTrack {...trackProps} clock={null} />
+            {replay ? null : <StationTrack {...trackProps} clock={null} />}
           </TagTrack>
         </>
       )}
