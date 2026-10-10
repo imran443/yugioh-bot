@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { migrate } from "../../src/db/schema.js";
-import { type DuelFormat, type ReplaySource, seatCountFor } from "../../src/duels/index.js";
+import { type DuelEngineView, type DuelFormat, type ReplaySource, seatCountFor } from "../../src/duels/index.js";
 import { createDuelService } from "../../src/services/duels.js";
 import { createDuelSeriesService, createSeriesStore } from "../../src/services/duel-series.js";
 import { createReplayForkService, hashReplayForkPrefix } from "../../src/services/replay-forks.js";
@@ -55,7 +55,11 @@ function attachBadSeries(app: ReturnType<typeof fixture>) {
 describe("replay fork real-play isolation", () => {
   it.each(["1v1", "tag", "ffa3", "ffa4"] as const)("keeps %s results local and preserves real-play data", format => {
     const app = fixture(format), before = protectedRows(app.db), source = sourceRows(app);
-    const result = app.duels.complete(app.fork.slug, app.guildId, 0, "Engine result");
+    const board: DuelEngineView = { revision: 7, turn: 2, turnSeat: 0, phase: "main1", seats: app.fork.seats.map(({ seat }) => ({
+      seat, lp: 8000, hand: [], deckCount: 3, extraCount: 0, extra: [], monsters: [], spells: [], graveyard: [], banished: [],
+    })), prompt: null, prioritySeat: null, chain: [], events: [], log: [], result: null };
+    const result = app.duels.complete(app.fork.slug, app.guildId, 0, "Engine result", { public: board, seats: app.fork.seats.map(() => board) });
+    expect(app.duels.room(app.fork.slug, app.guildId, app.owner.playerId).engine).toMatchObject({ revision: 7, result: { winnerSeat: 0, reason: "Engine result" } });
     expect(result).toMatchObject({ status: "completed", winnerSeat: 0, winnerPlayerId: null, seriesId: null });
     expect(app.duels.complete(app.fork.slug, app.guildId, 1, "Retry")).toEqual(result);
     expect(app.duels.interrupt(app.fork.slug, app.guildId, "Retry")).toEqual(result);
@@ -180,6 +184,15 @@ describe("replay fork real-play isolation", () => {
     expect(() => app.duels.setClock(slug, guild, { remainingMs: [1000, 1000], activeSeat: 0, startedAt: 0, turn: 1 })).toThrow(/fork/i);
     expect(() => app.duels.recordCommand(slug, guild, 0, { promptId: "p1", revision: 1, answer: {} }, { remainingMs: [1000, 1000], activeSeat: 0, startedAt: 0, turn: 1 })).toThrow(/fork/i);
     expect(sourceRows(app)).toEqual(before);
+  });
+
+  it("archives only the fork's own data", () => {
+    const app = fixture(), before = protectedRows(app.db), source = sourceRows(app);
+    app.duels.interrupt(app.fork.slug, app.guildId, "Stopped");
+    app.db.prepare("update duels set archived_at = null, ended_at = '2000-01-01' where id = ?").run(app.fork.id);
+    expect(app.duels.archiveDue(10, 1).map(session => session.id)).toEqual([app.fork.id]);
+    expect(app.duels.archive(app.fork.slug, app.guildId, app.owner.playerId).archivedAt).toBeTruthy();
+    expect(protectedRows(app.db)).toEqual(before); expect(sourceRows(app)).toEqual(source);
   });
 
   it("still records ordinary ranked play results", () => {

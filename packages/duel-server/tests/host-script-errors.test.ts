@@ -29,6 +29,16 @@ async function request(host: DuelHost, body: Record<string, unknown>, expectedSt
   return data;
 }
 
+// This fixture callback fails twice in one engine command. The worker keeps
+// distinct ordinals; recovery and retry must not count either occurrence again.
+function expectRuntimeOccurrences(db: Database.Database, duelId: number) {
+  const rows = db.prepare("select command_hash, error_index from card_script_error_occurrences where duel_id = ? and code = 3743515 order by error_index").all(duelId);
+  expect(rows).toHaveLength(2);
+  const [first] = rows as Array<{ command_hash: string; error_index: number }>;
+  expect(first!.command_hash).toMatch(/^[a-f0-9]{64}$/);
+  expect(rows).toEqual([1, 2].map(error_index => ({ command_hash: first!.command_hash, error_index })));
+}
+
 describeWithCores("script errors through host, worker and journal", [needs.standard(DATA), needs.domain(DATA), needs.installedMulti(DATA)], () => {
   it.each(["legacy", "pinned"] as const)("%s: logs fatal Lua diagnostics only on the host and never counts them", async (engine) => {
     const db = new Database(":memory:"); migrate(db);
@@ -102,7 +112,7 @@ describeWithCores("script errors through host, worker and journal", [needs.stand
     ["legacy", "1v1", "normal"], ["legacy", "1v1", "domain"],
     ["pinned", "1v1", "normal"], ["pinned", "1v1", "domain"],
     ["pinned", "ffa4", "normal"], ["pinned", "ffa4", "domain"],
-  ] as const)("%s %s %s: accepts/journals the answer, counts once and recovers identically", async (engine, format: DuelFormat, mode: DuelMode) => {
+  ] as const)("%s %s %s: accepts/journals the answer, deduplicates engine occurrence ordinals and recovers identically", async (engine, format: DuelFormat, mode: DuelMode) => {
     const db = new Database(":memory:");
     migrate(db);
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -113,9 +123,9 @@ describeWithCores("script errors through host, worker and journal", [needs.stand
     players.slice(1).forEach((player) => duels.takeSeat(session.slug, "g", player));
     players.forEach((player, seat) => duels.setDeck(session.slug, "g", player, options.decks[seat]!));
     const version = JSON.parse(readFileSync(`${DATA}/manifest.json`, "utf8")).bundleVersion;
-    duels.activate(session.slug, "g", players[0]!, options.seed, pinnedEngineVersion(version, players.length, format === "1v1" ? null : activeMultiScriptsHash(DATA)), null, {
+    duels.activateRecorded(session.slug, "g", players[0]!, options.seed, pinnedEngineVersion(version, players.length, format === "1v1" ? null : activeMultiScriptsHash(DATA)), null, {
       engine, scriptErrorMode: "tolerant", firstTurnDraw: false, startupScripts: options.startupScripts!.map((script) => script.content),
-    });
+    }, getCurrentEngineResources(DATA, { mode, format, engine }).identity);
     const makeHost = () => { const host = createDuelHost({ db, dataDirectory: DATA, secret: SECRET, searchCards: () => [], pollIntervalMs: 60_000 }); hosts.push(host); return host; };
     let host = makeHost();
     const base = { slug: session.slug, guildId: "g" };
@@ -131,27 +141,28 @@ describeWithCores("script errors through host, worker and journal", [needs.stand
         await request(host, { ...base, op: "respond", playerId: players[seat], command: { promptId: view.prompt!.id, revision: view.revision, answer: attackAnswer(view.prompt!) } });
       }
       const live = await views();
+      expectRuntimeOccurrences(db, session.id);
       expect(live[0]!.events.some((event) => event.kind === "script-error")).toBe(true);
       expect(live[0]!.result).toBeNull();
       expect(duels.privateState(session.slug, "g").commands.length).toBeGreaterThan(0);
-      expect(topScriptErrors(db)).toEqual([expect.objectContaining({ code: 3743515, count: 1, last_duel_id: session.id })]);
+      expect(topScriptErrors(db)).toEqual([expect.objectContaining({ code: 3743515, count: 2, last_duel_id: session.id })]);
       expect(log).toHaveBeenCalledWith(expect.stringContaining('"event":"card_script_error"'));
       // Server setting changes affect new duels; a recovery keeps the saved policy.
       await host.close(); hosts.splice(hosts.indexOf(host), 1);
       vi.stubEnv("DUEL_SCRIPT_ERRORS", "strict");
       host = makeHost();
       expect(await views()).toEqual(live);
-      expect(topScriptErrors(db)[0]?.count).toBe(1);
+      expect(topScriptErrors(db)[0]?.count).toBe(2);
       duels.complete(session.slug, "g", 0, "Test replay completion");
       const replay = await request(host, { ...base, op: "replay", playerId: players[0] });
       expect(JSON.stringify(replay)).toContain("Card script error:");
-      expect(topScriptErrors(db)[0]?.count).toBe(1);
-      expect(log.mock.calls.filter(([line]) => typeof line === "string" && line.includes('"event":"card_script_error"'))).toHaveLength(1);
+      expect(topScriptErrors(db)[0]?.count).toBe(2);
+      expect(log.mock.calls.filter(([line]) => typeof line === "string" && line.includes('"event":"card_script_error"'))).toHaveLength(2);
     } finally {
       await host.close(); hosts.splice(hosts.indexOf(host), 1); db.close();
     }
   }, 30_000);
-  it("discards a strict failed worker, restores the journal and counts a retried occurrence once", async () => {
+  it("discards a strict failed worker and deduplicates engine occurrence ordinals on retry", async () => {
     const db = new Database(":memory:");
     migrate(db);
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -181,13 +192,15 @@ describeWithCores("script errors through host, worker and journal", [needs.stand
         await request(host, body, triggering ? 400 : 200);
         if (!triggering) continue;
         expect(await views()).toEqual(before);
+        expectRuntimeOccurrences(db, session.id);
         expect(duels.privateState(session.slug, "g").commands).toHaveLength(commandsBefore);
-        expect(topScriptErrors(db)[0]?.count).toBe(1);
+        expect(topScriptErrors(db)[0]?.count).toBe(2);
         const retry = await request(host, body, 400);
         expect(JSON.stringify(retry)).toContain("Card script error (strict mode)");
         expect(JSON.stringify(retry)).not.toContain("3743515");
         expect(await views()).toEqual(before);
-        expect(topScriptErrors(db)[0]?.count).toBe(1);
+        expectRuntimeOccurrences(db, session.id);
+        expect(topScriptErrors(db)[0]?.count).toBe(2);
         return;
       }
       throw new Error("Synthetic card condition did not fail");
