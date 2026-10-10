@@ -35,3 +35,16 @@ it("returns 503 when the session can't be read", async () => {
   auth.mockRejectedValue(new Error("down"));
   expect((await get()).status).toBe(503);
 });
+
+it("rejects owner IDs outside the safe integer range", async () => {
+  vi.stubEnv("OWNER_USER_IDS", "7,9007199254740992,999999999999999999999999999999");
+  const { ownerUserIds, isOwnerUser } = await import("../src/lib/owner-access");
+  expect(ownerUserIds()).toEqual(new Set([7]));
+  expect(isOwnerUser(9007199254740992)).toBe(false);
+});
+
+it("uses the current owner list without a module reload", async () => {
+  expect(await (await get()).json()).toEqual({ admin: true });
+  vi.stubEnv("OWNER_USER_IDS", "3");
+  expect(await (await get()).json()).toEqual({ admin: false });
+});

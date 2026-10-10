@@ -116,7 +116,7 @@ describe("callDuelHost error messages", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "restarting" }, { status: 503 })));
     const host = await loadHost();
     vi.spyOn(host, "requireDuelActor").mockResolvedValue({
-      ok: true, guildId: call.guildId, playerId: call.playerId,
+      ok: true, guildId: call.guildId, playerId: call.playerId, userId: 7,
       duels: { room: () => ({ session: { status: "active" } }) } as never,
     });
     const context = { params: Promise.resolve({ slug: call.slug }) };
@@ -142,6 +142,16 @@ describe("callDuelHost error messages", () => {
     expect(JSON.parse(request.body as string)).toMatchObject({ op: "view", spectate: true });
     await callDuelHost({ ...call, op: "view" });
     expect(JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string)).not.toHaveProperty("spectate");
+  });
+
+  it("carries the application user ID for the host mapping check", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { callDuelHost } = await loadHost();
+    await callDuelHost({ ...call, userId: 7 });
+    const payload = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string);
+    expect(payload).toMatchObject({ guildId: call.guildId, playerId: call.playerId, userId: 7 });
+    expect(payload).not.toHaveProperty("isOwner");
   });
 });
 

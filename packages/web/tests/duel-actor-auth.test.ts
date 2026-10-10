@@ -10,7 +10,7 @@ vi.mock("@/lib/session-identity", async () => {
 });
 vi.mock("@/lib/db", () => ({ getDb: () => state.db! }));
 
-const discordUserId = "196382527131222016";
+const discordUserId = "900000000000000007";
 let userId: number;
 
 beforeEach(() => {
@@ -40,6 +40,7 @@ describe("requireDuelActor signed-in access", () => {
     expect(actor.ok).toBe(true);
     if (!actor.ok) throw new Error("expected signed-in actor");
     expect(actor.guildId).toBe("guild-1");
+    expect(actor.userId).toBe(userId);
     expect(actor.playerId).toBe(62);
     expect(actor.playerId).not.toBe(userId);
     expect(state.db!.prepare("select user_id,discord_user_id from players where id=?").get(actor.playerId))

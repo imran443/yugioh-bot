@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./access/owner-access": {
+      "types": "./dist/access/owner-access.d.ts",
+      "source": "./src/access/owner-access.ts",
+      "default": "./dist/access/owner-access.js"
+    },
     "./duels": {
       "types": "./dist/duels/index.d.ts",
       "source": "./src/duels/index.ts",
