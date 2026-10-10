@@ -81,4 +81,12 @@ describe("trusted player to user mapping", () => {
     vi.stubEnv("OWNER_USER_IDS", "101");
     expect(resolveOwnerPlayer(db, { guildId: actor.guildId, playerId: 62 })).toBeNull();
   });
+
+  it("reports unavailable access when the identity database cannot be read", () => {
+    const closed = new Database(":memory:");
+    closed.close();
+    expect(() => resolveOwnerPlayer(closed, actor)).toThrowError(expect.objectContaining({
+      status: 503, code: "ACCESS_UNAVAILABLE", message: "Replay access is unavailable",
+    }));
+  });
 });

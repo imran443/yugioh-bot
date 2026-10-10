@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ReplayAccessError } from "@yugidraft/shared/access/owner-access";
 import { httpTransport } from "@yugidraft/shared/notify";
 import {
   createDuelService,
@@ -43,6 +44,11 @@ export async function requireDuelActor(): Promise<DuelActor> {
 }
 
 export function duelErrorResponse(error: unknown) {
+  if (error instanceof ReplayAccessError) {
+    return NextResponse.json({ error: error.message, code: error.code }, {
+      status: error.status, headers: { "cache-control": "private, no-store" },
+    });
+  }
   if (
     error instanceof DuelServiceError ||
     error instanceof TournamentDuelError ||
