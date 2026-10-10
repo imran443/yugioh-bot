@@ -84,6 +84,8 @@ async function loadedDataFixture(change: string) {
   }
   const request = vi.fn(async (input: string | URL | Request) => {
     const url = String(input), candidate = Object.values(nextPins).some(sha => url.includes(sha));
+    if (url.includes("/commits?")) return Response.json([{ sha: url.includes("CardScripts") ? oldPins.scripts
+      : url.includes("BabelCDB") ? oldPins.database : oldPins.strings }]);
     if (url.includes("/compare/")) return Response.json({ ahead_by: 1, behind_by: 0, status: "ahead" });
     if (url.includes("/git/trees/")) return Response.json({ truncated: false, tree: url.includes("BabelCDB")
       ? [...inputs[candidate ? 1 : 0]!.keys()].map(path => ({ path, type: "blob", sha: path }))
@@ -103,6 +105,24 @@ async function loadedDataFixture(change: string) {
 }
 
 describe("engine data update", () => {
+  it.each([false, true])("includes released upstream previews in the job summary when pins moved=%s", async moved => {
+    const { root, request } = await loadedDataFixture("pending-set");
+    const result = await runUpdate({ root, overrides: moved ? nextPins : oldPins, request, validate: false, report: ".status/report.md" });
+    expect(result.changed).toBe(false);
+    expect(result.files).toEqual([]);
+    expect(await readPins(root)).toEqual(oldPins);
+    expect(request.mock.calls.some(([url]) => String(url).includes("codeload"))).toBe(false);
+    await writeFile(join(dirname(result.reportPath), "update.json"), JSON.stringify(result));
+    const summary = join(root, "summary.md");
+    execFileSync(process.execPath, ["--import", "tsx", resolve(import.meta.dirname, "../scripts/validate-engine-data.ts")], {
+      cwd: process.cwd(), env: { ...process.env, UPDATE_ARTIFACT_DIR: dirname(result.reportPath),
+        DUEL_DATA_DIR: join(root, "absent-bundle"), GITHUB_STEP_SUMMARY: summary,
+        GITHUB_REPOSITORY: "test/repo", GITHUB_RUN_ID: "1" },
+    });
+    expect(await readFile(summary, "utf8")).toContain("Beyond the Brave (BETB)");
+    expect(await readFile(summary, "utf8")).toContain("TCG release: 2026-10-08; 1 cards");
+  });
+
   it.each(["invalid-override", "cyclic"])("opens the gate when old remap validation fails (%s)", async failure => {
     const { root, request } = await loadedDataFixture(failure === "invalid-override" ? "graduation" : "identical");
     if (failure === "invalid-override") {
@@ -295,25 +315,21 @@ describe("engine data update", () => {
     expect(findNewRisks(scripts, ["official/c999999991.lua"], new Set([999999991]))).toEqual([]);
   });
 
-  it("returns no update with mocked API heads, without downloading data or modifying pins", async () => {
-    const { root } = await fixture();
-    const request = vi.fn(async (url: string | URL | Request) => {
-      const key = String(url).includes("CardScripts") ? "scripts" : String(url).includes("BabelCDB") ? "database" : "strings";
-      return new Response(JSON.stringify([{ sha: oldPins[key] }]));
-    });
+  it("returns no update with mocked API heads and reports current data without modifying pins", async () => {
+    const { root, request } = await loadedDataFixture("identical");
     const result = await runUpdate({ root, report: ".status/report.md", request });
     expect(result.changed).toBe(false);
-    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls.filter(([url]) => String(url).includes("/commits?"))).toHaveLength(3);
+    expect(request.mock.calls.some(([url]) => String(url).includes("codeload"))).toBe(false);
     expect(await readPins(root)).toEqual(oldPins);
     expect(await readFile(join(root, ".status/report.md"), "utf8")).toContain("no update");
     expect(await readFile(join(root, ".status/report.md"), "utf8")).toContain("prod error data unavailable");
   });
 
-  it("accepts unchanged overrides offline and rejects malformed SHAs before any requests", async () => {
-    const { root } = await fixture();
-    const request = vi.fn(() => { throw new Error("network forbidden"); });
+  it("accepts unchanged overrides and rejects malformed SHAs before any requests", async () => {
+    const { root, request } = await loadedDataFixture("identical");
     expect((await runUpdate({ root, overrides: oldPins, request })).changed).toBe(false);
-    expect(request).not.toHaveBeenCalled();
+    request.mockClear();
     await expect(runUpdate({ root, overrides: { scripts: "main; echo nope" }, request })).rejects.toThrow(/40.*hex/i);
     expect(request).not.toHaveBeenCalled();
   });

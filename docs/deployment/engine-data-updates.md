@@ -81,7 +81,8 @@ golden-hash review and publication protections still apply. Irrelevant changes d
 not change `bundleVersion`; every published data bump still has the deployment and
 replay effects described below.
 
-The PR also includes **Released TCG sets still in pre-release CDBs**. It joins
+The PR and job summary also include **Released TCG sets still in pre-release CDBs**,
+including when the relevance gate skips or no pin moved. The note joins
 candidate preview source filenames (including `-en` variants) to the YGOPRODeck
 [`cardsets.php` set index](https://ygoprodeck.com/api-guide/#all-card-sets) and lists
 sets whose valid `tcg_date` is on or before today in UTC. Generic previews can use

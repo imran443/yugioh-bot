@@ -147,13 +147,19 @@ export async function runUpdate(options: Options = {}) {
     // Final validation replaces this optional section using the exact prepared candidate bundle.
     await writeFile(reportPath, report.join("\n") + "\n\n" + prodScriptErrorReport(null));
   }
+  const preparation = await readFile(join(root, preparePath), "utf8");
+  const historyStart = /prereleaseHistoryStart:\s*"([a-f0-9]{12,40})"/.exec(preparation)?.[1];
   if (!changed) {
-    const empty = { released: [], prerelease: [], remaps: {} };
-    report.push(renderCardUpdate(await cardUpdate(empty, empty)), "");
-    report.push("no update: all three data pins already match the requested commits.");
-    await saveReport();
-    console.log("no update");
-    return { changed, next, reportPath, files: [] as string[], changedPaths: [] as string[] };
+    const temporary = await mkdtemp(join(tmpdir(), "engine-data-status-"));
+    try {
+      const database = await downloadReleasedCardData(next.database, temporary, download, { historyStart });
+      const cardChanges = await cardUpdate(database, database, request);
+      report.push(renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
+      report.push("no update: all three data pins already match the requested commits.");
+      await saveReport();
+      console.log("no update");
+      return { changed, next, reportPath, files: [] as string[], changedPaths: [] as string[], cardChanges };
+    } finally { await rm(temporary, { recursive: true, force: true }); }
   }
   report.push("## Upstream commits", "", "| Repository | Old → new | Commits ahead |", "| --- | --- | --- |");
   for (const key of keys) {
@@ -172,8 +178,6 @@ export async function runUpdate(options: Options = {}) {
       return new Map(tree.tree.filter((entry) => entry.type === "blob").map((entry) => [entry.path, entry.sha]));
     };
     const [oldTree, newTree] = await Promise.all([treeAt(old.scripts), treeAt(next.scripts)]);
-    const preparation = await readFile(join(root, preparePath), "utf8");
-    const historyStart = /prereleaseHistoryStart:\s*"([a-f0-9]{12,40})"/.exec(preparation)?.[1];
     let oldDataError: string | undefined;
     const [database, oldDatabase] = await Promise.all([
       downloadReleasedCardData(next.database, temporary, download, { historyStart }),
@@ -191,13 +195,14 @@ export async function runUpdate(options: Options = {}) {
     const relevance = compareLoadedData({ cards: oldDatabase ? readCardRows(oldDatabase.path) : null, scripts: previousScripts,
       strings: sha256(oldStrings), remaps: oldDatabase?.remaps ?? null },
       { cards: readCardRows(database.path), scripts: candidateScripts, strings: sha256(nextStrings), remaps: database.remaps });
+    let cardChanges = await cardUpdate(oldDatabase, database, request);
     if (!relevance.relevant) {
-      report.splice(report.indexOf("## Upstream commits"), 0, renderRelevantChanges(relevance, []), "");
+      report.splice(report.indexOf("## Upstream commits"), 0, renderRelevantChanges(relevance, []), "",
+        renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
       await saveReport();
       console.log("no update: upstream changes do not affect loaded engine data");
       return { changed: false, next, reportPath, files: [] as string[], changedPaths: [] as string[], relevance };
     }
-    let cardChanges = await cardUpdate(oldDatabase, database, request);
     report.splice(report.indexOf("## Upstream commits"), 0,
       renderRelevantChanges(relevance, cardChanges.added.flatMap(group => group.code ? [group.code] : [])), "",
       renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
