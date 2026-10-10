@@ -1,29 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import useSWR from "swr";
 import { ChevronLeft, ChevronRight, Pause, Play, PlayCircle, SkipBack, SkipForward } from "lucide-react";
-import { isCustomDomain, type DuelCard } from "@yugidraft/shared/duels";
+import { isCustomDomain, seatCountFor, type DuelCard, type DuelMasterRule, type ReplayVisibility } from "@yugidraft/shared/duels";
 import { Sheet } from "@/components/ui/sheet";
-import { duelReplayKey, getDuelReplay } from "./api";
 import { CardHoverInfo } from "./card-interactions";
 import { phaseLabel } from "./constants";
 import { DeckMasterRail, DuelField } from "./field";
 import { CoinTossFx } from "./coin-toss-fx";
-import { useCoinPlaying, useHeldTossLogIds, withoutHeldTossLines } from "./coin-toss-lock";
+import { useHeldTossLogIds, withoutHeldTossLines } from "./coin-toss-lock";
 import { DuelFeedback } from "./feedback";
 import { MoveSourceBoundary } from "./fx-boundary";
 import { CardInspector, cardScrollerProps, type InspectTarget } from "./inspector";
 import { DuelLogLine, useLogCategories } from "./log-line";
 import { useDuelPreferences } from "./preferences";
+import {
+  SPEEDS,
+  createReadOnlyTableController,
+  frameCaption,
+  replayFailure,
+  replayResultHeadline,
+  replayRoom,
+  resolveFocusSeat,
+  useReplayController,
+  useReplayData,
+} from "./replay-controller";
 import { buildReplayTimeline, type ReplayLogEntry } from "./replay-timeline";
+import { formatLabel } from "./table-format";
+import type { TableController } from "./table/types";
 import styles from "./room.module.css";
 import replayStyles from "./replay.module.css";
 import { duelFontClasses } from "./fonts";
 
-const BASE_STEP_MS = 1400;
-const SPEEDS = [0.5, 1, 2, 4] as const;
+export { useReplayAutoplay } from "./replay-controller";
+
 const PHASES = [
   { label: "DP", name: "Draw" },
   { label: "SP", name: "Standby" },
@@ -32,7 +43,6 @@ const PHASES = [
   { label: "M2", name: "Main 2" },
   { label: "EP", name: "End" },
 ];
-const EMPTY_KEYS: Set<string> = new Set();
 const noActions = () => [];
 const noop = () => undefined;
 
@@ -64,120 +74,97 @@ export function LogList({ entries: allEntries, freshIds, reducedMotion, playerNa
 }
 
 /**
- * Autoplay: steps to the next frame every BASE_STEP_MS / speed and stops at the last one. A coin toss in
- * the replay plays on its own clock, so autoplay waits until it is gone and then steps on.
+ * The board of a replay frame. The two-seat field draws the camera seat at the bottom and one opposite seat on
+ * top; the table layouts for Tag and free-for-all plug in here and read the same read-only `table` controller.
  */
-export function useReplayAutoplay({ playing, index, last, speed, setIndex, setPlaying }: {
-  playing: boolean;
-  index: number;
-  last: number;
-  speed: number;
-  setIndex: (update: (value: number) => number) => void;
-  setPlaying: (playing: boolean) => void;
-}): void {
-  const coinPlaying = useCoinPlaying();
-  useEffect(() => {
-    if (!playing) return;
-    if (index >= last) {
-      setPlaying(false);
-      return;
-    }
-    if (coinPlaying) return;
-    const timer = window.setTimeout(() => setIndex((value) => Math.min(value + 1, last)), BASE_STEP_MS / speed);
-    return () => window.clearTimeout(timer);
-  }, [playing, index, speed, last, coinPlaying, setIndex, setPlaying]);
+function ReplayBoard({ table, masterRule, camera, focusSeat, mySeat, playerName }: {
+  table: TableController;
+  masterRule: DuelMasterRule;
+  camera: number;
+  focusSeat: number;
+  mySeat: number | null;
+  playerName: (seat: number) => string;
+}) {
+  // The cards a seat shows were fixed by the server; the camera only decides which seat is drawn at the bottom.
+  const ownCamera = mySeat != null && camera === mySeat;
+  return (
+    <DuelField engine={table.engine} mySeat={ownCamera ? mySeat : null} bottomSeat={camera} topSeat={focusSeat}
+      masterRule={masterRule} reducedMotion={table.reducedMotion}
+      legalKeys={table.legalKeys} selectedKeys={table.selectedKeys} onActivate={table.onActivate}
+      onHoverCard={table.onHoverCard} onInspect={table.onInspect}
+      bottomName={playerName(camera)} topName={playerName(focusSeat)} />
+  );
 }
 
 export function DuelReplayView({ slug }: { slug: string }) {
-  const { data, error, isLoading } = useSWR(slug ? duelReplayKey(slug) : null, () => getDuelReplay(slug), {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    refreshInterval: 0,
-    shouldRetryOnError: false,
-  });
+  const [visibility, setVisibility] = useState<ReplayVisibility>("mine");
+  const [notice, setNotice] = useState<string | null>(null);
+  const { model, settled, error } = useReplayData(slug, visibility);
   const preferences = useDuelPreferences();
-  const [index, setIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState<number>(1);
-  const [epoch, setEpoch] = useState(0);
+  const [focusChoice, setFocusChoice] = useState<number | null>(null);
   const [inspect, setInspect] = useState<InspectTarget | null>(null);
   const [pane, setPane] = useState<"card" | "log">("card");
   const [mobileInspect, setMobileInspect] = useState(false);
   const [hover, setHover] = useState<{ card: DuelCard; anchor: HTMLElement } | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
-  const timeline = useMemo(() => (data ? buildReplayTimeline(data.frames) : null), [data]);
-  const last = Math.max((timeline?.length ?? 1) - 1, 0);
-  const indexRef = useRef(index);
-  indexRef.current = index;
+  const frames = model?.frames ?? null;
+  const seatCount = model ? seatCountFor(model.session.format) : 2;
+  const controller = useReplayController({ slug, frames, seatCount, mySeat: model?.mySeat ?? null });
+  const { index, last, playing, speed, epoch, camera } = controller;
+  const timeline = useMemo(() => (frames ? buildReplayTimeline(frames) : null), [frames]);
 
   useEffect(() => {
-    setIndex(0);
-    setPlaying(false);
-    setEpoch((value) => value + 1);
+    setVisibility("mine");
+    setNotice(null);
+    setFocusChoice(null);
     setInspect(null);
     setHover(null);
   }, [slug]);
 
-  const seek = useCallback((target: number) => {
-    setIndex(Math.min(Math.max(target, 0), last));
-    setEpoch((value) => value + 1);
-  }, [last]);
-  const stepForward = useCallback(() => setIndex((value) => Math.min(value + 1, last)), [last]);
-  const togglePlay = useCallback(() => {
-    if (playing) {
-      setPlaying(false);
-      return;
-    }
-    if (indexRef.current >= last) seek(0);
-    setPlaying(true);
-  }, [playing, last, seek]);
-
-  useReplayAutoplay({ playing, index, last, speed, setIndex, setPlaying });
-
+  // A failed switch of card visibility keeps what is on screen and says why.
   useEffect(() => {
-    if (!timeline) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      if (target?.closest("[role='dialog']")) return;
-      if (event.key === " " || event.key === "Spacebar") {
-        if (tag === "BUTTON" || tag === "A") return;
-        event.preventDefault();
-        togglePlay();
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        stepForward();
-      } else if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        seek(indexRef.current - 1);
-      } else if (event.key === "Home") {
-        event.preventDefault();
-        seek(0);
-      } else if (event.key === "End") {
-        event.preventDefault();
-        seek(last);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [timeline, togglePlay, stepForward, seek, last]);
+    if (!error || !model) return;
+    setNotice(replayFailure(error, "Could not switch the card view.").message);
+    setVisibility(model.visibility);
+  }, [error, model]);
 
-  const engine = useMemo(() => timeline?.viewAt(index) ?? null, [timeline, index]);
+  const engine = useMemo(() => (timeline && timeline.length > 0 ? timeline.viewAt(index) : null), [timeline, index]);
   const freshIds = useMemo(
     () => new Set(timeline?.newLogAt(index).map((entry) => entry.id) ?? []),
     [timeline, index],
   );
 
-  if (isLoading && !data) return <div className="p-6 text-sm text-text-secondary">Loading replay…</div>;
-  if (error || !data || !timeline || !engine || timeline.length === 0) {
-    const message = error instanceof Error ? error.message
-      : data && data.frames.length === 0 ? "This replay has no recorded moves." : "Could not load this replay.";
+  function changeVisibility(next: ReplayVisibility) {
+    if (next === visibility) return;
+    // The inspector, hover card and running effects belong to the old card view.
+    setInspect(null);
+    setHover(null);
+    setMobileInspect(false);
+    setNotice(null);
+    controller.pause();
+    controller.resetEffects();
+    setVisibility(next);
+  }
+
+  const awaiting = model != null && !settled && model.visibility !== visibility;
+  if ((!model || awaiting) && !error) return <div className="p-6 text-sm text-text-secondary" aria-busy="true">Loading replay…</div>;
+  if (error && !model) {
+    const failure = replayFailure(error);
     return (
       <div className={replayStyles.state}>
-        <p role="alert" className="text-accent-cta">{message}</p>
+        <p role="alert" className="text-accent-cta">{failure.message}</p>
+        <div className={replayStyles.stateLinks}>
+          {failure.finalBoard ? <Link href={`/duels/${slug}`} className="text-sm text-text-secondary underline">Final board</Link> : null}
+          <Link href="/duels?view=history" className="text-sm text-text-secondary underline">Match history</Link>
+        </div>
+      </div>
+    );
+  }
+  if (!model || !timeline || !engine || timeline.length === 0) {
+    return (
+      <div className={replayStyles.state}>
+        <p role="alert" className="text-accent-cta">{model ? "This replay has no recorded moves." : "Could not load this replay."}</p>
         <div className={replayStyles.stateLinks}>
           <Link href={`/duels/${slug}`} className="text-sm text-text-secondary underline">Final board</Link>
           <Link href="/duels?view=history" className="text-sm text-text-secondary underline">Match history</Link>
@@ -186,11 +173,10 @@ export function DuelReplayView({ slug }: { slug: string }) {
     );
   }
 
-  const session = data.session;
+  const session = model.session;
   const frame = timeline.frame(index);
   const domain = session.mode === "domain";
-  const localSeat = data.mySeat ?? 0;
-  const top = engine.seats.find((seat) => seat.seat !== localSeat);
+  const focusSeat = resolveFocusSeat(session, camera, focusChoice);
   const playerName = (seat: number) =>
     session.seats.find((player) => player.seat === seat)?.displayName ?? `Player ${seat + 1}`;
   const modeText = domain
@@ -199,11 +185,10 @@ export function DuelReplayView({ slug }: { slug: string }) {
   const atEnd = index >= last;
   const result = atEnd ? (engine.result ?? (session.resultReason ? { winnerSeat: session.winnerSeat, reason: session.resultReason } : null)) : null;
   const newLines = timeline.newLogAt(index);
-  const actor = index === 0 ? "Opening board"
-    : frame.actorSeat == null ? (atEnd ? "Final result" : "Update")
-      : `${playerName(frame.actorSeat)} acted`;
-  const resultHeadline = session.status === "interrupted" ? "Interrupted"
-    : result?.winnerSeat != null ? `${playerName(result.winnerSeat)} wins` : "Draw";
+  const actor = frameCaption(frame, index, atEnd, playerName);
+  const resultHeadline = replayResultHeadline(session, result, playerName);
+  const multiSeat = seatCount > 2;
+  const canSwitchCards = model.version === 2 && model.mySeat != null;
 
   function showInspector(target: InspectTarget, mobile = false) {
     setInspect(target);
@@ -223,6 +208,18 @@ export function DuelReplayView({ slug }: { slug: string }) {
     if (card) showInspector({ type: "card", card }, true);
   }
 
+  // The shells and the field only ever see this controller: it has no prompt and its answer callback does nothing.
+  const table = createReadOnlyTableController({
+    room: replayRoom(model, engine),
+    engine,
+    camera,
+    nameOf: playerName,
+    reducedMotion: preferences.reducedMotion,
+    onActivate,
+    onInspect: (target) => showInspector(target, true),
+    onHoverCard,
+  });
+
   const inspector = (
     <CardInspector target={inspect} onInspectCard={(card) => setInspect({ type: "card", card })} />
   );
@@ -239,14 +236,16 @@ export function DuelReplayView({ slug }: { slug: string }) {
       ))}
     </div>
   );
+  const seats = Array.from({ length: seatCount }, (_, seat) => seat);
 
   return (
-    <div className={`${styles.shell} ${duelFontClasses} -mx-4 -my-4 sm:-mx-6 sm:-my-6 lg:-mx-8 lg:-my-8`} data-domain={domain}>
+    <div className={`${styles.shell} ${duelFontClasses} -mx-4 -my-4 sm:-mx-6 sm:-my-6 lg:-mx-8 lg:-my-8`} data-domain={domain}
+      data-replay-frame={controller.frameId ?? undefined} data-replay-visibility={model.visibility}>
       <header className={styles.header}>
         <div className={styles.identity}>
           <Link href="/duels?view=history">Match history</Link>
           <strong className={replayStyles.badge}><PlayCircle size={14} aria-hidden /> Replay</strong>
-          <span>{modeText} · 1v1</span>
+          <span>{modeText} · {formatLabel(session.format)}</span>
         </div>
         <div className={styles.turn}>
           <strong>Turn {engine.turn}</strong><span>{phaseLabel(engine.phase)}</span>
@@ -264,12 +263,8 @@ export function DuelReplayView({ slug }: { slug: string }) {
         <section className={styles.boardColumn} aria-label="Replay field">
           <div className={styles.board} ref={boardRef}>
             <MoveSourceBoundary events={engine.events} duelKey={`${slug}:replay:${epoch}`} root={boardRef}>
-            <DuelField key={slug} engine={engine} mySeat={data.mySeat} masterRule={session.masterRule}
-              reducedMotion={preferences.reducedMotion}
-              legalKeys={EMPTY_KEYS} selectedKeys={EMPTY_KEYS} onActivate={onActivate}
-              onHoverCard={onHoverCard} onInspect={(target) => showInspector(target, true)}
-              bottomName={playerName(localSeat)}
-              topName={playerName(top?.seat ?? 1 - localSeat)} />
+            <ReplayBoard key={`${slug}:${camera}:${focusSeat}`} table={table} masterRule={session.masterRule}
+              camera={camera} focusSeat={focusSeat} mySeat={model.mySeat} playerName={playerName} />
             <DuelFeedback events={engine.events} duelKey={`${slug}:replay:${epoch}`} attackToast
               soundEnabled={preferences.soundEnabled} soundVolume={preferences.soundVolume} reducedMotion={preferences.reducedMotion} />
             {/* The replay plays the coin too, passive: nothing is locked and the cover takes no pointer. */}
@@ -309,34 +304,70 @@ export function DuelReplayView({ slug }: { slug: string }) {
               <div className={replayStyles.transport}>
                 <div className={replayStyles.buttons} role="group" aria-label="Replay controls">
                   <button type="button" className={replayStyles.iconButton} aria-label="First move"
-                    disabled={index === 0} onClick={() => seek(0)}><SkipBack size={18} aria-hidden /></button>
+                    disabled={index === 0} onClick={() => controller.seek(0)}><SkipBack size={18} aria-hidden /></button>
                   <button type="button" className={replayStyles.iconButton} aria-label="Previous move"
-                    disabled={index === 0} onClick={() => seek(index - 1)}><ChevronLeft size={20} aria-hidden /></button>
+                    disabled={index === 0} onClick={controller.stepBack}><ChevronLeft size={20} aria-hidden /></button>
                   <button type="button" className={`${replayStyles.iconButton} ${replayStyles.play}`}
-                    aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>
+                    aria-label={playing ? "Pause" : "Play"} onClick={controller.togglePlay}>
                     {playing ? <Pause size={20} aria-hidden /> : <Play size={20} aria-hidden />}
                   </button>
                   <button type="button" className={replayStyles.iconButton} aria-label="Next move"
-                    disabled={atEnd} onClick={stepForward}><ChevronRight size={20} aria-hidden /></button>
+                    disabled={atEnd} onClick={controller.stepForward}><ChevronRight size={20} aria-hidden /></button>
                   <button type="button" className={replayStyles.iconButton} aria-label="Last move"
-                    disabled={atEnd} onClick={() => seek(last)}><SkipForward size={18} aria-hidden /></button>
+                    disabled={atEnd} onClick={() => controller.seek(last)}><SkipForward size={18} aria-hidden /></button>
                 </div>
                 <input type="range" className={replayStyles.slider} aria-label="Replay position"
                   min={0} max={last} step={1} value={index}
                   aria-valuetext={`Move ${index} of ${last}`}
-                  onChange={(event) => seek(Number(event.target.value))} />
+                  onChange={(event) => controller.seek(Number(event.target.value))} />
                 <div className={replayStyles.meta}>
                   <span>Move {index} / {last}</span>
                   <label className="flex items-center gap-2">
                     <span className="sr-only">Playback speed</span>
                     <select className={replayStyles.select} value={speed} aria-label="Playback speed"
-                      onChange={(event) => setSpeed(Number(event.target.value))}>
+                      onChange={(event) => controller.setSpeed(Number(event.target.value))}>
                       {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
                     </select>
                   </label>
                 </div>
               </div>
-              {data.mySeat == null ? <p className={replayStyles.note}>Public view — hidden cards stay hidden</p> : null}
+              <div className={replayStyles.viewBar} role="group" aria-label="Replay view">
+                <label className={replayStyles.viewField}>
+                  <span>View from</span>
+                  <select className={replayStyles.select} value={camera} aria-label="View from seat"
+                    onChange={(event) => {
+                      setInspect(null);
+                      setHover(null);
+                      setFocusChoice(null);
+                      controller.setCamera(Number(event.target.value));
+                    }}>
+                    {seats.map((seat) => <option key={seat} value={seat}>{playerName(seat)}</option>)}
+                  </select>
+                </label>
+                {multiSeat ? (
+                  <label className={replayStyles.viewField}>
+                    <span>Across from</span>
+                    <select className={replayStyles.select} value={focusSeat} aria-label="Opposite seat"
+                      onChange={(event) => { setInspect(null); setHover(null); setFocusChoice(Number(event.target.value)); controller.resetEffects(); }}>
+                      {seats.filter((seat) => seat !== camera).map((seat) => <option key={seat} value={seat}>{playerName(seat)}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+                {canSwitchCards ? (
+                  <div className={replayStyles.segmented} role="group" aria-label="Card visibility">
+                    {(["mine", "public"] as const).map((value) => (
+                      <button key={value} type="button" aria-pressed={visibility === value}
+                        onClick={() => changeVisibility(value)}>
+                        {value === "mine" ? "My cards" : "Public"}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              {notice ? <p role="alert" className={replayStyles.note}>{notice}</p> : null}
+              {model.mySeat == null || model.visibility === "public"
+                ? <p className={replayStyles.note}>Public view — hidden cards stay hidden</p> : null}
+              {multiSeat ? <p className={replayStyles.note}>Two seats are drawn at a time. Pick them with the view controls.</p> : null}
               <p className={replayStyles.note}>
                 <Link href={`/duels/${slug}`} className={replayStyles.link}>Final board</Link>
               </p>
@@ -344,8 +375,8 @@ export function DuelReplayView({ slug }: { slug: string }) {
           </div>
         </section>
         {domain ? <aside className={styles.masters} aria-label="Deck Masters">
-          <DeckMasterRail engine={engine} mySeat={data.mySeat} legalKeys={EMPTY_KEYS}
-            selectedKeys={EMPTY_KEYS} canAct={false} legalActionsFor={noActions}
+          <DeckMasterRail engine={engine} mySeat={model.mySeat} bottomSeat={camera} topSeat={focusSeat} legalKeys={table.legalKeys}
+            selectedKeys={table.selectedKeys} canAct={false} legalActionsFor={noActions}
             onActivate={onActivate} onChooseAction={noop}
             onHoverCard={onHoverCard} onInspect={(target) => showInspector(target, true)} />
         </aside> : null}
