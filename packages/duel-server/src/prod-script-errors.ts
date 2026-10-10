@@ -22,7 +22,9 @@ export function prodScriptErrors(db: Database.Database, cards: CardScriptSource,
     const mappedArgs = [...remaps].flatMap(([old, code]) => [old, code]);
     const window = [new Date(now - 7 * 86400000).toISOString(), new Date(now).toISOString()];
     const aggregate = (codes?: number[]) => db.prepare(`SELECT ${mappedCode} AS resolved, count(DISTINCT duel_id) AS duels, count(*) AS errors
-      FROM card_script_error_occurrences WHERE code > 0 AND code <= 4294967295
+      FROM card_script_error_occurrences WHERE
+        NOT EXISTS (SELECT 1 FROM duels d WHERE d.id = card_script_error_occurrences.duel_id AND d.kind != 'play')
+        AND code > 0 AND code <= 4294967295
         AND julianday(created_at) >= julianday(?) AND julianday(created_at) <= julianday(?)
         ${codes ? `AND (${mappedCode}) IN (${codes.map(() => "?").join(",")})` : ""}
       GROUP BY resolved ORDER BY errors DESC, resolved ASC ${codes ? "" : "LIMIT 20"}`)

@@ -92,6 +92,7 @@ export function createAutoBlockPolicy(db: Database.Database, options: {
         .map(row => row.cleared_at).filter((at): at is string => at !== null).sort().at(-1) ?? null;
       const time = now(), at = new Date(time).toISOString();
       const result = db.prepare(`WITH eligible AS (SELECT duel_id, helper_scripts FROM card_script_error_occurrences WHERE resolved_code IN (${placeholders}) AND script_hash = ? AND script_error_mode = 'tolerant' AND engine_kind = ?
+          AND NOT EXISTS (SELECT 1 FROM duels d WHERE d.id = card_script_error_occurrences.duel_id AND d.kind != 'play')
           AND julianday(created_at) >= julianday(?) AND julianday(created_at) <= julianday(?)
           AND (? IS NULL OR julianday(created_at) > julianday(?)))
         SELECT count(DISTINCT duel_id) AS duels, count(*) AS errors,

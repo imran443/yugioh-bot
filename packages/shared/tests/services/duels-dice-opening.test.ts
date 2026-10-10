@@ -39,14 +39,7 @@ function serverSetup(): DuelSetup {
       cardDatabaseHash: "c".repeat(64), cardRemapsHash: null, cardScriptsHash: "d".repeat(64),
       domainScriptHash: null, multiOverlayHash: "e".repeat(64), hostRuleVersion: "1",
     },
-    replayFork: {
-      ownerUserId: 101, control: "all-manual",
-      origin: {
-        sourceSlug: "source-fixture", sourceVersion: "source-v1", frameId: "frame-3", step: 3,
-        prefixCount: 7, prefixHash: "f".repeat(64),
-        sourceSeats: Array.from({ length: 4 }, (_, seat) => ({ seat, displayName: `Seat ${seat}` })),
-      },
-    },
+
   };
 }
 
@@ -54,7 +47,7 @@ describe("FFA opening seat move", () => {
   it("keeps validated server metadata through a dice setup rewrite", () => {
     const t = table();
     const saved = serverSetup();
-    // Test the shared stored-setup rewrite. B3/B6 will block openings on actual forks.
+    // A normal duel can carry a saved engine identity; forks cannot enter an opening.
     t.db.prepare("update duels set setup_json = ? where web_slug = ?").run(JSON.stringify(saved), t.slug);
     t.duels.startOpening(t.slug, "g", t.players[0]!, 1000);
     t.duels.settleOpening(t.slug, "g", 4000);
@@ -68,7 +61,10 @@ describe("FFA opening seat move", () => {
     const t = table();
     const saved = serverSetup();
     t.db.prepare("update duels set setup_json = ? where web_slug = ?").run(JSON.stringify(saved), t.slug);
-    expect(() => t.duels.setSetup(t.slug, "g", { [key]: saved[key] })).toThrow(`Unknown duel setup field: ${key}`);
+    const changed = key === "engineIdentity" ? { ...saved.engineIdentity, wasmHash: "f".repeat(64) } : {};
+    expect(() => t.duels.setSetup(t.slug, "g", { [key]: changed })).toThrow(
+      key === "engineIdentity" ? "Recorded engine identity is immutable" : "Unknown duel setup field: replayFork",
+    );
     const row = t.db.prepare("select setup_json from duels where web_slug = ?").get(t.slug) as { setup_json: string };
     expect(JSON.parse(row.setup_json)).toEqual(saved);
   });
@@ -80,7 +76,7 @@ describe("FFA opening seat move", () => {
       ...saved, engineIdentity: { ...saved.engineIdentity, wasmHash: "invalid" },
       replayFork: { ...saved.replayFork, playerId: 9 },
     }), t.slug);
-    expect(t.duels.privateState(t.slug, "g").setup).toEqual({ firstTurnDraw: false });
+    expect(() => t.duels.privateState(t.slug, "g")).toThrow("Duel setup record is invalid");
   });
 
   it.each(["ffa3", "ffa4"] as const)("moves complete %s seat rows only at the last reveal deadline", (format) => {

@@ -255,7 +255,7 @@ export function createTournamentDuelService(db: Database.Database): TournamentDu
     where tournament_match_id = ? and status in ('active', 'between_games')
   `);
   const selectLatestGameSlug = db.prepare<[number], { slug: string | null }>(
-    "select web_slug as slug from duels where series_id = ? order by game_number desc, id desc limit 1",
+    "select web_slug as slug from duels where kind = 'play' and series_id = ? order by game_number desc, id desc limit 1",
   );
   const selectPlayerByUser = db.prepare<[string, number], { id: number }>(
     "select id from players where guild_id = ? and user_id = ?",
@@ -392,6 +392,10 @@ export function createTournamentDuelService(db: Database.Database): TournamentDu
       }
       if (input.winnerPlayerId !== slot.player_one_id && input.winnerPlayerId !== slot.player_two_id) {
         throw new TournamentDuelError("Winner must be one of the match players", 400);
+      }
+      if (db.prepare(`select 1 from duels d join duel_series s on s.id = d.series_id
+        where s.tournament_match_id = ? and d.kind != 'play' limit 1`).get(slot.id)) {
+        throw new TournamentDuelError("Replay forks cannot be linked to a tournament result", 409);
       }
       const organizer = selectPlayerByUser.get(tournament.guild_id, input.organizerUserId);
 

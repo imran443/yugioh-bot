@@ -41,6 +41,8 @@ export type ConfirmedResultInput = {
   playerTwoId: number;
   winnerId: number;
   source: MatchSource;
+  /** Required for engine results. Omitted for independent manual results. The persisted kind is authoritative. */
+  sourceDuelId?: number;
   /** tournament_matches.id; the slot must be open (not completed). */
   tournamentMatchId?: number | null;
   /** Player who caused the record (organizer); null for an engine result. */
@@ -336,8 +338,18 @@ export function createMatchService(db: Database.Database) {
       }
 
       const insertAndAdvance = db.transaction((): number => {
+        if (input.sourceDuelId !== undefined) {
+          const source = Number.isSafeInteger(input.sourceDuelId) && input.sourceDuelId > 0
+            ? db.prepare<[number, string], { kind: string }>("select kind from duels where id = ? and guild_id = ?").get(input.sourceDuelId, input.guildId) : undefined;
+          if (!source) throw new Error("Source duel not found");
+          if (source.kind !== "play") throw new Error("Replay forks cannot record match results");
+        }
         let slot: any = null;
         if (input.tournamentMatchId != null) {
+          if (db.prepare(`select 1 from duels d join duel_series s on s.id = d.series_id
+            where s.tournament_match_id = ? and d.kind != 'play' limit 1`).get(input.tournamentMatchId)) {
+            throw new Error("Replay forks cannot be linked to a tournament result");
+          }
           slot = db.prepare("select * from tournament_matches where id = ?").get(input.tournamentMatchId);
           if (!slot) throw new Error("Tournament match not found");
           if (slot.status === "completed") throw new Error("Tournament match is already completed");
