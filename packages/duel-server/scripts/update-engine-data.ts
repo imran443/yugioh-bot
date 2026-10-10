@@ -30,13 +30,15 @@ const codeOf = (path: string) => Number(/c(\d+)\.lua$/.exec(path)?.[1]);
 const sorted = (paths: string[]) => paths.sort((a, b) => codeOf(a) - codeOf(b));
 const markdown = (value: string) => value.replace(/[\\`*_{}\[\]<>|]/g, "\\$&").replace(/@|#(?=\d)/g, (match) => match === "@" ? "&#64;" : "&#35;").replace(/[\r\n]+/g, " ");
 
-export async function readPins(root: string): Promise<Pins> {
-  const text = await readFile(join(root, preparePath), "utf8");
+function pinsFromSource(text: string): Pins {
   return Object.fromEntries(keys.map((key) => {
     const value = new RegExp(`["']?\\b${key}\\b["']?\\s*:\\s*["']([a-f0-9]{40})["']`).exec(text)?.[1];
     if (!value) throw new Error(`Missing ${key} pin in ${preparePath}`);
     return [key, value];
   })) as Pins;
+}
+export async function readPins(root: string): Promise<Pins> {
+  return pinsFromSource(await readFile(join(root, preparePath), "utf8"));
 }
 
 export function diffScripts(oldTree: Map<string, string>, newTree: Map<string, string>) {
@@ -95,6 +97,9 @@ type Options = {
   request?: typeof fetch;
   token?: string;
   validate?: boolean;
+  repository?: string;
+  branch?: string;
+  base?: string;
 };
 type Tree = { truncated: boolean; tree: { path: string; type: string; sha: string }[] };
 
@@ -206,6 +211,37 @@ export async function runUpdate(options: Options = {}) {
     report.splice(report.indexOf("## Upstream commits"), 0,
       renderRelevantChanges(relevance, cardChanges.added.flatMap(group => group.code ? [group.code] : [])), "",
       renderReleasedSets(cardChanges), "", renderCardUpdate(cardChanges), "");
+    let matchingPrHead: string | undefined;
+    if (options.repository) {
+      if (!/^[\w.-]+\/[\w.-]+$/.test(options.repository)) throw new Error("Repository must be owner/repository");
+      const repositoryApi = `https://api.github.com/repos/${options.repository}`;
+      const query = new URLSearchParams({ state: "open", head: `${options.repository.split("/")[0]}:${options.branch ?? "chore/engine-data-update"}`,
+        base: options.base ?? "main", per_page: "1" });
+      const prs = await (await download(`${repositoryApi}/pulls?${query}`)).json() as Array<{ head: { sha: string } }>;
+      const head = prs[0]?.head.sha;
+      if (head) {
+        if (!/^[a-f0-9]{40}$/.test(head)) throw new Error("Invalid open PR head SHA");
+        const source = await (await download(`${repositoryApi}/contents/${preparePath}?ref=${head}`)).json() as { encoding: string; content: string };
+        if (source.encoding !== "base64" || typeof source.content !== "string") throw new Error("Open PR pin source unavailable");
+        const pins = pinsFromSource(Buffer.from(source.content, "base64").toString("utf8"));
+        const [prTree, prDatabase, prStrings] = await Promise.all([
+          pins.scripts === next.scripts ? newTree : pins.scripts === old.scripts ? oldTree : treeAt(pins.scripts),
+          pins.database === next.database ? database : pins.database === old.database ? oldDatabase
+            : downloadReleasedCardData(pins.database, join(temporary, "pr-data"), download, { historyStart }).catch((error: unknown) => {
+              if (!(error instanceof CardRemapValidationError)) throw error;
+              return null;
+            }),
+          pins.strings === next.strings ? nextStrings : pins.strings === old.strings ? oldStrings : stringsAt(pins.strings),
+        ]);
+        const prRelevance = compareLoadedData(prDatabase ? { cards: readCardRows(prDatabase.path),
+          scripts: loadedScriptTree(prTree, prDatabase.scriptCodes, prDatabase.rushCodes), strings: sha256(prStrings), remaps: prDatabase.remaps } : null,
+          { cards: readCardRows(database.path), scripts: candidateScripts, strings: sha256(nextStrings), remaps: database.remaps });
+        if (!prRelevance.relevant) matchingPrHead = head;
+        report.push("", "## Open pull request comparison", "", matchingPrHead
+          ? `The open bot PR at \`${head}\` already has the same loaded data. Publication will skip the push and CI dispatch if its head is still unchanged; human-commit protection still applies.`
+          : "The candidate differs from the open PR, or its previous data is unavailable. Publication protections still apply.");
+      }
+    }
     const playableCodes = new Set([...(oldDatabase?.scriptCodes ?? []), ...database.scriptCodes]);
     const rushCodes = new Set([...(oldDatabase?.rushCodes ?? []), ...database.rushCodes]);
     const diff = diffScripts(loadedScriptTree(oldTree, playableCodes, rushCodes), loadedScriptTree(newTree, playableCodes, rushCodes));
@@ -321,7 +357,7 @@ export async function runUpdate(options: Options = {}) {
     await saveReport();
     if (!options.dryRun) await rewritePins(root, old, next, false);
     console.log(`${options.dryRun ? "dry run" : "update"}: ${diff.added.length} new, ${diff.changed.length} changed, ${diff.removed.length} removed official scripts; ${conflicts.length} overlay conflicts; ${risks.length} new multiplayer risks. Report: ${reportPath}`);
-    return { changed, next, reportPath, files, changedPaths, cardChanges, relevance };
+    return { changed, next, reportPath, files, changedPaths, cardChanges, relevance, matchingPrHead };
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
@@ -330,7 +366,8 @@ export async function runUpdate(options: Options = {}) {
 async function main() {
   const { values } = parseArgs({ options: { scripts: { type: "string" }, database: { type: "string" }, strings: { type: "string" }, "dry-run": { type: "boolean", default: false }, report: { type: "string" }, metadata: { type: "string" }, "defer-validation": { type: "boolean", default: false } } });
   const overrides = Object.fromEntries(keys.filter((key) => values[key] !== undefined).map((key) => [key, values[key]]));
-  const result = await runUpdate({ overrides, dryRun: values["dry-run"], report: values.report, validate: !values["defer-validation"] });
+  const result = await runUpdate({ overrides, dryRun: values["dry-run"], report: values.report, validate: !values["defer-validation"],
+    repository: process.env.GITHUB_REPOSITORY, branch: process.env.UPDATE_BRANCH, base: process.env.BASE_BRANCH });
   if (values.metadata) {
     const metadataPath = resolve(values.metadata);
     await mkdir(dirname(metadataPath), { recursive: true });

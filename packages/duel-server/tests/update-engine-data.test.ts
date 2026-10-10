@@ -17,6 +17,7 @@ import * as smoke from "../scripts/prerelease-script-smoke.js";
 import * as probe from "../scripts/probe-engine-data.js";
 import * as history from "../scripts/prerelease-history.js";
 import * as releasedData from "../scripts/released-card-data.js";
+import { CardRemapValidationError } from "../scripts/prerelease-graduations.js";
 
 const oldPins: Pins = { scripts: "a".repeat(40), database: "b".repeat(40), strings: "c".repeat(40) };
 const nextPins: Pins = { scripts: "d".repeat(40), database: "e".repeat(40), strings: "f".repeat(40) };
@@ -105,6 +106,38 @@ async function loadedDataFixture(change: string) {
 }
 
 describe("engine data update", () => {
+  it.each(["identical", "utility", "cards", "strings", "remaps", "remap-error", "no-pr"])("compares loaded data with the open PR (%s)", async change => {
+    const { root, request: upstream } = await loadedDataFixture(change === "utility" ? "utility" : change === "cards" ? "new-release" : "identical");
+    const prHead = "2".repeat(40);
+    const prPins = { scripts: "3".repeat(40), database: "4".repeat(40), strings: "5".repeat(40) };
+    const request = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://api.github.com/repos/test/repo/pulls?")) return Response.json(change === "no-pr" ? []
+        : [{ head: { sha: prHead } }]);
+      if (url.startsWith("https://api.github.com/repos/test/repo/contents/")) {
+        expect(new URL(url).searchParams.get("ref")).toBe(prHead);
+        return Response.json({ encoding: "base64", content: Buffer.from(`const sources = ${JSON.stringify(prPins)};`).toString("base64") });
+      }
+      if (change === "strings" && url.endsWith("/strings.conf") && url.includes(nextPins.strings)) return new Response("changed strings");
+      let mapped = url;
+      for (const key of Object.keys(prPins) as (keyof Pins)[]) mapped = mapped.replaceAll(prPins[key], oldPins[key]);
+      return upstream(mapped);
+    });
+    // Ensure publication is reached even when candidate and PR data match: main's
+    // unavailable snapshot opens its gate without affecting the PR comparison.
+    const download = releasedData.downloadReleasedCardData;
+    vi.spyOn(releasedData, "downloadReleasedCardData").mockImplementation(async (commit, ...args) => {
+      if (commit === oldPins.database || (change === "remap-error" && commit === prPins.database)) {
+        throw new CardRemapValidationError("Ambiguous prerelease passcode 100000001");
+      }
+      const data = await download(commit, ...args);
+      return change === "remaps" && commit === nextPins.database ? { ...data, remaps: { "100000001": 1 } } : data;
+    });
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false, repository: "test/repo" });
+    expect(result.changed).toBe(true);
+    expect(result.matchingPrHead).toBe(change === "identical" ? prHead : undefined);
+  });
+
   it.each([false, true])("includes released upstream previews in the job summary when pins moved=%s", async moved => {
     const { root, request } = await loadedDataFixture("pending-set");
     const result = await runUpdate({ root, overrides: moved ? nextPins : oldPins, request, validate: false, report: ".status/report.md" });

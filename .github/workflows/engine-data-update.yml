@@ -121,6 +121,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       changed: ${{ steps.update.outputs.changed }}
       base_sha: ${{ steps.paths.outputs.base_sha }}
@@ -168,6 +169,8 @@ jobs:
           SCRIPTS_SHA: ${{ inputs.scripts }}
           DATABASE_SHA: ${{ inputs.database }}
           STRINGS_SHA: ${{ inputs.strings }}
+          UPDATE_BRANCH: chore/engine-data-update
+          BASE_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
         run: |
           args=(--defer-validation --report "$UPDATE_ARTIFACT_DIR/report.md" --metadata "$UPDATE_ARTIFACT_DIR/update.json")
           if [ -n "$SCRIPTS_SHA" ]; then args+=(--scripts "$SCRIPTS_SHA"); fi
