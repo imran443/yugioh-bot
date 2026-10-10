@@ -200,7 +200,7 @@ describe("a saved 1v1 table keeps its engine", () => {
   /** A started table that no worker holds (the host was restarted): the next request recovers it. */
   async function activeTable(setup: Record<string, unknown> | undefined, mode: DuelMode = "normal", masterRule: DuelMasterRule = 5) {
     const t = await table("1v1", mode, masterRule);
-    t.duels.activate(t.session.slug, "g1", t.player, ["seed-a"], MANIFEST.bundleVersion, null, setup);
+    t.duels.activate(t.session.slug, "g1", t.player, ["1", "2", "3", "4"], MANIFEST.bundleVersion, null, setup);
     return t;
   }
   const view = (t: Awaited<ReturnType<typeof activeTable>>) => post(t.host, { op: "view", ...t.organizer });

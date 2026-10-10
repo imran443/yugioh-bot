@@ -367,7 +367,7 @@ describe("duel host rooms", () => {
     migrate(db);
     const { p1, p2 } = seedPlayers(db);
     const { session, duels } = readyLobby(db, p1, p2);
-    duels.activate(session.slug, "g1", p1, ["seed-a"], MANIFEST.bundleVersion, null);
+    duels.activate(session.slug, "g1", p1, ["1", "2", "3", "4"], MANIFEST.bundleVersion, null);
 
     let attempts = 0;
     const { host } = openHost(() => {
@@ -386,7 +386,7 @@ describe("duel host rooms", () => {
     expect(duels.get(session.slug, "g1").status).toBe("active");
 
     const other = readyLobby(db, p1, p2);
-    other.duels.activate(other.session.slug, "g1", p1, ["seed-b"], MANIFEST.bundleVersion, null);
+    other.duels.activate(other.session.slug, "g1", p1, ["5", "6", "7", "8"], MANIFEST.bundleVersion, null);
     other.duels.recordCommand(other.session.slug, "g1", 0, { promptId: "saved", revision: 1, answer: { choice: "pass" } }, null);
     const { host: mismatchHost } = openHost(() => {
       const worker = new FakeWorker();
@@ -429,7 +429,7 @@ describe("duel host rooms", () => {
     const { p1, p2 } = seedPlayers(db);
 
     const dead = readyLobby(db, p1, p2);
-    dead.duels.activate(dead.session.slug, "g1", p1, ["seed-dead"], MANIFEST.bundleVersion, null);
+    dead.duels.activate(dead.session.slug, "g1", p1, ["1", "2", "3", "4"], MANIFEST.bundleVersion, null);
     dead.duels.recordCommand(dead.session.slug, "g1", 0, { promptId: "saved", revision: 1, answer: { choice: "pass" } }, null);
     let deadAttempts = 0;
     const { host: deadHost } = openHost(() => {
@@ -447,7 +447,7 @@ describe("duel host rooms", () => {
     expect(dead.duels.get(dead.session.slug, "g1").status).toBe("active");
 
     const rejected = readyLobby(db, p1, p2);
-    rejected.duels.activate(rejected.session.slug, "g1", p1, ["seed-reject"], MANIFEST.bundleVersion, null);
+    rejected.duels.activate(rejected.session.slug, "g1", p1, ["5", "6", "7", "8"], MANIFEST.bundleVersion, null);
     rejected.duels.recordCommand(rejected.session.slug, "g1", 0, { promptId: "saved", revision: 1, answer: { choice: "pass" } }, null);
     const { host: rejectHost } = openHost(() => {
       const worker = new FakeWorker();
@@ -1151,6 +1151,20 @@ describe("duel host replay", () => {
     frames: Array<{ step: number; actorSeat: number | null; view: DuelEngineView }>;
   };
   const readReplay = (data: unknown) => data as ReplayBody;
+
+  it.each([{ seed: ["1"] }, { seed: ["0", "2", "3", "4"] }, { seed: ["1", "2", "3", "18446744073709551616"] }])
+  ("refuses invalid saved seed $seed before spawning and preserves source rows", async ({ seed }) => {
+    const { host, session, p1, db, spawned } = await playedDuel(true);
+    db.prepare("update duels set seed_json = ? where id = ?").run(JSON.stringify(seed), session.id);
+    const beforeDuel = db.prepare("select * from duels where id = ?").get(session.id);
+    const beforeCommands = db.prepare("select * from duel_commands where duel_id = ? order by seq").all(session.id);
+    const beforeSpawns = spawned.count;
+    const response = await post(host, { op: "replay", slug: session.slug, guildId: "g1", playerId: p1 });
+    expect(response.status).toBe(409);
+    expect(spawned.count).toBe(beforeSpawns);
+    expect(db.prepare("select * from duels where id = ?").get(session.id)).toEqual(beforeDuel);
+    expect(db.prepare("select * from duel_commands where duel_id = ? order by seq").all(session.id)).toEqual(beforeCommands);
+  });
 
   it("replays a surrendered duel with delta log/events and a final result frame", async () => {
     const { host, session, p1, duels } = await playedDuel(true);
