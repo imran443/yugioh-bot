@@ -8,10 +8,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { migrate } from "@yugidraft/shared/db";
-import { createDuelHost, type DuelHost } from "../src/host.js";
+import { isDuelKindSetup } from "@yugidraft/shared/duels";
+import type { DuelPrivateState } from "@yugidraft/shared/services";
+import { createDuelHost, reportSetup, type DuelHost } from "../src/host.js";
 import { engineDataDirectory as DATA } from "./engine-data-dir.js";
 
 const SECRET = "report-replay-secret";
+type DuelSetup = NonNullable<DuelPrivateState["setup"]>;
 const hosts: DuelHost[] = [];
 afterEach(async () => {
   while (hosts.length > 0) await hosts.pop()!.close();
@@ -29,6 +32,19 @@ async function post(host: DuelHost, body: Record<string, unknown>) {
   }));
   return { status: response.status, data: (await response.json()) as Record<string, any> };
 }
+
+it("removes private creator and prefix metadata from valid fork report setup", () => {
+  const rules: DuelSetup = { engine: "pinned", firstTurnDraw: false, scriptErrorMode: "strict", startupScripts: ["-- fixture"] };
+  const setup: DuelSetup = { ...rules, replayFork: {
+    ownerUserId: 101, control: "all-manual", origin: {
+      sourceSlug: "private-source-fixture", sourceVersion: "source-v1", frameId: "frame-2", step: 2,
+      prefixCount: 7, prefixHash: "a".repeat(64), sourceSeats: [{ seat: 0, displayName: null }, { seat: 1, displayName: null }],
+    },
+  } };
+  expect(isDuelKindSetup("replay-fork", setup, "1v1")).toBe(true);
+  expect(reportSetup(setup)).toEqual(rules);
+  expect(JSON.stringify(reportSetup(setup))).not.toMatch(/replayFork|ownerUserId|private-source-fixture|prefixCount|prefixHash/);
+});
 
 describe("a manual report journal replays", () => {
   it("replay-journal.ts replays the journal.jsonl of a real preset duel, startup scripts included", async () => {
@@ -54,12 +70,6 @@ describe("a manual report journal replays", () => {
       expect(responded.status).toBe(200);
       const row = db.prepare("select id, setup_json from duels where web_slug = ?").get(slug) as { id: number; setup_json: string };
       const setup = JSON.parse(row.setup_json);
-      db.prepare("update duels set setup_json = ? where id = ?").run(JSON.stringify({ ...setup, replayFork: {
-        ownerUserId: 101, control: "all-manual", origin: {
-          sourceSlug: "private-source-fixture", sourceVersion: "source-v1", frameId: "frame-2", step: 2,
-          prefixCount: 7, prefixHash: "a".repeat(64), sourceSeats: [{ seat: 0, displayName: null }, { seat: 1, displayName: null }],
-        },
-      } }), row.id);
       // Stored sequence IDs can have gaps. The report format still uses ordered indices.
       db.prepare("update duel_commands set seq = seq + 1000 where duel_id = ?").run(row.id);
       const reported = await post(host, { op: "report", slug, note: "replay me", ...who });

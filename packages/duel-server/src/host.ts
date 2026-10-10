@@ -277,6 +277,13 @@ export interface DuelHost {
   close(): Promise<void>;
 }
 
+/** Remove private creator/origin metadata from manual and partial report setup. */
+export function reportSetup(setup: DuelPrivateState["setup"]) {
+  if (!setup) return null;
+  const { replayFork: _replayFork, ...rules } = setup;
+  return rules;
+}
+
 export function createDuelHost(options: {
   db: Database.Database;
   dataDirectory: string;
@@ -1716,13 +1723,6 @@ export function createDuelHost(options: {
       at: now(),
       ...(errors.length > 0 ? { errors } : {}),
     };
-  }
-
-  /** Remove private creator/origin metadata from manual and partial report setup. */
-  function reportSetup(setup: DuelPrivateState["setup"]) {
-    if (!setup) return null;
-    const { replayFork: _replayFork, ...rules } = setup;
-    return rules;
   }
 
   /**
