@@ -10,6 +10,8 @@ import type {
   DuelHistoryScope,
   DuelListItem,
   DuelReplay,
+  DuelReplayV2,
+  ReplayVisibility,
   DuelMasterRule,
   DuelMode,
   DuelRoom,
@@ -22,12 +24,15 @@ import type {
 export class DuelRequestError extends Error {
   readonly status: number;
   readonly code?: string;
+  /** Replay errors only: whether the saved final board can still be opened. Absent on older servers. */
+  readonly finalBoard?: "available" | "none";
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, finalBoard?: "available" | "none") {
     super(message);
     this.name = "DuelRequestError";
     this.status = status;
     this.code = code;
+    this.finalBoard = finalBoard;
   }
 }
 
@@ -51,7 +56,9 @@ async function parseBody<T>(res: Response): Promise<T> {
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const code = body && typeof body === "object" && "code" in body && typeof body.code === "string" ? body.code : undefined;
-    throw new DuelRequestError(errorMessage(body, res.status), res.status, code);
+    const finalBoard = body && typeof body === "object" && "finalBoard" in body
+      && (body.finalBoard === "available" || body.finalBoard === "none") ? body.finalBoard : undefined;
+    throw new DuelRequestError(errorMessage(body, res.status), res.status, code, finalBoard);
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new DuelRequestError("The server returned an invalid response. Your last game state is unchanged.", 502);
@@ -79,6 +86,23 @@ export function duelReplayKey(slug: string): string {
 
 export async function getDuelReplay(slug: string): Promise<DuelReplay> {
   return parseBody(await fetch(duelReplayKey(slug), { cache: "no-store" }));
+}
+
+/**
+ * The ordinary viewer asks only for the contract version and the card visibility. Camera position, seat
+ * overrides and reveal flags never travel: the server rejects them for ordinary viewers. A server that
+ * does not know version 2 yet answers with the v1 shape, which the replay controller converts.
+ */
+export function duelReplayUrl(slug: string, visibility: ReplayVisibility): string {
+  return `${duelReplayKey(slug)}?version=2&visibility=${visibility}`;
+}
+
+export async function getDuelReplayFrames(
+  slug: string,
+  visibility: ReplayVisibility,
+  signal?: AbortSignal,
+): Promise<DuelReplay | DuelReplayV2> {
+  return parseBody(await fetch(duelReplayUrl(slug, visibility), { cache: "no-store", signal }));
 }
 
 export interface CreateDuelOptions {

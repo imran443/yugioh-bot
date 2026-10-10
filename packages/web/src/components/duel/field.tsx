@@ -1305,6 +1305,7 @@ export function DeckMasterRail({
   onInspect,
   onHoverCard,
   topSeat,
+  bottomSeat,
   rivals,
   selfTitle,
 }: {
@@ -1320,6 +1321,8 @@ export function DeckMasterRail({
   onHoverCard?: DuelHoverHandler;
   /** 3 and 4 seat tables: the opponent whose master shows in the top dock. */
   topSeat?: number | null;
+  /** Replay camera: the seat whose master shows in the bottom dock when it is not `mySeat`. */
+  bottomSeat?: number | null;
   /**
    * 3 and 4 seat tables: one dock per rival seat (small, read-only), in this order, above your own. Replaces the single
    * top dock. `title` is the dock heading, for example "Ryo's Master".
@@ -1329,7 +1332,7 @@ export function DeckMasterRail({
   selfTitle?: string;
 }) {
   const styles = useSkinStyles(baseStyles, "field");
-  const bottomIndex = mySeat ?? 0;
+  const bottomIndex = bottomSeat ?? mySeat ?? 0;
   const topIndex = topSeat ?? (bottomIndex === 0 ? 1 : 0);
   const bottom = engine.seats.find((seat) => seat.seat === bottomIndex);
   const top = engine.seats.find((seat) => seat.seat === topIndex);

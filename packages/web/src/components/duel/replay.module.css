@@ -70,3 +70,12 @@
 }
 .tabs button[aria-pressed="true"] { color: #f4edff; background: #352052; border-color: #b48bea; box-shadow: 0 0 10px rgb(139 92 246 / 0.4), inset 0 0 10px rgb(139 92 246 / 0.2); }
 .tabs button:focus-visible { outline: 2px solid #c4a35a; outline-offset: 1px; }
+.viewBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.viewField { display: flex; align-items: center; gap: 8px; color: #b6c7d9; font-size: 13px; }
+.segmented { display: inline-flex; margin-left: auto; border: 1px solid #3a3348; }
+.segmented button { min-height: 36px; padding: 0 12px; background: #121822; color: #c5d0de; font-size: 13px; }
+.segmented button + button { border-left: 1px solid #3a3348; }
+.segmented button:hover { background: #2a2438; }
+.segmented button[aria-pressed="true"] { color: #f4edff; background: #352052; box-shadow: inset 0 0 10px rgb(139 92 246 / 0.25); }
+.segmented button:focus-visible { outline: 2px solid #c4a35a; outline-offset: -2px; }
+@media (max-width: 900px) { .segmented { margin-left: 0; } }
