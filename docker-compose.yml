@@ -9,6 +9,7 @@ services:
     user: *user
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite
+      - OWNER_USER_IDS=${OWNER_USER_IDS:-}
       - WEB_URL=${WEB_URL:?WEB_URL is required}
       - WS_PORT=3001
       - WS_INTERNAL_PORT=4002
@@ -33,6 +34,7 @@ services:
     user: *user
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite
+      - OWNER_USER_IDS=${OWNER_USER_IDS:-}
       - DUEL_DATA_DIR=/app/data/duel-engine
       # The deploy installs on the host. Restarts verify the existing volume without replacing it.
       - DUEL_BUNDLE_SRC=${DUEL_BUNDLE_SRC_ON_START:-}
@@ -110,6 +112,7 @@ services:
     stop_grace_period: 150s
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite
+      - OWNER_USER_IDS=${OWNER_USER_IDS:-}
       - CARD_IMAGE_CACHE_DIR=/app/data/card-images
       - CARD_IMAGE_CACHE_MAX_BYTES=${CARD_IMAGE_CACHE_MAX_BYTES:-16106127360}
       - WORKER_HEALTH_PATH=/tmp/yugidraft-worker-health.json

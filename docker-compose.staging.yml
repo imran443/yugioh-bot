@@ -39,6 +39,7 @@ services:
     user: "${STAGING_UID:-1000}:${STAGING_GID:-1000}"
     environment:
       - NODE_OPTIONS=--max-old-space-size=${STAGING_WS_HEAP_MB:-128}
+      - OWNER_USER_IDS=${OWNER_USER_IDS:-}
       - WEB_URL=${WEB_URL:?WEB_URL is required}
       - WS_PORT=3001
       - WS_INTERNAL_PORT=4002
@@ -68,6 +69,7 @@ services:
     user: "${STAGING_UID:-1000}:${STAGING_GID:-1000}"
     environment:
       - DATABASE_PATH=/app/data/bot.sqlite
+      - OWNER_USER_IDS=${OWNER_USER_IDS:-}
       # Both multi cores and the Lua overlay are installed here from the CI bundle.
       - DUEL_DATA_DIR=/app/data/duel-engine
       - DUEL_INTERNAL_HOST=0.0.0.0
@@ -157,6 +159,7 @@ services:
     cpus: 0.5
     environment:
       - NODE_OPTIONS=--max-old-space-size=128
+      - OWNER_USER_IDS=${OWNER_USER_IDS:-}
       - DATABASE_PATH=/app/data/bot.sqlite
       - CARD_IMAGE_CACHE_DIR=/app/data/card-images
       - CARD_IMAGE_CACHE_MAX_BYTES=${CARD_IMAGE_CACHE_MAX_BYTES:-16106127360}
