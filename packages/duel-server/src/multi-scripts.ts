@@ -87,6 +87,7 @@ function listFiles(root: string): string[] {
       const full = join(directory, entry.name);
       if (entry.isDirectory()) visit(full);
       else if (entry.isFile()) found.push(relative(root, full).replaceAll("\\", "/"));
+      else throw new Error(`Engine resource folder contains a non-regular entry: ${full}`);
     }
   };
   visit(root);

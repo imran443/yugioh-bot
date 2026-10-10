@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -152,5 +152,14 @@ describe("current engine identity", () => {
     const before = structuredClone(value);
     expect(resolveEngineResourcesForSource(directory, value)).toEqual(resources);
     expect(value).toEqual(before);
+  });
+
+  it("refuses script symlinks that the folder digest would otherwise omit", () => {
+    const directory = bundle();
+    const { value } = source(directory);
+    const target = join(directory, "outside.lua");
+    writeFileSync(target, "script outside the hashed folder");
+    symlinkSync(target, join(directory, "card-scripts/c2.lua"));
+    expect(() => resolveEngineResourcesForSource(directory, value)).toThrowError(expect.objectContaining({ code: "ENGINE_UNAVAILABLE_FOR_SOURCE" }));
   });
 });
