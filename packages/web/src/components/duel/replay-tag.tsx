@@ -2,9 +2,10 @@
 
 import { useCallback, useMemo, type ReactNode } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, History, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { type DuelEngineView, type ReplayVisibility } from "@yugidraft/shared/duels";
 import { useDuelPreferences } from "./preferences";
+import { useIsNarrow } from "./side-panel";
 import {
   SPEEDS,
   createReadOnlyTableController,
@@ -45,6 +46,7 @@ export interface ReplayTagProps {
  */
 export function ReplayTag({ slug, model, timeline, engine, controller, visibility, onVisibilityChange, notice, tools }: ReplayTagProps) {
   const preferences = useDuelPreferences();
+  const narrow = useIsNarrow();
   const { session } = model;
   const { index, last, playing, speed, camera } = controller;
   const frame = timeline.frame(index);
@@ -71,46 +73,14 @@ export function ReplayTag({ slug, model, timeline, engine, controller, visibilit
   const publicOnly = model.mySeat == null || model.visibility === "public";
   const seats = [0, 1, 2, 3];
 
-  const transport = (
-    <div className={styles.panel}>
-      {result ? (
-        <div className={styles.result} role="status" data-replay-result>
-          <strong>{headline}</strong>
-          <span>{result.reason}</span>
-        </div>
-      ) : null}
-      <p className={styles.actor} aria-live="off">{actor}</p>
-      <div className={styles.buttons} role="group" aria-label="Replay controls">
-        <button type="button" className={styles.icon} aria-label="First move" disabled={index === 0} onClick={() => controller.seek(0)}><SkipBack size={16} aria-hidden /></button>
-        <button type="button" className={styles.icon} aria-label="Previous move" disabled={index === 0} onClick={controller.stepBack}><ChevronLeft size={18} aria-hidden /></button>
-        <button type="button" className={`${styles.icon} ${styles.play}`} aria-label={playing ? "Pause" : "Play"} onClick={controller.togglePlay}>
-          {playing ? <Pause size={18} aria-hidden /> : <Play size={18} aria-hidden />}
-        </button>
-        <button type="button" className={styles.icon} aria-label="Next move" disabled={atEnd} onClick={controller.stepForward}><ChevronRight size={18} aria-hidden /></button>
-        <button type="button" className={styles.icon} aria-label="Last move" disabled={atEnd} onClick={() => controller.seek(last)}><SkipForward size={16} aria-hidden /></button>
-        <label className={styles.speed}>
-          <span className="sr-only">Playback speed</span>
-          <select className={styles.select} value={speed} aria-label="Playback speed" onChange={(event) => controller.setSpeed(Number(event.target.value))}>
-            {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
-          </select>
-        </label>
-      </div>
-      <div className={styles.scrub}>
-        <input type="range" className={styles.slider} aria-label="Replay position" min={0} max={last} step={1} value={index}
-          aria-valuetext={`Move ${index} of ${last}`} onChange={(event) => controller.seek(Number(event.target.value))} />
-        <span className={styles.count}>{index} / {last}</span>
-      </div>
-    </div>
-  );
-
-  const headerTools = (
+  // The seat, card view and page links: in the header on a wide screen, in the transport bar on a narrow one.
+  const viewControls = (
     <div className={styles.tools} role="group" aria-label="Replay view">
-      {tools}
       <label className={styles.field}>
         <span>View from</span>
-        <select className={styles.select} value={camera} aria-label="View from seat" onChange={(event) => controller.setCamera(Number(event.target.value))}>
+        <select className={styles.select} value={camera} aria-label="View from seat" title="View from seat" onChange={(event) => controller.setCamera(Number(event.target.value))}>
           {seats.map((seat) => (
-            <option key={seat} value={seat}>{nameOf(seat)} · {teamNames[seat % 2]}</option>
+            <option key={seat} value={seat}>{nameOf(seat)} ({teamNames[seat % 2]})</option>
           ))}
         </select>
       </label>
@@ -123,9 +93,53 @@ export function ReplayTag({ slug, model, timeline, engine, controller, visibilit
           ))}
         </div>
       ) : null}
-      <Link href="/duels?view=history" className={styles.link}>Match history</Link>
-      <Link href={`/duels/${slug}`} className={styles.link}>Final board</Link>
+      <Link href="/duels?view=history" className={styles.linkIcon} aria-label="Match history" title="Match history"><History size={16} aria-hidden /></Link>
+      <Link href={`/duels/${slug}`} className={styles.linkIcon} aria-label="Final board" title="Final board"><Flag size={16} aria-hidden /></Link>
     </div>
+  );
+
+  const transport = (
+    <div className={styles.panel} data-narrow={narrow ? "true" : undefined}>
+      <div className={styles.text} aria-live="off">
+        {result ? (
+          <div role="status" data-replay-result className={styles.result}>
+            <strong title={headline}>{headline}</strong>
+            <span title={result.reason}>{result.reason}</span>
+          </div>
+        ) : (
+          <p className={styles.actor}>{actor}</p>
+        )}
+        {result ? <p className={styles.actor}>{actor}</p> : null}
+      </div>
+      <div className={styles.buttons} role="group" aria-label="Replay controls">
+        <button type="button" className={styles.icon} aria-label="First move" disabled={index === 0} onClick={() => controller.seek(0)}><SkipBack size={16} aria-hidden /></button>
+        <button type="button" className={styles.icon} aria-label="Previous move" disabled={index === 0} onClick={controller.stepBack}><ChevronLeft size={18} aria-hidden /></button>
+        <button type="button" className={`${styles.icon} ${styles.play}`} aria-label={playing ? "Pause" : "Play"} onClick={controller.togglePlay}>
+          {playing ? <Pause size={18} aria-hidden /> : <Play size={18} aria-hidden />}
+        </button>
+        <button type="button" className={styles.icon} aria-label="Next move" disabled={atEnd} onClick={controller.stepForward}><ChevronRight size={18} aria-hidden /></button>
+        <button type="button" className={styles.icon} aria-label="Last move" disabled={atEnd} onClick={() => controller.seek(last)}><SkipForward size={16} aria-hidden /></button>
+      </div>
+      <div className={styles.scrub}>
+        <input type="range" className={styles.slider} aria-label="Replay position" min={0} max={last} step={1} value={index}
+          aria-valuetext={`Move ${index} of ${last}`} onChange={(event) => controller.seek(Number(event.target.value))} />
+        <span className={styles.count}>{index} / {last}</span>
+        <label className={styles.speed}>
+          <span className="sr-only">Playback speed</span>
+          <select className={styles.select} value={speed} aria-label="Playback speed" onChange={(event) => controller.setSpeed(Number(event.target.value))}>
+            {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
+          </select>
+        </label>
+      </div>
+      {narrow ? viewControls : null}
+    </div>
+  );
+
+  const headerTools = (
+    <>
+      {tools}
+      {narrow ? null : viewControls}
+    </>
   );
 
   const notices = (notice || publicOnly) ? (
