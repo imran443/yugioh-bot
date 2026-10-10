@@ -198,6 +198,17 @@ export interface DuelService {
     clock: DuelClockState | null,
     setup?: DuelSetup,
   ): DuelSession;
+  /** Duel host only: record verified identity in the same transaction as a NEW game start. */
+  activateRecorded(
+    slug: string,
+    guildId: string,
+    organizerPlayerId: number | null,
+    seed: string[],
+    bundleVersion: string,
+    clock: DuelClockState | null,
+    setup: Omit<DuelSetup, "engineIdentity" | "replayFork">,
+    engineIdentity: EngineIdentity,
+  ): DuelSession;
   /** `touchActivity: false` journals the command without moving `last_activity_at` (a private change nobody else may see). */
   recordCommand(slug: string, guildId: string, seat: number, command: DuelCommand, clock: DuelClockState | null, options?: { touchActivity?: boolean }): void;
   complete(
@@ -1077,6 +1088,7 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
       bundleVersion: string,
       clock: DuelClockState | null,
       setup?: DuelSetup,
+      engineIdentity?: EngineIdentity,
     ) => {
       const row = loadDuelRow(slug, guildId);
       if (row.status !== "lobby") throw new DuelServiceError("Duel is not in lobby", 400);
@@ -1110,7 +1122,9 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
       }
 
       const storedClock = clock === null ? null : checkedClock(clock, seatCount);
-      const storedSetup = setup === undefined ? null : JSON.stringify(validateSetup(setup));
+      const storedSetup = setup === undefined && engineIdentity === undefined ? null : JSON.stringify({
+        ...validateSetup(setup ?? {}), ...(engineIdentity ? { engineIdentity } : {}),
+      });
       db.prepare<[string, string, string | null, string | null, number]>(
         "update duels set status = 'active', seed_json = ?, bundle_version = ?, clock_json = ?, setup_json = coalesce(?, setup_json), opening_json = null, last_activity_at = datetime('now') where id = ? and status = 'lobby'",
       ).run(JSON.stringify(seed), bundleVersion, serializeClock(storedClock), storedSetup, row.id);
@@ -1410,6 +1424,11 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
       return activateTx(slug, guildId, organizerPlayerId, seed, bundleVersion, clock, setup);
     },
 
+    activateRecorded(slug, guildId, organizerPlayerId, seed, bundleVersion, clock, setup, engineIdentity) {
+      if (!isEngineIdentity(engineIdentity)) throw new DuelServiceError("Invalid engine identity", 400);
+      return activateTx(slug, guildId, organizerPlayerId, seed, bundleVersion, clock, setup, engineIdentity);
+    },
+
     recordCommand(slug, guildId, seat, command, clock, options) {
       recordCommandTx(slug, guildId, seat, command, clock, options?.touchActivity !== false);
     },
@@ -1487,8 +1506,15 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
     },
 
     setSetup(slug, guildId, setup) {
-      const row = loadDuelRow(slug, guildId);
-      updateSetup.run(setup === null ? null : JSON.stringify(validateSetup(setup)), row.id);
+      db.transaction(() => {
+        const row = loadDuelRow(slug, guildId);
+        const checked = setup === null ? null : validateSetup(setup);
+        const recorded = parseSetup(row.setup_json)?.engineIdentity;
+        if (recorded && checked === null) {
+          throw new DuelServiceError("Recorded engine identity is immutable", 409);
+        }
+        updateSetup.run(checked === null ? null : JSON.stringify({ ...checked, ...(recorded ? { engineIdentity: recorded } : {}) }), row.id);
+      })();
     },
 
     dueClocks(now, limit) {

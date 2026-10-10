@@ -4,7 +4,7 @@ import { cardScriptHash, scriptEngineKind, type ScriptEngineKind } from "./card-
 import { loadCardPasscodeRemaps } from "@yugidraft/shared/db";
 import { createScriptErrorRecorder } from "./script-error-store.js";
 import { scriptErrorModeFromEnv } from "./script-errors.js";
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type Database from "better-sqlite3";
@@ -31,6 +31,7 @@ import type {
   DuelScriptErrorMode,
   ReplayEngineView,
   ReplaySource,
+  ReplayErrorCode,
 } from "@yugidraft/shared/duels";
 import {
   CardQueryError, duel1v1EngineForMode, isFirstChoice, isReplaySeed, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled, toOrdinaryReplayView,
@@ -48,7 +49,8 @@ import { loadCardDatabase } from "./cards.js";
 import { cardFacets, queryCards, deckCardUnavailableReason } from "./card-search.js";
 import { activeMultiScriptsHash, loadMultiScriptsFor, pinnedEngineVersion } from "./multi-scripts.js";
 import { firstTurnDrawFor, savedFirstTurnDraw } from "./first-turn-draw.js";
-import { JournalRunnerError, runJournalPrefix } from "./journal-runner.js";
+import { JournalRunnerError, runJournalPrefix, type JournalResources } from "./journal-runner.js";
+import { EngineResourceUnavailableError, getCurrentEngineResources, resolveEngineResourcesForSource, type EngineResources } from "./engine-resource-resolver.js";
 import { botTableOf, buildPracticeBotDeck, choosePracticeBotAnswer, chooseSurrenderedAnswer, PracticeBotError } from "./practice-bot.js";
 import {
   freezeContinueClock,
@@ -145,7 +147,7 @@ function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> 
 }
 
 class RequestError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: DuelErrorCode) { super(message); }
+  constructor(message: string, readonly status: number, readonly code?: DuelErrorCode | ReplayErrorCode) { super(message); }
 }
 
 type BotOutcome = { kind: "stop" } | { kind: "replan" } | { kind: "acted"; visible: boolean };
@@ -440,6 +442,7 @@ export function createDuelHost(options: {
     engine?: DuelEngineChoice,
     firstTurnDraw = firstTurnDrawFor(mode, masterRule, format),
     scriptErrorMode: DuelScriptErrorMode = scriptErrorModeFromEnv(),
+    resources?: EngineResources,
   ): GameOptions {
     const created: GameOptions = {
       mode,
@@ -450,6 +453,8 @@ export function createDuelHost(options: {
       settings,
       firstTurnDraw,
       scriptErrorMode,
+      ...(resources ? { engineIdentity: resources.identity,
+        ...(resources.multiScriptsDirectory ? { multiScriptsDirectory: resources.multiScriptsDirectory } : {}) } : {}),
     };
     // 1v1 keeps the exact old options. Other formats name the format; `decks` is one deck per seat in seat order.
     if (format !== "1v1") created.format = format;
@@ -475,6 +480,28 @@ export function createDuelHost(options: {
     const { engineIdentity, replayFork: _fork, ...setup } = state.setup ?? {};
     return { session: state.session, decks: state.decks, seed: state.seed, bundleVersion: state.bundleVersion,
       setup, engineIdentity: engineIdentity ?? null, commands: state.commands };
+  }
+
+  function resourcesOfSource(state: DuelPrivateState): EngineResources {
+    try {
+      return resolveEngineResourcesForSource(options.dataDirectory, {
+        session: state.session, setup: state.setup, bundleVersion: state.bundleVersion ?? "",
+        engineIdentity: state.setup?.engineIdentity ?? null,
+      });
+    } catch (error) {
+      if (error instanceof EngineResourceUnavailableError) throw new RequestError(error.message, error.status, error.code);
+      throw error;
+    }
+  }
+
+  /** The runner pins the raw manifest version; B5 also supplies verified files and the exact overlay. */
+  function journalResourcesOf(resources?: EngineResources): JournalResources {
+    return {
+      dataDirectory: resources?.dataDirectory ?? options.dataDirectory,
+      bundleVersion: manifest.bundleVersion,
+      ...(resources ? { engineIdentity: resources.identity,
+        ...(resources.multiScriptsDirectory ? { multiScriptsDirectory: resources.multiScriptsDirectory } : {}) } : {}),
+    };
   }
 
   function drawRuleOf(state: ReturnType<typeof service.privateState>): boolean {
@@ -1129,7 +1156,18 @@ export function createDuelHost(options: {
       service.interrupt(slug, guildId, "The pinned engine resources changed; this duel cannot be replayed safely.");
       await emitChange(slug, guildId);
       await afterGameEnded(slug, guildId);
-      throw new RequestError("Duel interrupted: engine resource version changed", 409);
+      throw new RequestError("Duel interrupted: engine resource version changed", 409, "ENGINE_UNAVAILABLE_FOR_SOURCE");
+    }
+    let resources: EngineResources | undefined;
+    if (state.setup?.engineIdentity) {
+      try {
+        resources = resourcesOfSource(state);
+      } catch (error) {
+        service.interrupt(slug, guildId, "The recorded engine resources or runtime rules changed; this duel cannot be recovered safely.");
+        await emitChange(slug, guildId);
+        await afterGameEnded(slug, guildId);
+        throw error;
+      }
     }
     try {
       drawRuleOf(state);
@@ -1142,13 +1180,16 @@ export function createDuelHost(options: {
     try {
       const result = await runJournalPrefix({
         source: journalSourceOf(state),
-        resources: { dataDirectory: options.dataDirectory, bundleVersion: manifest.bundleVersion },
+        resources: journalResourcesOf(resources),
         prefixCount: state.commands.length,
         createWorker: () => (game = spawn(state.session.id)),
       });
       game = result.worker;
     } catch (error) {
       if (await interruptEngineLoop(slug, guildId, error) && game) return game;
+      if (error instanceof JournalRunnerError && error.code === "ENGINE_UNAVAILABLE_FOR_SOURCE") {
+        throw new RequestError(error.message, 409, error.code);
+      }
       if (error instanceof JournalRunnerError && error.code !== "ENGINE_BUSY") {
         service.interrupt(slug, guildId, "The saved engine state could not be recovered.");
         await emitChange(slug, guildId);
@@ -1258,7 +1299,8 @@ export function createDuelHost(options: {
     if (reason !== TIME_LIMIT_REASON) throw new RequestError("This engine cannot eliminate a surrendering duelist", 409);
     if (!entry.surrendered.has(seat)) {
       entry.surrendered.add(seat);
-      service.setSetup(slug, guildId, { ...(state.setup ?? {}), surrenderedSeats: [...entry.surrendered].sort((a, b) => a - b) });
+      const { engineIdentity: _identity, ...setup } = state.setup ?? {};
+      service.setSetup(slug, guildId, { ...setup, surrenderedSeats: [...entry.surrendered].sort((a, b) => a - b) });
     }
     if (state.clock) service.setClock(slug, guildId, stopSeatClock(state.clock, seat, now()));
     const view = await game.view(0);
@@ -1384,7 +1426,7 @@ export function createDuelHost(options: {
     return toOrdinaryReplayView({ ...view, log, events, result });
   }
 
-  async function buildReplay(slug: string, guildId: string, room: DuelRoom): Promise<DuelReplay> {
+  async function buildReplay(slug: string, guildId: string, room: DuelRoom, resources: EngineResources): Promise<DuelReplay> {
     const session = room.session;
     if (session.status !== "completed" && session.status !== "interrupted") {
       throw new RequestError("Replays are available after the duel ends", 409);
@@ -1393,18 +1435,13 @@ export function createDuelHost(options: {
     if (!state.seed || !state.bundleVersion) {
       throw new RequestError("This duel has no recorded moves to replay.", 409);
     }
-    if (state.bundleVersion !== pinnedVersionFor(state.session.format)) {
-      throw new RequestError(
-        "Replay unavailable: the duel engine changed after this game was played. The final board is still available.",
-        409,
-      );
-    }
     drawRuleOf(state);
     const viewer = room.mySeat;
     const mismatch = () =>
       new RequestError("Replay could not reproduce this duel. The final board is still available.", 409);
     const transport = (error: unknown) =>
-      new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
+      error instanceof EngineResourceUnavailableError ? new RequestError(error.message, error.status, error.code)
+        : new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
     const frames: DuelReplayFrame[] = [];
     const seen = { log: 0, events: 0 };
     let game: DuelGameWorker | undefined;
@@ -1412,7 +1449,7 @@ export function createDuelHost(options: {
     try {
       const result = await runJournalPrefix({
         source: journalSourceOf(state),
-        resources: { dataDirectory: options.dataDirectory, bundleVersion: manifest.bundleVersion },
+        resources: journalResourcesOf(resources),
         prefixCount: state.commands.length,
         createWorker: () => (game = spawn()),
         checkpointSeat: viewer,
@@ -1424,6 +1461,9 @@ export function createDuelHost(options: {
       });
       lastView = viewer === null ? result.views.public : result.views.seats[viewer]!;
     } catch (error) {
+      if (error instanceof JournalRunnerError && error.code === "ENGINE_UNAVAILABLE_FOR_SOURCE") {
+        throw new RequestError(error.message, 409, error.code);
+      }
       if (error instanceof JournalRunnerError && error.code !== "ENGINE_BUSY") throw mismatch();
       throw transport(error);
     } finally {
@@ -1452,14 +1492,19 @@ export function createDuelHost(options: {
   }
 
   async function replay(slug: string, guildId: string, room: DuelRoom): Promise<DuelReplay> {
-    const key = `${guildId}:${slug}:${room.mySeat ?? "public"}`;
+    if (room.session.status !== "completed" && room.session.status !== "interrupted") {
+      throw new RequestError("Replays are available after the duel ends", 409);
+    }
+    const resources = resourcesOfSource(service.privateState(slug, guildId));
+    const identityKey = createHash("sha256").update(JSON.stringify(resources.identity)).digest("hex");
+    const key = `${guildId}:${slug}:${room.mySeat ?? "public"}:${identityKey}`;
     const cached = replayCache.get(key);
     if (cached) {
       replayCache.delete(key);
       replayCache.set(key, cached);
       return cached;
     }
-    const built = await buildReplay(slug, guildId, room);
+    const built = await buildReplay(slug, guildId, room, resources);
     replayCache.set(key, built);
     while (replayCache.size > REPLAY_CACHE_MAX) {
       const oldest = replayCache.keys().next().value;
@@ -1525,16 +1570,17 @@ export function createDuelHost(options: {
       const engine = engineForNewTable(preset.format, copts.mode, true);
       const firstTurnDraw = firstTurnDrawFor(state.session.mode, state.session.masterRule, preset.format);
       const scriptErrorMode = scriptErrorModeFromEnv();
+      const resources = getCurrentEngineResources(options.dataDirectory, { mode: state.session.mode, format: preset.format, engine });
       const botPolicies: Record<string, string> = {};
       for (let seat = 1; seat < seatCount; seat += 1) botPolicies[String(seat)] = SCRIPTED_POLICY;
       game = spawn(state.session.id);
       try {
-        await game.create(workerCreateOptions(state.session.mode, state.decks, seed, state.session.masterRule, settings, preset.format, scripts, engine, firstTurnDraw, scriptErrorMode));
+        await game.create(workerCreateOptions(state.session.mode, state.decks, seed, state.session.masterRule, settings, preset.format, scripts, engine, firstTurnDraw, scriptErrorMode, resources));
       } catch (error) {
         throw new RequestError(error instanceof Error ? error.message : "Duel engine is temporarily unavailable", 503);
       }
       const clock = startDecisionClock(await readClockView(game, seatCount), settings.turnSeconds, now(), seatCount);
-      service.activate(slug, guildId, actor, seed, pinnedVersionFor(preset.format), clock, {
+      service.activateRecorded(slug, guildId, actor, seed, resources.bundleVersion, clock, {
         firstTurnDraw,
         scriptErrorMode,
         scenarioId: preset.id,
@@ -1542,7 +1588,7 @@ export function createDuelHost(options: {
         startupScripts: scripts,
         botPolicies,
         ...(preset.format === "1v1" ? { engine: "pinned" as const } : {}),
-      });
+      }, resources.identity);
       games.set(slug, {
         game,
         lastRequestAt: now(),
@@ -2016,6 +2062,7 @@ export function createDuelHost(options: {
     const engine = engineForNewTable(state.session.format, state.session.mode);
     const firstTurnDraw = firstTurnDrawFor(state.session.mode, state.session.masterRule, state.session.format);
     const scriptErrorMode = scriptErrorModeFromEnv();
+    const resources = getCurrentEngineResources(options.dataDirectory, { mode: state.session.mode, format: state.session.format, engine });
     const game = spawn(state.session.id);
     try {
       await game.create(workerCreateOptions(
@@ -2029,12 +2076,13 @@ export function createDuelHost(options: {
         engine,
         firstTurnDraw,
         scriptErrorMode,
+        resources,
       ));
       const clock = startDecisionClock(await readClockView(game, seatCount), settings.turnSeconds, now(), seatCount);
       // The engine is saved with the duel, so a recover and a replay use it even after DUEL_1V1_ENGINE changes.
-      service.activate(slug, guildId, organizer, seed, pinnedVersionFor(state.session.format), clock, {
+      service.activateRecorded(slug, guildId, organizer, seed, resources.bundleVersion, clock, {
         ...(state.setup ?? {}), firstTurnDraw, scriptErrorMode, ...(engine ? { engine } : {}),
-      });
+      }, resources.identity);
       games.set(slug, { game, lastRequestAt: now(), guildId, surrendered: new Set(), policies: new Map(), traces: new Map() });
       await emitChange(slug, guildId);
       await driveBot(slug, guildId, game);
