@@ -66,7 +66,7 @@ If these inputs are unchanged, the updater keeps all current pins, reports
 job summary. Candidate validation and publication are skipped, so an existing bump
 PR is not updated and a new PR is not opened. Skipped upstream changes accumulate
 against the installed pins and are checked again on the next run. If the previous
-snapshot is ambiguous, the updater cannot prove irrelevance; it continues with a
+snapshot fails remap validation (ambiguity, invalid overrides or cycles), the updater cannot prove irrelevance; it continues with a
 review finding and unknown card counts. Failed downloads or incomplete trees stop
 the run before publication.
 

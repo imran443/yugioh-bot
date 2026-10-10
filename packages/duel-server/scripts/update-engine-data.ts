@@ -16,6 +16,7 @@ import { cardUpdate, renderCardUpdate, renderReleasedSets, withPreviewExclusions
 import { listIndex, reconcile, scanText } from "./scan-multiplayer-scripts.js";
 import { discoverReleasedDatabases, downloadReleasedCardData, restrictPrereleaseScripts } from "./released-card-data.js";
 import { compareLoadedData, loadedScriptTree, readCardRows, renderRelevantChanges } from "./engine-data-relevance.js";
+import { CardRemapValidationError } from "./prerelease-graduations.js";
 
 export type Pins = { scripts: string; database: string; strings: string };
 const repositories: Record<keyof Pins, string> = { scripts: "CardScripts", database: "BabelCDB", strings: "Distribution" };
@@ -177,7 +178,7 @@ export async function runUpdate(options: Options = {}) {
     const [database, oldDatabase] = await Promise.all([
       downloadReleasedCardData(next.database, temporary, download, { historyStart }),
       downloadReleasedCardData(old.database, join(temporary,"old-data"), download, { historyStart }).catch((error: unknown) => {
-        if (!(error instanceof Error) || !/^Ambiguous\b/.test(error.message)) throw error;
+        if (!(error instanceof CardRemapValidationError)) throw error;
         oldDataError = error.message;
         return null;
       }),

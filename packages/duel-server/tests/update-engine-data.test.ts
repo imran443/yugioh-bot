@@ -16,6 +16,7 @@ import { withCardUpdate } from "../scripts/engine-data-card-report.js";
 import * as smoke from "../scripts/prerelease-script-smoke.js";
 import * as probe from "../scripts/probe-engine-data.js";
 import * as history from "../scripts/prerelease-history.js";
+import * as releasedData from "../scripts/released-card-data.js";
 
 const oldPins: Pins = { scripts: "a".repeat(40), database: "b".repeat(40), strings: "c".repeat(40) };
 const nextPins: Pins = { scripts: "d".repeat(40), database: "e".repeat(40), strings: "f".repeat(40) };
@@ -102,6 +103,42 @@ async function loadedDataFixture(change: string) {
 }
 
 describe("engine data update", () => {
+  it.each(["invalid-override", "cyclic"])("opens the gate when old remap validation fails (%s)", async failure => {
+    const { root, request } = await loadedDataFixture(failure === "invalid-override" ? "graduation" : "identical");
+    if (failure === "invalid-override") {
+      const download = releasedData.downloadReleasedCardData;
+      vi.spyOn(releasedData, "downloadReleasedCardData").mockImplementation((commit, directory, request, options) =>
+        download(commit, directory, request, { ...options, overrideBytes: '{"100000001":2}' }));
+    } else {
+      const preparation = join(root, "packages/duel-server/scripts/prepare-data.ts");
+      await writeFile(preparation, (await readFile(preparation, "utf8")) + `\nconst history = { prereleaseHistoryStart: "${"1".repeat(40)}" };\n`);
+      const identity = { name: "Historical card", type: 33, atk: 1000, def: 1000, level: 4,
+        attribute: 1, race: "1", description: "An effect description long enough to match historical graduations uniquely." };
+      vi.spyOn(history, "prereleaseHistory").mockImplementation(async (_start, commit) => ({ cards: [],
+        transitions: commit === oldPins.database ? [
+          { commit: "first", removed: [{ ...identity, code: 2 }], added: [{ ...identity, code: 3 }] },
+          { commit: "second", removed: [{ ...identity, code: 3 }], added: [{ ...identity, code: 2 }] },
+        ] : [] }));
+    }
+    const result = await runUpdate({ root, overrides: nextPins, request, validate: false });
+    expect(result.changed).toBe(true);
+    expect(result.relevance).toMatchObject({ comparisonAvailable: false, newCards: null, changedCards: null });
+    expect(await readPins(root)).toEqual(nextPins);
+    expect(await readFile(result.reportPath, "utf8")).toContain(failure === "invalid-override"
+      ? "Invalid card remap override 100000001" : "Cyclic historical prerelease passcode");
+  });
+
+  it("still rejects unrelated old-snapshot download failures", async () => {
+    const { root, request } = await loadedDataFixture("identical");
+    const download = releasedData.downloadReleasedCardData;
+    vi.spyOn(releasedData, "downloadReleasedCardData").mockImplementation((commit, ...args) => {
+      if (commit === oldPins.database) throw new Error("Download failed (500)");
+      return download(commit, ...args);
+    });
+    await expect(runUpdate({ root, overrides: nextPins, request, validate: false })).rejects.toThrow("Download failed (500)");
+    expect(await readPins(root)).toEqual(oldPins);
+  });
+
   it.each(["graduation", "new-release", "utility", "ambiguous-old"])("opens the end-to-end gate for %s", async change => {
     const { root, request } = await loadedDataFixture(change);
     const overrides = change === "utility" ? { ...oldPins, scripts: nextPins.scripts } : nextPins;
