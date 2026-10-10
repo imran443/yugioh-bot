@@ -26,8 +26,8 @@ export function scenariosOffResponse(): NextResponse {
   return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
-type DuelActor =
-  | { ok: true; guildId: string; playerId: number; duels: DuelService }
+export type DuelActor =
+  | { ok: true; guildId: string; playerId: number; userId: number; duels: DuelService }
   | { ok: false; response: NextResponse };
 
 export async function requireDuelActor(): Promise<DuelActor> {
@@ -39,7 +39,7 @@ export async function requireDuelActor(): Promise<DuelActor> {
   }
   const db = getDb();
   const player = createPlayerService(db).findOrCreate(guildId, actor.userId, actor.userName);
-  return { ok: true, guildId, playerId: player.id, duels: createDuelService(db) };
+  return { ok: true, guildId, playerId: player.id, userId: actor.userId, duels: createDuelService(db) };
 }
 
 export function duelErrorResponse(error: unknown) {
@@ -86,6 +86,8 @@ export async function callDuelHost(input: {
   slug?: string;
   guildId: string;
   playerId: number;
+  /** Trusted web session users.id. Owner operations must recheck its stored player mapping on the host. */
+  userId?: number;
   /** view only: an eliminated FFA player watches through the public view. */
   spectate?: boolean;
   command?: DuelCommand;
@@ -128,6 +130,7 @@ export async function callDuelHost(input: {
     guildId: input.guildId,
     playerId: input.playerId,
   };
+  if (input.userId !== undefined) payload.userId = input.userId;
   if (input.slug) payload.slug = input.slug;
   if (input.op === "view" && input.spectate === true) payload.spectate = true;
   if (input.command) payload.command = input.command;
