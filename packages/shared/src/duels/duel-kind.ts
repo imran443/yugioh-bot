@@ -19,5 +19,6 @@ export function isDuelKindSetup(kind: unknown, setup: unknown): boolean {
   if (setup === undefined || setup === null) return kind === "play";
   if (typeof setup !== "object" || Array.isArray(setup)) return false;
   if (kind === "play") return !("replayFork" in setup);
-  return "replayFork" in setup && isReplayForkSetup(setup.replayFork);
+  return !("botPolicies" in setup) && !("presetId" in setup) && !("scenarioId" in setup)
+    && "replayFork" in setup && isReplayForkSetup(setup.replayFork);
 }

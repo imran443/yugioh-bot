@@ -740,6 +740,14 @@ describe("host hand scenarios (DUEL_SCENARIOS)", () => {
     process.env.DUEL_REPORT_DIR = dir;
     const { t, slug, stuck } = await blockedDuel();
     try {
+      const row = t.db.prepare("select setup_json from duels where web_slug = ?").get(slug) as { setup_json: string };
+      const savedSetup = JSON.parse(row.setup_json);
+      t.db.prepare("update duels set setup_json = ? where web_slug = ?").run(JSON.stringify({ ...savedSetup, replayFork: {
+        ownerUserId: 101, control: "all-manual", origin: {
+          sourceSlug: "private-partial-source", sourceVersion: "source-v1", frameId: "frame-2", step: 2,
+          prefixCount: 7, prefixHash: "a".repeat(64), sourceSeats: [{ seat: 0, displayName: null }, { seat: 1, displayName: null }],
+        },
+      } }), slug);
       const began = Date.now();
       const reported = await post(t.host, { op: "report", slug, note: "Hung.", ...t.who });
       expect(Date.now() - began).toBeLessThan(2000);
@@ -750,6 +758,11 @@ describe("host hand scenarios (DUEL_SCENARIOS)", () => {
       expect(existsSync(join(folder, "journal.jsonl"))).toBe(true);
       expect(existsSync(join(folder, "views", "seat-0.json"))).toBe(true);
       expect(existsSync(join(folder, "room-setup.json"))).toBe(true);
+      const roomSetupText = readFileSync(join(folder, "room-setup.json"), "utf8");
+      expect(JSON.parse(roomSetupText).setup).toEqual(savedSetup);
+      for (const text of [roomSetupText, readFileSync(join(folder, "journal.jsonl"), "utf8")]) {
+        expect(text).not.toMatch(/replayFork|ownerUserId|private-partial-source|prefixCount|prefixHash/);
+      }
       expect(existsSync(join(folder, "engine-diagnostics.json"))).toBe(true);
       expect(JSON.parse(readFileSync(join(folder, "debug-trace.json"), "utf8")).worker.busy).toBe(true);
       expect(JSON.parse(readFileSync(join(folder, "partial.json"), "utf8"))).toMatchObject({ partial: true, slug });

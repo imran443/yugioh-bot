@@ -24,6 +24,8 @@ import type {
   ReplayJournalEntry,
 } from "../duels/index.js";
 import { DEFAULT_DUEL_KIND } from "../duels/duel-kind.js";
+import { isEngineIdentity } from "../duels/replay.js";
+import { isReplayForkSetup } from "../duels/replay-fork.js";
 import {
   clockWithServerNow,
   DEFAULT_DUEL_FORMAT,
@@ -100,9 +102,9 @@ export class DuelServiceError extends Error {
 
 /** Private recorded setup, kept so recovery and replay can rebuild the same engine state. */
 export interface DuelSetup {
-  /** Recorded at game start; persistence/validation is added by B5. Never derive an old game's identity at export. */
+  /** Server-recorded at game start by B5 and validated on read. Never derive an old game's identity at export. */
   engineIdentity?: EngineIdentity;
-  /** Creator and copied origin; persistence/immutable-kind validation is added by B3. Never include in public sessions. */
+  /** Server-owned creator and copied origin, validated on read. B3 adds immutable-kind storage. Never include in public sessions. */
   replayFork?: ReplayForkSetup;
   /** Resolved policy at start; older journals use tolerant recovery. */
   scriptErrorMode?: DuelScriptErrorMode;
@@ -410,6 +412,8 @@ function parseSetup(raw: string | null | undefined): DuelSetup | undefined {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
     const input = parsed as Record<string, unknown>;
     const setup: DuelSetup = {};
+    if (isEngineIdentity(input.engineIdentity)) setup.engineIdentity = input.engineIdentity;
+    if (isReplayForkSetup(input.replayFork)) setup.replayFork = input.replayFork;
     if (input.scriptErrorMode === "tolerant" || input.scriptErrorMode === "strict") setup.scriptErrorMode = input.scriptErrorMode;
     if (typeof input.firstTurnDraw === "boolean") setup.firstTurnDraw = input.firstTurnDraw;
     if (Array.isArray(input.startupScripts) && input.startupScripts.every((entry) => typeof entry === "string")) {
@@ -1386,7 +1390,7 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
         seed: parseSeed(row.seed_json),
         bundleVersion: row.bundle_version,
         commands: selectCommands.all(row.id).map((entry) => ({
-          seq: entry.seq,
+          storedSeq: entry.seq,
           seat: entry.seat,
           command: JSON.parse(entry.command_json) as DuelCommand,
         })),

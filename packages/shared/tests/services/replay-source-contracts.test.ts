@@ -43,12 +43,12 @@ describe("internal replay source reads", () => {
     const { db, duels, session, creator } = setup("ffa4");
     duels.activate(session.slug, "test-guild", creator.playerId, ["1", "2", "3", "4"], "bundle-v1", null);
     const entries = [
-      { seq: 2, seat: 0, command: { promptId: "answer-1", revision: 3, answer: { choice: "go" } } },
-      { seq: 8, seat: 3, command: { promptId: "chain-mode:off", revision: 3, answer: {} } },
-      { seq: 11, seat: 2, command: { promptId: "eliminate:4", revision: 3, answer: {} } },
+      { storedSeq: 2, seat: 0, command: { promptId: "answer-1", revision: 3, answer: { choice: "go" } } },
+      { storedSeq: 8, seat: 3, command: { promptId: "chain-mode:off", revision: 3, answer: {} } },
+      { storedSeq: 11, seat: 2, command: { promptId: "eliminate:4", revision: 3, answer: {} } },
     ];
     const insert = db.prepare("insert into duel_commands(duel_id,seq,seat,command_json) values(?,?,?,?)");
-    for (const entry of [...entries].reverse()) insert.run(session.id, entry.seq, entry.seat, JSON.stringify(entry.command));
+    for (const entry of [...entries].reverse()) insert.run(session.id, entry.storedSeq, entry.seat, JSON.stringify(entry.command));
     expect(duels.privateState(session.slug, "test-guild").commands).toEqual(entries);
     const room = duels.room(session.slug, "test-guild", creator.playerId);
     for (const key of ["commands", "seed", "bundleVersion", "setup", "replayFork", "engineIdentity"]) {

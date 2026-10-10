@@ -334,6 +334,11 @@ These types are proposals. They are not current API fields.
 ```ts
 type ReplayVisibility = "public" | "mine";
 type ReplayCursor = string; // opaque; must not expose private journal counts
+type ReplayEngineView = Omit<DuelEngineView, "prompt" | "prioritySeat" | "chainMode"> & {
+  prompt: null;
+  prioritySeat: null;
+  chainMode?: never;
+};
 
 interface ReplayFrameV2 {
   frameId: string;
@@ -341,14 +346,16 @@ interface ReplayFrameV2 {
   kind: "opening" | "engine" | "result";
   actorSeat: number | null;
   cursor: ReplayCursor | null;  // checkpoint identity, not permission
-  view: DuelEngineView;         // prompt/chainMode cleared; delta log/events
+  view: ReplayEngineView;       // sanitized; perspective-specific delta log/events
 }
 
 interface DuelReplayV2 {
   version: 2;
   sourceVersion: string;
+  visibility: ReplayVisibility; // echo requested public/mine view
+  reveal?: boolean;             // echo privileged reveal request; omit for ordinary reads
   session: DuelSession;
-  role: DuelActorRole;
+  role: DuelActorRole;          // owner with no source seat: spectator, mySeat null, capabilities set
   mySeat: number | null;        // authenticated source seat
   dataSeat: number | null;      // actual server projection
   frames: ReplayFrameV2[];
@@ -379,6 +386,14 @@ interface ReplayForkControl {
   identitySeat: 0;
   actingSeat: number;
   manualSeats: number[];
+  origin: {
+    sourceSlug: string;
+    sourceFrameId: string;
+    sourceStep: number;
+    sourceSeats: Array<{ seat: number; displayName: string | null }>;
+  };
+  revealHands: boolean;
+  chainModes: Record<number, DuelChainMode>; // living seats, including pending-loss seats
 }
 
 interface ReplayForkResult {
@@ -392,17 +407,26 @@ interface ForkOrigin {         // private persisted metadata
   sourceSlug: string;
   sourceVersion: string;
   frameId: string;
+  step: number;                // visible step, never journal count or engine revision
   prefixCount: number;
   prefixHash: string;
   sourceSeats: Array<{ seat: number; displayName: string | null }>;
 }
 ```
 
-Define an internal `ReplaySource` with explicit sequence IDs, original setup, resource identity, rules, seed and ordered decks. Define an async `applyWorkerJournalCommand()` for workers. The existing synchronous engine helper cannot await worker operations.
+Define an internal `ReplaySource` with explicit sequence IDs, original setup, resource identity, rules, seed and ordered decks. Its `setup` is `Omit<DuelSetup, "engineIdentity" | "replayFork">`. Read the single top-level `engineIdentity` from the stored setup; use null for old records. `ReplayJournalEntry.storedSeq` is `duel_commands.seq`, with gaps allowed. Prefix counts count ordered entries. Report JSONL `seq` remains a separate one-based array index. Define an async `applyWorkerJournalCommand()` for workers. The existing synchronous engine helper cannot await worker operations.
 
 Define an internal `EngineIdentity` for new recordings. Include core family, mode, WASM hash, wrapper/protocol version, card database/remap/scripts hash, Domain script hash, multi overlay hash and host-rule version. Preserve the existing bundle field for old records. Record identity at game start, not from today's worker when exporting an old game.
 
-For ordinary users, return replay views with `prioritySeat: null` as today. An owner capability on main may expose current priority for fork preview. The live fork uses its full prompt and priority. Do not add private prompt IDs, options, seeds, deck lists or prefix counts to ordinary replay output.
+Use the shared `isEngineIdentity()` and `sameEngineIdentity()` in B1/B2/B4/B5. Version 1 accepts `legacy`, `pinned` or `multi`, Normal or Domain, nonblank version strings, and 64-character lowercase SHA-256 hashes. `cardRemapsHash` can be null only for a resource set with no remap file; the resolver checks that fact. `domainScriptHash` is null exactly in Normal mode. `multiOverlayHash` is null exactly for a 1v1 core. Validate all four seed words with `isReplaySeed()` before engine creation. P0 uses canonical positive decimal uint64 strings, without leading zeros, bounded by 18446744073709551615. It never normalizes or replaces saved seed words.
+
+P0 reads and keeps validated `setup.engineIdentity` and `setup.replayFork`. Normal `validateSetup()` still rejects both server-owned fields. B3/B5 add the server write paths. Fork setup has only `ownerUserId`, `control` and `origin`. Origin has only the fields above. Each source seat has only `seat` and `displayName`. A replay-fork kind/setup pair rejects `botPolicies`, `presetId` and `scenarioId`. Source slug and frame ID caps are 128 characters, source version cap is 256, and display name cap is 100. The private visible step is required and must be a nonnegative safe integer.
+
+Use `toOrdinaryReplayView()` in replay producers. It clears prompt and priority and removes chainMode without changing the authorized card/log/event projection. P0 uses this safe shape for all replay frames. The live fork uses its full prompt and priority. Do not add private prompt IDs, options, seeds, deck lists or prefix counts to ordinary replay output.
+
+Only the current authorized fork creator receives `room.fork.origin`. Map private `origin.frameId` to `sourceFrameId` and `origin.step` to `sourceStep`. Copy only seat numbers and display names. Never return prefix counts, prefix hashes or source player IDs in this projection. The creator-only fork view accepts `reveal=1|0` and echoes it as `fork.revealHands`, default true. With reveal=1, fill each `engine.seats[].hand` and `.extra` from its authorized seat view. Keep Set-card and private log/event visibility at the acting seat. With reveal=0, use the acting seat's normal projection. Return each living seat's current chain mode in `fork.chainModes`; pending-loss seats stay included until eliminated. Journal default `always` changes after the copied prefix. Follow prompt stays client-only, default ON, and reads `engine.prioritySeat`.
+
+B3/B6 must keep private replayFork metadata out of report files. P0 removes it from journal setup and partial room setup. B6 must still mark later fork diagnostics and keep them out of production error counts, as G19 requires.
 
 ### 7.5 API, access and errors
 
@@ -428,8 +452,10 @@ Seal cursors with authenticated encryption or use opaque server lookup IDs. Sign
 | --- | --- | --- |
 | 401 / 404 | `ACCESS_DENIED` | No session, no owner access or wrong fork creator; no private data |
 | 403 | `ACCESS_DENIED` | Ordinary source room access fails |
+| 503 | `ACCESS_UNAVAILABLE` | Session or access checks are unavailable |
 | 400 | `INVALID_CURSOR` | Bad request or cursor |
 | 409 | `SOURCE_CHANGED` | Refresh the replay before a fork |
+| 409 | `REQUEST_CONFLICT` | Same owner/requestId with a different source, version or cursor |
 | 409 | `ENGINE_UNAVAILABLE_FOR_SOURCE` | Exact resources are absent |
 | 409 | `REPLAY_MISMATCH` | Saved input or target cannot be reproduced |
 | 409 | `NOT_PLAYABLE` | Engine result, synthetic final frame or unsafe old state |
@@ -437,6 +463,8 @@ Seal cursors with authenticated encryption or use opaque server lookup IDs. Sign
 | 503 | `ENGINE_BUSY` | Worker failure or bounded timeout |
 
 All failures preserve the source status, result, journal and series. Show the saved final-board link when replay fails. Only completed or interrupted sources are in the first release. Active-source capture needs a separate, locked journal contract.
+
+`ReplayErrorResponse` is `{ code: ReplayErrorCode, error: string, finalBoard?: "available" | "none" }`. B2 sets `finalBoard` for `ENGINE_UNAVAILABLE_FOR_SOURCE`, `REPLAY_MISMATCH` and `NOT_PLAYABLE` after access checks. Availability refers to an authorized saved final board; do not disclose it on access failures. Include `sourceVersion`, `visibility`, requested `dataSeat` and reveal state in private cache and client response-generation keys. Ignore responses for an old request view.
 
 ## 8. Jump in and all-seat play on main
 
@@ -548,6 +576,7 @@ Paths are relative to the repo. “New” marks a proposed file. P0 owns shared 
 - Files: `packages/shared/src/duels/index.ts`; new `duels/replay.ts`, `duels/replay-fork.ts`, `duels/duel-kind.ts`; service type changes in `packages/shared/src/services/duels.ts`; new shared contract tests.
 - Dependencies: none. Review with Sonnet and Opus before dependent integration.
 - Contract: `DuelReplayV2`, `ReplayFrameV2`, `ReplaySource`, `EngineIdentity`, opaque cursors, owner capabilities, `DuelSession.kind`, private fork setup/origin, `ReplayForkControl` with separate identity/acting seats, stable errors. Source reads expose ordered sequence IDs internally.
+- P0 review fixes: exact fork metadata keys and bounds; validated setup reads; shared identity/seed validators and identity comparison; ordinary view sanitizer; `storedSeq`; request visibility/reveal echo; creator-safe origin/reveal/mode fields; access-unavailable, retry-conflict and saved-final-board error fields. B2/B4/U5 use these final shapes from section 7.4/7.5. B3/B5 keep server setup writes separate from normal setup validation. B3/B6 keep private fork origin out of reports.
 - Tests: two/three/four seats; v1 compatibility; ordinary output has no private counts/options; kind/setup validation; creator uses application user ID.
 
 ### B0 — Backend (Codex): main owner access

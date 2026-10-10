@@ -1110,6 +1110,7 @@ class LoggingWorker extends FakeWorker {
     const ids = Array.from({ length: this.revision }, (_, index) => index + 1);
     return {
       ...base,
+      ...(seat === null ? {} : { chainMode: "always" as const }),
       log: ids.map((id) => ({ id, text: `log ${id}` })),
       events: ids.map((id) => ({ id, kind: "phase" as const, text: `event ${id}` })),
     };
@@ -1189,6 +1190,7 @@ describe("duel host replay", () => {
       for (const frame of frames) {
         expect(frame.view.prioritySeat).toBeNull();
         expect(frame.view.prompt).toBeNull();
+        expect(frame.view).not.toHaveProperty("chainMode");
       }
     }
     const stored = db.prepare("select snapshot_public_json, snapshot_seat0_json, snapshot_seat1_json from duels where web_slug = ?")
@@ -1206,6 +1208,22 @@ describe("duel host replay", () => {
     const json = JSON.stringify(replay.frames);
     expect(json).not.toContain("111");
     expect(json).not.toContain("222");
+  });
+
+  it("sanitizes a synthetic final frame when an interrupted duel has no saved board", async () => {
+    const { host, session, p1, duels } = await playedDuel(false, 1);
+    duels.interrupt(session.slug, "g1", "Fixture interruption");
+    expect(duels.room(session.slug, "g1", p1).engine).toBeNull();
+    const response = await post(host, { op: "replay", slug: session.slug, guildId: "g1", playerId: p1 });
+    expect(response.status).toBe(200);
+    const frames = readReplay(response.data).frames;
+    expect(frames).toHaveLength(3);
+    expect(frames.at(-1)?.view.result?.reason).toBe("Fixture interruption");
+    for (const frame of frames) {
+      expect(frame.view.prompt).toBeNull();
+      expect(frame.view.prioritySeat).toBeNull();
+      expect(frame.view).not.toHaveProperty("chainMode");
+    }
   });
 
   it("stops at an engine result and skips the extra final frame", async () => {

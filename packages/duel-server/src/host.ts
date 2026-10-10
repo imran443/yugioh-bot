@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import type Database from "better-sqlite3";
 import { createLocalCardDataStatus, type EngineDataManifest } from "./card-data-status.js";
 import { createGithubCardDataStatus } from "./github-card-data-status.js";
-import { createDuelSeriesService, createDuelService, createTournamentDuelService, DuelServiceError, TournamentDuelError, isCardFetchError, type DuelFinalSnapshots } from "@yugidraft/shared/services";
+import { createDuelSeriesService, createDuelService, createTournamentDuelService, DuelServiceError, TournamentDuelError, isCardFetchError, type DuelFinalSnapshots, type DuelPrivateState } from "@yugidraft/shared/services";
 import type {
   DuelAnswer,
   DuelCommand,
@@ -29,9 +29,10 @@ import type {
   DuelSession,
   DuelSettings,
   DuelScriptErrorMode,
+  ReplayEngineView,
 } from "@yugidraft/shared/duels";
 import {
-  CardQueryError, duel1v1EngineForMode, isFirstChoice, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled,
+  CardQueryError, duel1v1EngineForMode, isFirstChoice, isRpsMove, multiplayerSeatsBlockReason, multiplayerTablesEnabled, toOrdinaryReplayView,
   COIN_TIMING, COIN_CHAIN_BEAT_MAX_MS, MIN_DUEL_FX_SPEED, coinTossDurationMs,
   CHAIN_MODE_JOURNAL_LIMIT, CHAIN_MODE_PROMPT_PREFIX, chainModeOf, isDuelChainMode, normalizeDuelSettings, opponentSeatsOf, parseCardQuery, seatCountFor, teamOfSeat, DUEL_OPENING_PICK_MS, DUEL_RPS_MOVES,
 } from "@yugidraft/shared/duels";
@@ -1422,13 +1423,13 @@ export function createDuelHost(options: {
   }
 
   /** Keep only log/event entries newer than those already emitted; ids grow monotonically per board. */
-  function deltaView(view: DuelEngineView, seen: { log: number; events: number }): DuelEngineView {
+  function deltaView(view: DuelEngineView, seen: { log: number; events: number }): ReplayEngineView {
     const log = view.log.filter((entry) => entry.id > seen.log);
     const events = view.events.filter((entry) => entry.id > seen.events);
     for (const entry of log) seen.log = Math.max(seen.log, entry.id);
     for (const entry of events) seen.events = Math.max(seen.events, entry.id);
     const result = view.result?.reason === "Surrendered" ? { ...view.result, reason: "Surrender" } : view.result;
-    return { ...view, chainMode: undefined, prompt: null, prioritySeat: null, log, events, result };
+    return toOrdinaryReplayView({ ...view, log, events, result });
   }
 
   async function buildReplay(slug: string, guildId: string, room: DuelRoom): Promise<DuelReplay> {
@@ -1509,13 +1510,13 @@ export function createDuelHost(options: {
         frames.push({
           step,
           actorSeat: null,
-          view: freezeView({ ...lastView, log: [], events: [] }, {
+          view: toOrdinaryReplayView(freezeView({ ...lastView, log: [], events: [] }, {
             winnerSeat: session.winnerSeat,
             ...(session.format === "tag"
               ? { winnerTeam: session.winnerSeat === null ? null : teamOfSeat(session.format, session.winnerSeat) }
               : {}),
             reason: session.resultReason ?? "Duel ended",
-          }),
+          })),
         });
       }
     }
@@ -1716,6 +1717,13 @@ export function createDuelHost(options: {
     };
   }
 
+  /** Remove private creator/origin metadata from manual and partial report setup. */
+  function reportSetup(setup: DuelPrivateState["setup"]) {
+    if (!setup) return null;
+    const { replayFork: _replayFork, ...rules } = setup;
+    return rules;
+  }
+
   /**
    * The journal lines of a report. First line: the e2e journal header (format `yugidraft-duel-journal/1`, decks, settings,
    * startup scripts, core sha and more). Then one line per accepted command at its seq (`answer`, `eliminate` or `chain-mode`). A surrender
@@ -1745,7 +1753,7 @@ export function createDuelHost(options: {
         multiScriptsHash: seatCountFor(session.format) > 2 ? activeMultiScriptsHash(options.dataDirectory) : null,
         seed: state.seed,
         settings: session.settings,
-        setup: state.setup ?? null,
+        setup: reportSetup(state.setup),
         startupScripts,
         wasmSha: worker.wasmSha,
         wasmFile: worker.wasmFile,
@@ -1765,6 +1773,7 @@ export function createDuelHost(options: {
       for (const [seat, at] of markerAt) if (at === seq) lines.push({ type: "surrender", seq, seat });
     };
     state.commands.forEach((entry, index) => {
+      // Report seq is an ordered index, independent of the database's storedSeq.
       const seq = index + 1;
       marker(seq);
       const command = entry.command as DuelCommand & { note?: string };
@@ -1818,7 +1827,7 @@ export function createDuelHost(options: {
     if (input.partial) {
       const spectatorView = lastViews.get(slug)?.get(-1);
       if (spectatorView) writeFileSync(join(dir, "views", "spectator.json"), JSON.stringify(spectatorView, null, 2));
-      writeFileSync(join(dir, "room-setup.json"), JSON.stringify({ session, setup: state.setup ?? null }, null, 2));
+      writeFileSync(join(dir, "room-setup.json"), JSON.stringify({ session, setup: reportSetup(state.setup) }, null, 2));
       writeFileSync(join(dir, "partial.json"), JSON.stringify({ partial: true, reason: input.partial.reason, slug, at: new Date(now()).toISOString() }, null, 2));
     }
     // Triage only: the engine's ring buffer (response order, messages 200-202, wins, eliminations, core log lines). Not a player view.
