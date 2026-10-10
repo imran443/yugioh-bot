@@ -42,7 +42,7 @@ export function readCardRows(path: string): Map<number, string> {
  * Match prepare-data's removal of shadowed/absent previews; exclude Rush cards.
  */
 export function loadedScriptTree(tree: Map<string, string>, codes: ReadonlySet<number>, knownRushCodes: ReadonlySet<number> = new Set()): Map<string, string> {
-  const rushPath = (path: string) => /(?:^|\/)rush(?:[-_/]|$)/i.test(path);
+  const rushPath = (path: string) => /(?:^|\/)rush\//i.test(path);
   const rushCodes = new Set(knownRushCodes);
   for (const path of tree.keys()) {
     const card = /(?:^|\/)c(\d+)\.lua$/.exec(path);

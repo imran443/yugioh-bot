@@ -51,6 +51,16 @@ describe("engine data relevance gate", () => {
       ["c3.lua", "root dependency"], ["pre-errata/c4.lua", "explicit dependency"]]);
     expect(relevance.loadedScriptTree(tree, new Set([1]))).toEqual(tree);
   });
+  it.each(["rush_utility.lua", "rush-helper.lua", "rush.lua"])("keeps root %s relevant while excluding Rush directories and CDB passcodes", path => {
+    const tree = new Map([[path, "helper"], ["rush/c2.lua", "Rush script"], ["RUSH/utility.lua", "Rush helper"],
+      ["unofficial/rush/c3.lua", "nested Rush"], ["official/c999.lua", "Rush CDB card"], ["proc_rush.lua", "shared procedure"]]);
+    const loaded = relevance.loadedScriptTree(tree, new Set([1]), new Set([999]));
+    expect([...loaded.keys()]).toEqual([path, "proc_rush.lua"]);
+    tree.set(path, "changed helper");
+    expect(relevance.compareLoadedData({ ...snapshot(), scripts: loaded },
+      { ...snapshot(), scripts: relevance.loadedScriptTree(tree, new Set([1]), new Set([999])) }))
+      .toMatchObject({ relevant: true, changedScripts: [path] });
+  });
   it("does not lose changes to SQLite integers above Number.MAX_SAFE_INTEGER or card text strings", async () => {
     const dir = await mkdtemp(join(tmpdir(), "relevance-test-")); dirs.push(dir);
     const path = join(dir, "cards.cdb"), db = new Database(path);
