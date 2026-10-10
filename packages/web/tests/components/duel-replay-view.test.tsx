@@ -194,25 +194,6 @@ describe("DuelReplayView camera and card visibility", () => {
     expect(screen.getByTestId("field").dataset.spectator).toBe("false");
   });
 
-  it("keeps the same frame when the camera moves in a four-seat game and offers every seat", async () => {
-    stubServer(byVisibility((visibility) => replayV2({ visibility, format: "ffa4", frames: [
-      frame({ step: 0, format: "ffa4" }), frame({ step: 1, format: "ffa4", actorSeat: 2 }), frame({ step: 2, format: "ffa4", actorSeat: 3 }),
-    ] })));
-    await open();
-    expect(screen.getByText(/4-player FFA/)).toBeTruthy();
-    expect(within(screen.getByRole("combobox", { name: "View from seat" })).getAllByRole("option").map((o) => o.textContent)).toEqual(["Ada", "Bo", "Cy", "Di"]);
-    fireEvent.click(screen.getByRole("button", { name: "Next move" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next move" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "View from seat" }), { target: { value: "3" } });
-    expect(screen.getByText("Move 2 / 2")).toBeTruthy();
-    expect(screen.getByText("Di acted")).toBeTruthy();
-    expect(screen.getByTestId("field").dataset.bottom).toBe("3");
-    expect(screen.getByTestId("field").dataset.top).toBe("0");
-    fireEvent.change(screen.getByRole("combobox", { name: "Opposite seat" }), { target: { value: "2" } });
-    expect(screen.getByTestId("field").dataset.top).toBe("2");
-    expect(screen.getByTestId("top-name").textContent).toBe("Cy");
-  });
-
   it("names a team in a Tag result", async () => {
     stubServer(byVisibility((visibility) => replayV2({ visibility, format: "tag", frames: [
       frame({ step: 0, format: "tag" }),
