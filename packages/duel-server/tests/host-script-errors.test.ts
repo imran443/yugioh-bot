@@ -7,6 +7,7 @@ import { migrate } from "@yugidraft/shared/db";
 import { createDuelService } from "@yugidraft/shared/services";
 import type { DuelEngineView, DuelFormat, DuelMode } from "@yugidraft/shared/duels";
 import { createDuelHost, type DuelHost } from "../src/host.js";
+import { getCurrentEngineResources } from "../src/engine-resource-resolver.js";
 import { topScriptErrors } from "../src/script-error-store.js";
 import { reproOptions, attackAnswer } from "./helpers/script-error-repro.js";
 import { queryErrorOptions } from "./helpers/query-error-repro.js";
@@ -66,9 +67,9 @@ describeWithCores("script errors through host, worker and journal", [needs.stand
     players.slice(1).forEach(player => duels.takeSeat(session.slug, "g", player));
     players.forEach((player, seat) => duels.setDeck(session.slug, "g", player, options.decks[seat]!));
     const version = JSON.parse(readFileSync(`${DATA}/manifest.json`, "utf8")).bundleVersion;
-    duels.activate(session.slug, "g", players[0]!, options.seed, pinnedEngineVersion(version, players.length, format === "1v1" ? null : activeMultiScriptsHash(DATA)), null, {
+    duels.activateRecorded(session.slug, "g", players[0]!, options.seed, pinnedEngineVersion(version, players.length, format === "1v1" ? null : activeMultiScriptsHash(DATA)), null, {
       engine, scriptErrorMode: "tolerant", firstTurnDraw: false, startupScripts: options.startupScripts.map(script => script.content),
-    });
+    }, getCurrentEngineResources(DATA, { mode: "normal", format, engine }).identity);
     const makeHost = () => { const host = createDuelHost({ db, dataDirectory: DATA, secret: SECRET, searchCards: () => [], pollIntervalMs: 60_000 }); hosts.push(host); return host; };
     let host = makeHost();
     const base = { slug: session.slug, guildId: "g" };

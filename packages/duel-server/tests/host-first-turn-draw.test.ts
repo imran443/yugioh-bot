@@ -7,13 +7,15 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { migrate } from "@yugidraft/shared/db";
 import { createDuelService } from "@yugidraft/shared/services";
-import { seatCountFor, type DuelEngineView, type DuelFormat, type DuelMasterRule, type DuelMode, type DuelReplay, type DuelRoom } from "@yugidraft/shared/duels";
+import { isReplaySeed, seatCountFor, type DuelEngineView, type DuelFormat, type DuelMasterRule, type DuelMode, type DuelReplay, type DuelRoom } from "@yugidraft/shared/duels";
 import { afterEach, expect, it, vi } from "vitest";
 import { createEngineGame, type EngineGame } from "../src/engine.js";
 import type { DuelHost } from "../src/host.js";
 import { createTestDuelHost as createDuelHost, finishTestDiceOpening } from "./support/test-opening.js";
 import { activeMultiScriptsHash, pinnedEngineVersion } from "../src/multi-scripts.js";
 import { GameWorker } from "../src/worker-client.js";
+import { getCurrentEngineResources } from "../src/engine-resource-resolver.js";
+import { runJournalPrefix } from "../src/journal-runner.js";
 import { loadSource, replaySource } from "../scripts/lib/replay-source.js";
 import { engineDataDirectory as DATA } from "./engine-data-dir.js";
 import { describeWithCores, needs } from "./support/cores.js";
@@ -49,17 +51,33 @@ async function table(mode: DuelMode, format: DuelFormat, masterRule: DuelMasterR
     onChange: (slug, guildId) => { changes.push({ slug, guildId, status: duels.privateState(slug, guildId).session.status }); },
     pollIntervalMs: 60_000, createWorker: () => { const worker = new GameWorker(); workers.push(worker); return worker; } });
   resources.push({ host, db });
-  const post = async (op: string, seat = 0, extra: Record<string, unknown> = {}): Promise<{ status: number; data: DuelRoom & DuelReplay & { error?: string } }> => {
+  const post = async (op: string, seat = 0, extra: Record<string, unknown> = {}): Promise<{ status: number; data: DuelRoom & DuelReplay & { error?: string; code?: string } }> => {
     const raw = JSON.stringify({ op, slug: session.slug, guildId: "g", playerId: players[seat], ...extra });
     const response = await host.handle(new Request("http://localhost/internal/duel", { method: "POST", body: raw,
       headers: { "x-announce-signature": "sha256=" + createHmac("sha256", SECRET).update(raw).digest("hex") } }));
     return finishTestDiceOpening(host, { op, slug: session.slug },
-      { status: response.status, data: await response.json() as DuelRoom & DuelReplay & { error?: string } }, () => post("view", seat, extra));
+      { status: response.status, data: await response.json() as DuelRoom & DuelReplay & { error?: string; code?: string } }, () => post("view", seat, extra));
   };
   const bundle = JSON.parse(readFileSync(join(DATA, "manifest.json"), "utf8")).bundleVersion as string;
   const pin = pinnedEngineVersion(bundle, count, count > 2 ? activeMultiScriptsHash(DATA) : null);
   const options = { mode, format, masterRule: session.masterRule, settings: session.settings, decks, seed, dataDirectory: DATA };
-  return { db, duels, session, decks, options, count, players, post, pin, workers, changes };
+  return { db, duels, session, decks, options, count, players, post, pin, bundle, workers, changes };
+}
+
+/** Old active recovery keeps its draw fallback. Detached engine tests can check the same historical prefix. */
+async function journalFrames(t: Awaited<ReturnType<typeof table>>, viewer: number): Promise<DuelEngineView[]> {
+  const state = t.duels.privateState(t.session.slug, "g");
+  if (!isReplaySeed(state.seed)) throw new Error("Invalid test seed");
+  const { engineIdentity, replayFork: _fork, ...setup } = state.setup ?? {};
+  const frames: DuelEngineView[] = [];
+  const result = await runJournalPrefix({
+    source: { session: state.session, decks: state.decks, seed: state.seed, bundleVersion: state.bundleVersion!,
+      setup, engineIdentity: engineIdentity ?? null, commands: state.commands },
+    resources: { dataDirectory: DATA, bundleVersion: t.bundle }, prefixCount: state.commands.length,
+    createWorker: () => new GameWorker(), checkpointSeat: viewer,
+    onCheckpoint: ({ view }) => { frames.push(view); },
+  });
+  try { return frames; } finally { await result.worker.close(); }
 }
 
 function checkDraws(view: DuelEngineView, firstTurnDraw: boolean, actor: number) {
@@ -104,7 +122,13 @@ describeWithCores("first-turn draw survives real worker recovery and journal rep
     const history: DuelEngineView[][] = [];
     const commands: Array<{ seat: number; command: { promptId: string; revision: number; answer: { choice: string } } }> = [];
     try {
-      t.duels.activate(t.session.slug, "g", t.players[0]!, seed, t.pin, null, { ...(saved ? { firstTurnDraw } : {}), ...mergedEngine(format) });
+      if (saved) {
+        t.duels.activateRecorded(t.session.slug, "g", t.players[0]!, seed, t.pin, null,
+          { firstTurnDraw, scriptErrorMode: "tolerant", ...mergedEngine(format) },
+          getCurrentEngineResources(DATA, { mode, format, engine: "pinned" }).identity);
+      } else {
+        t.duels.activate(t.session.slug, "g", t.players[0]!, seed, t.pin, null, mergedEngine(format));
+      }
       if (saved) expect(t.duels.privateState(t.session.slug, "g").setup).toMatchObject({ firstTurnDraw });
       else expect(t.duels.privateState(t.session.slug, "g").setup?.firstTurnDraw).toBeUndefined();
       for (let actor = 0; actor < t.count; actor++) {
@@ -133,10 +157,12 @@ describeWithCores("first-turn draw survives real worker recovery and journal rep
     t.duels.interrupt(t.session.slug, "g", "Test finished");
     for (let viewer = 0; viewer < t.count; viewer++) {
       const response = await t.post("replay", viewer);
-      expect(response.status, response.data.error).toBe(200);
+      if (saved) expect(response.status, response.data.error).toBe(200);
+      else expect(response).toMatchObject({ status: 409, data: { code: "ENGINE_UNAVAILABLE_FOR_SOURCE" } });
+      const frames = saved ? response.data.frames.map(frame => frame.view) : await journalFrames(t, viewer);
       for (let step = 0; step <= commands.length; step++) {
         const expected = history[step]![viewer]!;
-        expect(response.data.frames[step]!.view).toMatchObject({ turn: expected.turn, turnSeat: expected.turnSeat,
+        expect(frames[step]).toMatchObject({ turn: expected.turn, turnSeat: expected.turnSeat,
           revision: expected.revision, seats: JSON.parse(JSON.stringify(expected.seats)) });
       }
     }
@@ -170,6 +196,12 @@ describeWithCores("first-turn draw survives real worker recovery and journal rep
       expect(recovered.status, recovered.data.error).toBe(200);
       expect(recovered.data.engine).toEqual(views[viewer]);
     }
+    t.duels.interrupt(t.session.slug, "g", "Test finished");
+    for (let viewer = 0; viewer < t.count; viewer++) {
+      const replay = await t.post("replay", viewer);
+      expect(replay.status, replay.data.error).toBe(200);
+      expect(replay.data.frames[0]!.view.seats).toEqual(views[viewer]!.seats);
+    }
   }, 60_000);
 
   it.each(stableCases)("$mode MR$masterRule $format: an old record can infer the historical stock draw rule", async ({ mode, format, masterRule }) => {
@@ -197,9 +229,10 @@ describeWithCores("first-turn draw survives real worker recovery and journal rep
     t.duels.interrupt(t.session.slug, "g", "Test finished");
     for (let viewer = 0; viewer < t.count; viewer++) {
       const replay = await t.post("replay", viewer);
-      expect(replay.status, replay.data.error).toBe(200);
-      expect(replay.data.frames[0]!.view.seats).toEqual(initial[viewer]!.seats);
-      expect(replay.data.frames[1]!.view.seats).toEqual(expected[viewer]!.seats);
+      expect(replay).toMatchObject({ status: 409, data: { code: "ENGINE_UNAVAILABLE_FOR_SOURCE" } });
+      const frames = await journalFrames(t, viewer);
+      expect(frames[0]!.seats).toEqual(initial[viewer]!.seats);
+      expect(frames[1]!.seats).toEqual(expected[viewer]!.seats);
     }
   }, 60_000);
 
@@ -215,7 +248,7 @@ describeWithCores("first-turn draw survives real worker recovery and journal rep
     expect(t.changes).toEqual([{ slug: t.session.slug, guildId: "g", status: "interrupted" }]);
     const replay = await t.post("replay");
     expect(replay.status).toBe(409);
-    expect(replay.data.error).toContain("first-turn draw rule was not saved");
+    expect(replay.data.code).toBe("ENGINE_UNAVAILABLE_FOR_SOURCE");
     const dir = mkdtempSync(join(tmpdir(), "first-draw-missing-"));
     dirs.push(dir);
     const file = join(dir, "missing-rule.json");
