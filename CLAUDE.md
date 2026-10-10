@@ -52,7 +52,8 @@ npx vitest run packages/web/tests/cards-resolve-route.test.ts -c packages/web/vi
 docker compose --env-file .env --env-file packages/web/.env.local up -d --build
 
 # Docker (production — start already built images without the override file)
-# For image updates, run the Deploy workflow on main; see docs/deployment/vm-runbook.md.
+# Image updates: test staging, then manually run Deploy from main in downtime.
+# Use the tested staging SHA as ref; see docs/deployment/vm-runbook.md.
 docker compose -f docker-compose.yml up -d
 
 # Seed test data and restart services
@@ -74,9 +75,24 @@ This is an npm workspaces + Turborepo monorepo with seven packages (see `docs/ar
 - **`packages/worker`** (`@yugidraft/worker`) — Draft expiry (1s), report approval and tournament deadline closure (60s), set metadata sync and image eviction. Exactly one worker per SQLite file; startup sweeps catch durable deadlines and SIGTERM drains in-flight work. No public port; `WORKER_HEALTH_PATH` holds its local heartbeat.
 - **`packages/e2e`** (`@yugidraft/e2e`) — Playwright duel tests on an isolated stack (web/ws/duel plus worker, 3300 port family, own SQLite file/cache/heartbeat, offline HMAC-signed E2E cookie). `E2E_SLOT=0-9` gives concurrent stacks. See `packages/e2e/README.md`.
 
+### Deployment flow
+
+After owner setup and repository variable `STAGING_AUTO_DEPLOY=1`, each merge to `main` can deploy **staging**,
+subject to production activity, the shared VM lock and resource checks. Both workflows require dispatch from `main`.
+Test the staging SHA, then the owner runs **Deploy** (prod) manually from `main` in downtime with that SHA as `ref`.
+Production has no push trigger. Its read-only SQLite guard refuses active duels, drafts, tournament rounds and
+active/between-game series and RPS/dice openings, before changes and again before service stops. `force` skips only this activity guard;
+the engine bundle preflight, build lock and backups still apply. Prod stops staging and leaves it off.
+The runner checks the prod target's main ancestry before running its code. SSH key env is limited to the key setup step.
+The VM refuses an older or diverged prod SHA unless `rollback=true`. Staging skips active prod games, guard failures,
+busy or low-resource runs with a warning and step-summary line; check for `staging is running`, then test the site.
+Staging stop waits for the lock or fails. Prod waits only 15 minutes; a cold staging build can take longer.
+Use a separate staging Clerk instance and HTTPS host. On the shared 4 GB VM, resource limits cannot guarantee prod uptime;
+a second staging VM is advised for the alpha. See `docs/deployment/staging.md` and `docs/deployment/vm-runbook.md`.
+
 ### Duel resources and Docker
 
-- Engines: new 1v1 tables run on the legacy engine by default (`DUEL_1V1_ENGINE=legacy|pinned`, read when a table starts; `legacy` is main's pre-n-seat engine in `src/legacy/`, `pinned` is the merged one). Tag, FFA3 and FFA4 tables always run on the multi cores (`ocgcore.multi.wasm`, `ocgcore.multi-domain.wasm`). See `docs/deployment/duel-engine-switch.md`.
+- Engines: Compose defaults new Standard 1v1 games to `DUEL_STANDARD_1V1_ENGINE=pinned`; Domain keeps `DUEL_1V1_ENGINE=legacy`. Native runs with no Standard override use the global choice (default `legacy`). Each game reads the switches at its start and saves its engine for recover/replay. Set the Standard override to `legacy` and recreate `duel` to roll back; an empty Compose value means `pinned`. Tag, FFA3 and FFA4 always use the multi cores (`ocgcore.multi.wasm`, `ocgcore.multi-domain.wasm`). See `docs/deployment/duel-engine-switch.md`.
 - `MULTIPLAYER_TABLES` gates Tag/FFA tables. The code default is off, but Compose defaults it to on (`1`); set it on both `duel` and `web`, and `0` closes new multi tables.
 - The multi cores and the legacy Domain core are separate builds (`build-domain-core.ts multi|multi-domain|legacy-domain`), not part of `duel:prepare` or the package TypeScript build.
 - `duel:prepare` downloads pinned card data, strings, and Lua scripts into `DUEL_DATA_DIR` (default root `data/duel-engine`). `scripts/build-domain-core.ts` in `packages/duel-server` separately builds the patched Domain Format WASM bundle with the pinned Emscripten Docker image; `DOMAIN_CORE_BUILD=local` uses a local `em++` toolchain. Neither step is part of the package's TypeScript build.
@@ -129,6 +145,7 @@ Drafts are started from the web dashboard; the shelved bot retains its command i
 
 ### Cubes and theme draft mode
 
+- New theme drafts require web runtime `THEME_DRAFTS=1|true|on` (default off in every build); production Compose defaults to `0`, staging uses `STAGING_THEME_DRAFTS=1`, and existing theme lobbies/games, summaries and deck exports remain available when off. `GET /api/drafts` and `GET /api/cubes` return `themeDraftsEnabled` for the browser.
 - Reusable pools/configs live in `cubes` / `cube_cards` (`main`/`extra` pools, per-card `max_copies`, draft config in `config_json`). `createCubeService` supports archetype seeding, passcode imports, and saved configs; `applyCubeToConfig` supplies shared booster-style drafts. The library/editor uses `/cubes`, `/cubes/[id]`, and `/api/cubes`; `/themes` and `/themes/[id]` redirect to the corresponding cube pages. Legacy theme and draft-template tables are dropped by migration.
 - `DraftConfig.mode === "theme"` deals each player privately from an assigned cube. `allowedCubeIds` controls available cubes; `draft_player_cube` stores assignments. `themeSelection` still supports `host_assigned`, `random`, and `player_pick`; `uniqueThemes` controls distinct assignments.
 - In `packages/shared/src/services/drafts.ts`, `startThemeDraft` assigns seats/cubes and checks main-pool sufficiency; `openThemeRound` deals up to `themePackSize` choices; `pickThemeCard` advances `current_wave_number` once everyone dealt a pack has picked. Main-deck rounds precede optional extra-deck rounds; `burnUnpicked` controls whether unpicked choices return to the pool.

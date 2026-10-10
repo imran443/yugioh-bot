@@ -50,7 +50,7 @@ beforeEach(() => {
     insert into draft_players(draft_id,player_id) values(1,1);
     insert into draft_invite_grants(draft_id,user_id) values(1,103);`);
 });
-afterEach(() => { database.current?.close(); vi.unstubAllGlobals(); });
+afterEach(() => { database.current?.close(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("draft invites", () => {
   it("rate limits redemption across draft slugs before code comparison", async () => {
@@ -229,16 +229,19 @@ describe("detail and creation contracts", () => {
     expect(guest).toMatchObject({ visibility: "private", canJoin: true });
     expect(guest).not.toHaveProperty("canManageInvite"); expect(guest).not.toHaveProperty("inviteUrl"); expect(guest).not.toHaveProperty("inviteCode");
   });
-  it("flags the host and an owner, and nobody else, as able to end or cancel", async () => {
-    expect(await (await detail()).json()).toMatchObject({ canEndOrCancel: true });
+  it("flags the host and an owner, and nobody else, as able to cancel", async () => {
+    const host = await (await detail()).json();
+    expect(host).toMatchObject({ canCancel: true });
+    expect(host).not.toHaveProperty("canEndOrCancel");
     actor.userId = 103;
-    expect(await (await detail()).json()).not.toHaveProperty("canEndOrCancel");
+    expect(await (await detail()).json()).not.toHaveProperty("canCancel");
     vi.stubEnv("OWNER_USER_IDS", "103");
-    try { expect(await (await detail()).json()).toMatchObject({ canEndOrCancel: true }); }
+    try { expect(await (await detail()).json()).toMatchObject({ canCancel: true }); }
     finally { vi.unstubAllEnvs(); }
   });
   for (const mode of ["booster", "theme"] as const) {
     it.each([undefined, "private", "open"])(`${mode} creation persists visibility (%s)`, async (value) => {
+      if (mode === "theme") vi.stubEnv("THEME_DRAFTS", "1");
       database.current!.prepare("insert into card_catalog(ygoprodeck_id,name,type,frame_type,image_url,image_url_small,card_sets_json,cached_at) values(100,'Card','Normal Monster','normal','i','i','[]',?)").run(new Date().toISOString());
       const route = await import("../app/api/drafts/route");
       const response = await route.POST(request("POST", { name: "New", visibility: value, config: { mode, customCardIds: [100] } }));

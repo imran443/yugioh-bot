@@ -185,7 +185,7 @@ describe("validateDeck domain", () => {
   it("rejects a non-monster Deck Master", () => {
     expect(() =>
       validateDeck("domain", { main: fillerSpells(60), extra: [], side: [], deckMaster: POT_OF_GREED }, DATA),
-    ).toThrow(/Deck Master must be a playable monster/);
+    ).toThrow("You can't use a Spell or Trap as your Deck Master.");
   });
 
   it("rejects a missing Deck Master", () => {
@@ -306,10 +306,10 @@ describe("inspectDeck", () => {
       deckMaster: POT_OF_GREED,
     };
     const { issues } = inspectDeck("domain", deck, DATA);
-    expect(issues.some((issue) => /Deck Master must be a playable monster/.test(issue.message))).toBe(true);
+    expect(issues.some((issue) => issue.message === "You can't use a Spell or Trap as your Deck Master.")).toBe(true);
     expect(issues.some((issue) => /exactly 60 cards/.test(issue.message))).toBe(true);
     expect(issues.some((issue) => /Duplicate card/.test(issue.message))).toBe(true);
-    expect(issues.find((issue) => /playable monster/.test(issue.message))?.cards.map(refOf)).toEqual([
+    expect(issues.find((issue) => issue.message === "You can't use a Spell or Trap as your Deck Master.")?.cards.map(refOf)).toEqual([
       { section: "deckMaster", index: 0, code: POT_OF_GREED },
     ]);
   });

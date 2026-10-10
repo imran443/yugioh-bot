@@ -56,6 +56,7 @@ function expectAnnounces(enabled: boolean, kinds: string[]) {
 
 beforeEach(() => {
   vi.resetModules();
+  vi.stubEnv("THEME_DRAFTS", "1");
   vi.clearAllMocks();
   dir = mkdtempSync(join(tmpdir(), "discord-off-"));
   vi.stubEnv("DATABASE_PATH", join(dir, "test.sqlite"));

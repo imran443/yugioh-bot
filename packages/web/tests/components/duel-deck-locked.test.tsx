@@ -26,6 +26,7 @@ vi.mock("../../src/components/decks/api", () => ({ listSavedDecks: vi.fn(async (
 vi.mock("../../src/components/duel/api", async (importActual) => ({
   ...await importActual<typeof import("../../src/components/duel/api")>(),
   validateDuelDeck, searchDuelCards: vi.fn(async () => ({ cards: [] })),
+  getDuelCards: vi.fn(async () => ({ cards: [], missing: [] })),
 }));
 
 const settings = { validateDeck: true } as DuelSettings;

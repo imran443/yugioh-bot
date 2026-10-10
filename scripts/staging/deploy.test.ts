@@ -14,6 +14,26 @@ function fixture() {
 }
 afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));
 
+describe("production activity guard with the application schema", () => {
+  it("accepts idle data and refuses active duels, RPS and dice openings", () => {
+    const path = join(fixture(), "prod.sqlite");
+    const db = openDatabase(path);
+    try {
+      db.prepare("INSERT INTO users (id, username, display_name) VALUES (1, 'owner', 'Owner')").run();
+      db.prepare("INSERT INTO players (id, guild_id, user_id, display_name) VALUES (1, 'community', 1, 'Owner')").run();
+      db.prepare("INSERT INTO duels (guild_id, web_slug, name, organizer_player_id, mode, status) VALUES ('community', 'test-duel', 'Test duel', 1, 'standard', 'lobby')").run();
+      const guard = () => spawnSync("python3", ["-B", join(root, "scripts/deployment/check-prod-activity.py"), path], { encoding: "utf8" });
+      expect(guard().status).toBe(0);
+      for (const [status, opening] of [["active", null], ["lobby", '{"phase":"rps"}'], ["lobby", '{"phase":"dice"}']] as const) {
+        db.prepare("UPDATE duels SET status = ?, opening_json = ?").run(status, opening);
+        const result = guard();
+        expect(result.status, result.stderr).toBe(1);
+        expect(result.stdout).toContain("duels=1");
+      }
+    } finally { db.close(); }
+  });
+});
+
 describe("staging env", () => {
   function run(dir: string, clerk?: string) {
     const production = join(dir, "production.env");

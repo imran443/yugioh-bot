@@ -17,11 +17,13 @@ vi.mock("@/lib/notify", () => ({ announcer: { announce: vi.fn() } }));
 describe("POST /api/drafts (theme mode)", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.stubEnv("THEME_DRAFTS", "1");
     auth.mockReset();
     auth.mockResolvedValue({ user: { id: String(fixtureUserId("creator-user")), discordUserId: fixtureDiscordId("creator-user"), name: "Yugi" } });
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     delete process.env.DATABASE_PATH;
     delete process.env.DISCORD_GUILD_ID;
     delete process.env.DISCORD_DEFAULT_CHANNEL_ID;

@@ -10,6 +10,7 @@ import styles from "./deck-editor.module.css";
 import { applyDomainMaster, parseDeckText, selectDomainMaster, serializeYdk, type DeckMasterSelection } from "./ydk";
 import { DeckValidationSkippedError, validateDuelDeck } from "./api";
 import { DeckMasterPicker } from "./deck-master-picker";
+import { canBeDeckMaster, isSpellOrTrapType, SPELL_TRAP_MASTER_MESSAGE, useDeckCardMeta, type DeckCardMeta } from "./deck-card-types";
 import { SavedDeckPicker, useSavedDecks } from "./saved-deck-picker";
 import { createSavedDeck, listSavedDecks } from "../decks/api";
 import { deckNameFromFile } from "../decks/import";
@@ -30,6 +31,7 @@ function Section({
   problems,
   target,
   onChooseMaster,
+  cardMeta,
   onPreview,
 }: {
   title: string;
@@ -39,6 +41,8 @@ function Section({
   problems: ReadonlyMap<string, CardProblem>;
   target?: string;
   onChooseMaster?: (code: number) => void;
+  /** Card names and type bitmasks by passcode; the Master control shows only for monsters. */
+  cardMeta?: ReadonlyMap<number, DeckCardMeta>;
   onPreview?: (code: number) => void;
 }) {
   return (
@@ -55,6 +59,8 @@ function Section({
           {codes.map((code, index) => {
             const problem = problems.get(`${section}:${index}`);
             const reason = problem?.messages.join(" ");
+            const meta = cardMeta?.get(code);
+            const cardName = meta?.name ?? problem?.name ?? code;
             return (
               <li key={`${title}-${index}-${code}`}>
                 <button
@@ -63,7 +69,7 @@ function Section({
                   onClick={() => onRemove(index)}
                   onMouseEnter={() => onPreview?.(code)}
                   onFocus={() => onPreview?.(code)}
-                  aria-label={`Remove ${problem?.name ?? code} from ${title}${reason ? `. Invalid: ${reason}` : ""}`}
+                  aria-label={`Remove ${cardName} from ${title}${reason ? `. Invalid: ${reason}` : ""}`}
                   title={reason ? `${reason} Click to remove this copy.` : "Click to remove this copy"}
                   data-invalid={problem ? "true" : undefined}
                 >
@@ -73,9 +79,9 @@ function Section({
                   ) : null}
                   <span className={styles.removeVeil}><X size={16} strokeWidth={1.6} aria-hidden />Remove</span>
                 </button>
-                {onChooseMaster ? (
+                {onChooseMaster && meta && canBeDeckMaster(meta.type) ? (
                   <button type="button" className={styles.chooseMaster}
-                    aria-label={`Use ${problem?.name ?? code} as Deck Master`}
+                    aria-label={`Use ${meta.name} as Deck Master`}
                     onClick={() => onChooseMaster(code)}>
                     Master
                   </button>
@@ -125,6 +131,7 @@ export function DeckEditor({
   // The deck as it came from the room or a saved deck. Replacing it asks for no confirmation.
   const [pristineDeck, setPristineDeck] = useState<DuelDeck>(deck);
   const [retry, setRetry] = useState(0);
+  const cardMeta = useDeckCardMeta(deck, { enabled: mode === "domain", retry });
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const savedList = useSavedDecks();
@@ -160,6 +167,9 @@ export function DeckEditor({
     return byPosition;
   }, [report]);
   const masterProblem = problems.get("deckMaster:0");
+  // The server check says the same once it answers; this shows it as soon as the card is known.
+  const masterMessage = masterProblem?.messages.join(" ")
+    ?? (mode === "domain" && masterCode != null && isSpellOrTrapType(cardMeta.get(masterCode)?.type) ? SPELL_TRAP_MASTER_MESSAGE : undefined);
   const leadCard = masterCode ?? main[0] ?? extra[0];
 
   useEffect(() => {
@@ -429,7 +439,7 @@ export function DeckEditor({
 
       {mode === "domain" ? (
         <DeckMasterPicker code={masterCode} onChange={chooseMaster}
-          problem={masterProblem?.messages.join(" ")} custom={!settings.validateDeck} />
+          problem={masterMessage} custom={!settings.validateDeck} />
       ) : null}
 
       <CardAddField mode={mode} slug={slug} settings={settings} sideAllowed={sideAllowed} onAdd={addCard} onError={setParseError} />
@@ -437,12 +447,12 @@ export function DeckEditor({
       {parseError ? <p role="alert" className={ui.alert}>{parseError}</p> : null}
 
       <Section title="Main" section="main" codes={main} problems={problems} target={mainTarget}
-        onRemove={(index) => removeCard("main", index)} onPreview={onPreviewCard} onChooseMaster={mode === "domain" ? chooseMaster : undefined} />
+        onRemove={(index) => removeCard("main", index)} onPreview={onPreviewCard} onChooseMaster={mode === "domain" ? chooseMaster : undefined} cardMeta={cardMeta} />
       <Section title="Extra" section="extra" codes={extra} problems={problems} target={extraTarget}
-        onRemove={(index) => removeCard("extra", index)} onPreview={onPreviewCard} onChooseMaster={mode === "domain" ? chooseMaster : undefined} />
+        onRemove={(index) => removeCard("extra", index)} onPreview={onPreviewCard} onChooseMaster={mode === "domain" ? chooseMaster : undefined} cardMeta={cardMeta} />
       {sideAllowed || side.length > 0 ? (
         <Section title="Side" section="side" codes={side} problems={problems} target={sideTarget}
-          onRemove={(index) => removeCard("side", index)} onPreview={onPreviewCard} onChooseMaster={mode === "domain" ? chooseMaster : undefined} />
+          onRemove={(index) => removeCard("side", index)} onPreview={onPreviewCard} onChooseMaster={mode === "domain" ? chooseMaster : undefined} cardMeta={cardMeta} />
       ) : null}
 
     </div>

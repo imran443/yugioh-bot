@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import type { DuelCardInfo } from "@yugidraft/shared/duels";
 import { searchDuelCards } from "./api";
-import { cardArtUrl, TYPE_MONSTER } from "./constants";
+import { cardArtUrl } from "./constants";
+import { canBeDeckMaster } from "./deck-card-types";
 import { SheetButton } from "./sheet-ui";
 import ui from "./sheet-ui.module.css";
 import styles from "./deck-editor.module.css";
@@ -26,7 +27,7 @@ export function DeckMasterPicker({ code, onChange, problem, custom }: {
     const timer = setTimeout(() => {
       void searchDuelCards(trimmed).then(
         ({ cards }) => {
-          if (!cancelled) setSearch({ query: trimmed, cards: cards.filter((card) => (card.type & TYPE_MONSTER) !== 0) });
+          if (!cancelled) setSearch({ query: trimmed, cards: cards.filter((card) => canBeDeckMaster(card.type)) });
         },
         (error: unknown) => {
           if (!cancelled) setSearch({ query: trimmed, error: error instanceof Error ? error.message : "Could not search cards." });

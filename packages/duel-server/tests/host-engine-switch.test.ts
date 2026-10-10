@@ -40,14 +40,15 @@ class FakeWorker implements DuelGameWorker {
 }
 
 const hosts: DuelHost[] = [];
-const saved = { engine: process.env.DUEL_1V1_ENGINE, tables: process.env.MULTIPLAYER_TABLES };
+const saved = { engine: process.env.DUEL_1V1_ENGINE, standard: process.env.DUEL_STANDARD_1V1_ENGINE, tables: process.env.MULTIPLAYER_TABLES };
 beforeEach(() => {
   delete process.env.DUEL_1V1_ENGINE;
+  delete process.env.DUEL_STANDARD_1V1_ENGINE;
   process.env.MULTIPLAYER_TABLES = "1";
 });
 afterEach(async () => {
   while (hosts.length > 0) await hosts.pop()!.close();
-  for (const [key, value] of [["DUEL_1V1_ENGINE", saved.engine], ["MULTIPLAYER_TABLES", saved.tables]] as const) {
+  for (const [key, value] of [["DUEL_1V1_ENGINE", saved.engine], ["DUEL_STANDARD_1V1_ENGINE", saved.standard], ["MULTIPLAYER_TABLES", saved.tables]] as const) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
@@ -98,6 +99,42 @@ async function table(format: DuelFormat, mode: DuelMode = "normal", masterRule: 
 const setupOf = (duels: ReturnType<typeof open>["duels"], slug: string) => duels.privateState(slug, "g1").setup;
 
 describe("DUEL_1V1_ENGINE on a new table", () => {
+  it.each(["pinned", " Pinned "])("uses Standard override %j without changing Domain", async (override) => {
+    process.env.DUEL_1V1_ENGINE = "legacy";
+    process.env.DUEL_STANDARD_1V1_ENGINE = override;
+    for (const mode of ["normal", "domain"] as const) {
+      const t = await table("1v1", mode);
+      expect((await post(t.host, { op: "start", ...t.organizer })).status).toBe(200);
+      const engine = mode === "normal" ? "pinned" : "legacy";
+      expect(t.workers[0]!.created).toMatchObject({ engine, firstTurnDraw: false });
+      expect(setupOf(t.duels, t.session.slug)).toMatchObject({ engine, firstTurnDraw: false });
+    }
+  });
+
+  it("can roll Standard back to legacy while the global engine is pinned", async () => {
+    process.env.DUEL_1V1_ENGINE = "pinned";
+    process.env.DUEL_STANDARD_1V1_ENGINE = "legacy";
+    const t = await table("1v1");
+    expect((await post(t.host, { op: "start", ...t.organizer })).status).toBe(200);
+    expect(t.workers[0]!.created?.engine).toBe("legacy");
+    expect(setupOf(t.duels, t.session.slug)?.engine).toBe("legacy");
+  });
+
+  it.each(["", "banana"])("uses the global choice when the Standard override is %j", async (override) => {
+    process.env.DUEL_1V1_ENGINE = "pinned";
+    process.env.DUEL_STANDARD_1V1_ENGINE = override;
+    const t = await table("1v1");
+    expect((await post(t.host, { op: "start", ...t.organizer })).status).toBe(200);
+    expect(t.workers[0]!.created?.engine).toBe("pinned");
+  });
+
+  it("reads the Standard override when a table starts", async () => {
+    const t = await table("1v1");
+    process.env.DUEL_STANDARD_1V1_ENGINE = "pinned";
+    expect((await post(t.host, { op: "start", ...t.organizer })).status).toBe(200);
+    expect(t.workers[0]!.created?.engine).toBe("pinned");
+  });
+
   it.each((["normal", "domain"] as const).flatMap((mode) =>
     ([1, 2, 3, 4, 5] as const).map((masterRule) => ({ mode, masterRule })),
   ))("legacy $mode MR$masterRule: saves the current first-turn draw rule", async ({ mode, masterRule }) => {
@@ -149,6 +186,7 @@ describe("DUEL_1V1_ENGINE on a new table", () => {
   it.each<DuelFormat>(["tag", "ffa3", "ffa4"])("ignores the switch for a %s table: no engine name, no record", async (format) => {
     for (const value of ["legacy", "pinned"]) {
       process.env.DUEL_1V1_ENGINE = value;
+      process.env.DUEL_STANDARD_1V1_ENGINE = value === "legacy" ? "pinned" : "legacy";
       const t = await table(format);
       expect((await post(t.host, { op: "start", ...t.organizer })).status).toBe(200);
       expect(t.workers[0]!.created?.format).toBe(format);
@@ -166,6 +204,26 @@ describe("a saved 1v1 table keeps its engine", () => {
     return t;
   }
   const view = (t: Awaited<ReturnType<typeof activeTable>>) => post(t.host, { op: "view", ...t.organizer });
+
+  it.each(["legacy", "pinned", undefined] as const)("recovers saved Standard engine %s after its override changes", async (engine) => {
+    process.env.DUEL_STANDARD_1V1_ENGINE = engine === "pinned" ? "legacy" : "pinned";
+    const t = await activeTable(engine ? { engine } : undefined);
+    expect((await view(t)).status).toBe(200);
+    expect(t.workers[0]!.created?.engine).toBe(engine ?? "legacy");
+  });
+
+  it("replays pinned Standard after the override is rolled back", async () => {
+    process.env.DUEL_STANDARD_1V1_ENGINE = "pinned";
+    const t = await table("1v1");
+    expect((await post(t.host, { op: "start", ...t.organizer })).status).toBe(200);
+    expect((await post(t.host, { op: "surrender", ...t.organizer })).status).toBe(200);
+    process.env.DUEL_STANDARD_1V1_ENGINE = "legacy";
+    const before = t.workers.length;
+    expect((await post(t.host, { op: "replay", ...t.organizer })).status).toBe(200);
+    const replayWorkers = t.workers.slice(before);
+    expect(replayWorkers.length).toBeGreaterThan(0);
+    for (const worker of replayWorkers) expect(worker.created?.engine).toBe("pinned");
+  });
 
   it.each(([1, 2, 3, 4, 5] as const).flatMap((masterRule) =>
     [false, true].map((savedEngine) => ({ masterRule, savedEngine })),

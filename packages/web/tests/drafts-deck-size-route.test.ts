@@ -45,6 +45,7 @@ async function setup() {
 
 it.each(["booster", "theme"].flatMap((mode) => [39, 121, 40.5, "40", null].map((cap) => ({ mode, cap }))))
   ("rejects invalid $mode cap $cap on create and non-null edits", async ({ mode, cap }) => {
+    if (mode === "theme") vi.stubEnv("THEME_DRAFTS", "1");
     const app = await setup();
     const { POST } = await import("../app/api/drafts/route");
     const response = await POST(new Request("http://x", { method: "POST", body: JSON.stringify({ name: "Bad", config: { mode, customCardIds: app.main, cardsPerPlayer: cap } }) }) as NextRequest);

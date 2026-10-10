@@ -85,8 +85,9 @@ services:
       - DUEL_REPORT_DIR=/app/data/duel-reports
       # Tag, 3-player and 4-player tables are on in staging. Production has them on by default too. The web needs the same value.
       - MULTIPLAYER_TABLES=${STAGING_MULTIPLAYER_TABLES:-1}
-      # Staging tests the 1v1 engine that production uses. Set STAGING_DUEL_1V1_ENGINE=pinned to test the merged engine.
+      # Domain keeps the global legacy default. Standard defaults to pinned, as in production.
       - DUEL_1V1_ENGINE=${STAGING_DUEL_1V1_ENGINE:-legacy}
+      - DUEL_STANDARD_1V1_ENGINE=${STAGING_DUEL_STANDARD_1V1_ENGINE:-pinned}
       # Card script runtime failures report and continue; strict is an operational override.
       - DUEL_SCRIPT_ERRORS=${STAGING_DUEL_SCRIPT_ERRORS:-tolerant}
     volumes:
@@ -125,6 +126,7 @@ services:
       - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-}
       - DUEL_FX_LAB=${DUEL_FX_LAB:-0}
       - DRAFT_TEST_BOTS=${DRAFT_TEST_BOTS:-0}
+      - THEME_DRAFTS=${STAGING_THEME_DRAFTS:-1}
       - BUG_REPORT_GITHUB_TOKEN=${BUG_REPORT_GITHUB_TOKEN:-}
       - BUG_REPORT_GITHUB_REPO=${BUG_REPORT_GITHUB_REPO:-DuelingDomain/yugioh-bot}
       - WS_INTERNAL_URL=http://ws:4002

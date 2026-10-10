@@ -22,6 +22,7 @@ vi.mock("../../src/components/duel/api", async (importOriginal) => ({
   takeDuelSeat,
   validateDuelDeck: vi.fn(async () => ({ issues: [] })),
   searchDuelCards: vi.fn(async () => ({ cards: [] })),
+  getDuelCards: vi.fn(async () => ({ cards: [], missing: [] })),
 }));
 vi.mock("@/lib/duel-host", () => ({ requireDuelActor }));
 vi.mock("@/components/duel/room", () => ({ DuelRoomView: (props: unknown) => {

@@ -12,10 +12,10 @@ const WS_URL =
 interface UseDraftWebsocketOptions {
   onStatusChange?: (status: "active" | "cancelled" | "completed") => void;
   /**
-   * The host or an owner ended ("completed") or cancelled the draft. Only the `draft:status` event says so: a draft that
-   * finishes by itself arrives as `draft:complete`, which does not call this.
+   * The host or an owner cancelled the draft. Only the `draft:status` event says so: a draft that finishes by itself
+   * arrives as `draft:complete` or `draft:status` "completed", which does not call this.
    */
-  onHostStopped?: (status: "completed" | "cancelled") => void;
+  onHostStopped?: (status: "cancelled") => void;
   onResync?: () => void;
   onSeatsChange?: () => void;
 }
@@ -107,7 +107,7 @@ export function useDraftWebsocket(slug: string, options: UseDraftWebsocketOption
       if (payload.status === "completed") {
         setFromServer({ completed: true, isMyTurn: false });
       }
-      if (payload.status === "completed" || payload.status === "cancelled") optionsRef.current.onHostStopped?.(payload.status);
+      if (payload.status === "cancelled") optionsRef.current.onHostStopped?.(payload.status);
       optionsRef.current.onStatusChange?.(payload.status);
     });
 

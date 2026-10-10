@@ -16,6 +16,7 @@ import {
 import { broadcaster } from "@/lib/notify";
 import { hostThemeAssignmentError } from "@/lib/theme-draft-validation";
 import { draftReadAccess } from "@/lib/draft-access";
+import { themeDraftSetupError } from "@/lib/theme-drafts";
 
 export const runtime = "nodejs";
 
@@ -160,7 +161,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (patch && "poolSource" in patch && !("poolSource" in sanitized)) delete candidate.poolSource;
       return candidate;
     };
-    const validate = (candidate: DraftConfig): Response | undefined => {
+    const validate = (candidate: DraftConfig, base: DraftConfig): Response | undefined => {
+      if (candidate.mode === "theme") {
+        const closed = themeDraftSetupError({ config: base, status: "pending" });
+        if (closed) return NextResponse.json({ error: closed }, { status: 403 });
+      }
       assertDraftConfigShape(candidate);
       if (candidate.lobbySeats !== undefined && !isValidLobbySeats(candidate.lobbySeats)) {
         throw new DraftLobbyApiError("lobbySeats must be an integer from 2 to 8", "INVALID_LOBBY_SEATS");
@@ -184,7 +189,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     };
     let mergedConfig = merge(existing.config);
-    const denied = validate(mergedConfig);
+    const denied = validate(mergedConfig, existing.config);
     if (denied) return denied;
     let lookupLimited = false;
     let unknownIds: number[] = [];
@@ -228,7 +233,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (formatError) throw new DraftLobbyApiError(formatError, "INVALID_CONFIG");
         mergedConfig.cubeCardIds = resolvedPool;
       }
-      const denied = validate(mergedConfig);
+      const denied = validate(mergedConfig, currentConfig);
       if (denied) return denied;
       const analysis = mergedConfig.mode !== "theme" && patch !== undefined
         ? drafts.analyzeBoosterDraft(mergedConfig, mergedConfig.lobbySeats ?? 2, existing.guildId) : undefined;

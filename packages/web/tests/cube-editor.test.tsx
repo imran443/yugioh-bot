@@ -164,8 +164,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function open() {
-  render(<CubeEditor cubeId={5} />);
+async function open(themeDraftsEnabled = true) {
+  render(<CubeEditor cubeId={5} themeDraftsEnabled={themeDraftsEnabled} />);
   await screen.findByRole("heading", { name: "Custom" });
 }
 
@@ -699,6 +699,23 @@ describe("CubeEditor", () => {
       expect(screen.getByText(/needs 88 more copies/)).toBeInTheDocument();
       expect(screen.queryByText(/can.t start/)).not.toBeInTheDocument();
       expect(screen.queryByRole("meter")).not.toBeInTheDocument();
+    });
+
+    it("theme drafts closed: offers no Theme cube and no theme text for an Any cube", async () => {
+      const { container } = render(<CubeEditor cubeId={5} />);
+      await screen.findByRole("heading", { name: "Custom" });
+      expect(screen.queryByRole("button", { name: "Theme cube" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Any" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Cube draft" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Cube check" })).toBeInTheDocument();
+      expect(container.querySelector("section[aria-label='Cube summary']")).not.toHaveTextContent(/theme/i);
+    });
+
+    it("theme drafts closed: an existing theme cube still shows its type and check", async () => {
+      draftType = "theme";
+      await open(false);
+      expect(screen.getByRole("button", { name: "Theme cube" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("heading", { name: "Theme draft check" })).toBeInTheDocument();
     });
 
     it("shows the cube draft check for a Cube draft cube, from the saved pack settings", async () => {

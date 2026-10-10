@@ -27,6 +27,7 @@ vi.mock("../../src/components/duel/api", async (importActual) => ({
   ...await importActual<typeof import("../../src/components/duel/api")>(),
   validateDuelDeck,
   searchDuelCards: vi.fn(async () => ({ cards: [] })),
+  getDuelCards: vi.fn(async () => ({ cards: [], missing: [] })),
 }));
 
 function card(code: number, name: string, type: number, ot = 3): DeckCardInfo {

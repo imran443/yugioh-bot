@@ -40,7 +40,8 @@ if (expect.getState().testPath?.endsWith("/drafts-lobby-routes.test.ts")) descri
     method, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   beforeEach(() => {
-    vi.resetModules(); vi.clearAllMocks();
+    vi.resetModules();
+    vi.stubEnv("THEME_DRAFTS", "1"); vi.clearAllMocks();
 vi.doMock("@/lib/session-identity", async () => {
   const { sessionFixture } = await import("./fixtures/session");
   return sessionFixture(auth);

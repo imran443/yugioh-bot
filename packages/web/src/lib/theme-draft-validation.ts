@@ -2,6 +2,9 @@ import type Database from "better-sqlite3";
 import { NextResponse } from "next/server";
 import { DRAFT_LOBBY_ERROR_STATUS, type DraftConfig, type DraftLobbyErrorCode } from "@yugidraft/shared/types";
 import { createDraftLobbyService, DraftLobbyServiceError, findDraftReadAccess, type DraftLobbyInvalidationOptions } from "@yugidraft/shared/services";
+import { themeDraftSetupError } from "./theme-drafts";
+
+class ThemeDraftsClosedError extends Error {}
 
 export class ThemeDraftMutationError extends Error {
   constructor(public readonly code: DraftLobbyErrorCode, message: string, public readonly savedCubeId?: number) {
@@ -10,6 +13,9 @@ export class ThemeDraftMutationError extends Error {
 }
 
 export function themeDraftMutationResponse(error: unknown) {
+  if (error instanceof ThemeDraftsClosedError) {
+    return NextResponse.json({ error: error.message }, { status: 403 });
+  }
   if (error instanceof DraftLobbyServiceError) {
     return NextResponse.json({ error: error.message, code: error.code, ...error.details }, { status: error.status });
   }
@@ -39,6 +45,8 @@ export function pendingThemeDraft(db: Database.Database, slug: string, guildId: 
   if (hostOnly && row.created_by_user_id !== userId) throw new ThemeDraftMutationError("HOST_REQUIRED", "Only the host can edit cubes");
   if (row.status !== "pending") throw new ThemeDraftMutationError("DRAFT_NOT_PENDING", "Cubes can only be changed before the draft starts");
   const config = JSON.parse(row.config_json) as DraftConfig;
+  const closed = themeDraftSetupError({ config, status: row.status });
+  if (closed) throw new ThemeDraftsClosedError(closed);
   if (config.mode !== "theme") throw new ThemeDraftMutationError("THEME_SELECTION_REQUIRED", "This is not a theme draft");
   return { id: row.id, config };
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SavedDeck } from "@yugidraft/shared/duels";
 import { SavedDeckServiceError } from "@yugidraft/shared/services";
 import {
+  checkSavedDeckMaster,
   loadDeckRegistrations,
   readSavedDeckBody,
   requireSavedDeckActor,
@@ -38,6 +39,8 @@ export async function POST(request: Request) {
   if (!body.ok) return body.response;
 
   try {
+    const master = await checkSavedDeckMaster(body.mode, body.deck);
+    if (!master.ok) return master.response;
     if (draftId.draftId !== undefined) {
       // One deck per draft: the client switches to PUT with the id we return.
       const existing = actor.decks.findByDraft(actor.guildId, actor.ownerUserId, draftId.draftId);

@@ -4,7 +4,8 @@ import { Children, useCallback, useEffect, useMemo, useRef, useState, type React
 import type { DuelDeck, DuelRoom, DuelSeriesSummary } from "@yugidraft/shared/duels";
 import { CardArt } from "@/components/decks/card-art";
 import deckStyles from "@/components/decks/editor.module.css";
-import { cancelSeries, chooseSeriesFirst, getDuelCards, readySeries, saveSeriesSideDeck, unreadySeries } from "./api";
+import { useDeckCardMeta } from "./deck-card-types";
+import { cancelSeries, chooseSeriesFirst, readySeries, saveSeriesSideDeck, unreadySeries } from "./api";
 import { DeckCardPreview } from "./deck-card-preview";
 import { cx, sheetRoot, SheetButton } from "./sheet-ui";
 import ui from "./sheet-ui.module.css";
@@ -12,7 +13,6 @@ import styles from "./between-games.module.css";
 import { betweenGamesInfo, canCancelInterrupted, formatCountdown, seriesCompactScore, seriesKindLabel, seriesPlayerIndex, viewerChoosesFirst } from "./series-model";
 import { FirstChoiceGroup, OpponentFirstChip, OpponentSideChip, useSecondsUntil } from "./series-next";
 import {
-  deckCodes,
   hasMarks,
   isExtraDeckType,
   isMarkedIn,
@@ -125,7 +125,7 @@ export function BetweenGamesScreen({ room, slug, onChanged, onNavigate, knownCar
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState<ReadonlyMap<number, CardMeta>>(knownCards ?? new Map());
+  const meta = useDeckCardMeta(current, { initial: knownCards });
   const [hovered, setHovered] = useState<number | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const serverReady = index != null && series.sideReady[index];
@@ -205,20 +205,6 @@ export function BetweenGamesScreen({ room, slug, onChanged, onNavigate, knownCar
     saveQueue.current = pending;
     return pending;
   }, [imReady, index, slug]);
-
-  const codesKey = [...deckCodes(current)].sort((a, b) => a - b).join(",");
-  useEffect(() => {
-    let cancelled = false;
-    const codes = codesKey ? codesKey.split(",").map(Number) : [];
-    if (codes.length === 0) return undefined;
-    void getDuelCards(codes).then(
-      ({ cards }) => {
-        if (!cancelled) setMeta((known) => new Map([...known, ...cards.map((card) => [card.code, { name: card.name, type: card.type }] as const)]));
-      },
-      () => undefined,
-    );
-    return () => { cancelled = true; };
-  }, [codesKey]);
 
   useEffect(() => {
     if (!startingNext || !autoSave) return;

@@ -160,8 +160,8 @@ interface DraftDetailResponseBase {
   canJoin: boolean;
   /** Present only for the creator; GET /invite lazily supplies the link. */
   canManageInvite?: true;
-  /** Present only for the host or an owner: the viewer may POST /end and /cancel. A UI hint; the routes check access. */
-  canEndOrCancel?: true;
+  /** Present only for the host or an owner: the viewer may POST /cancel. A UI hint; the route checks access. */
+  canCancel?: true;
   /** Ownership survives Leave; compare this with the viewer's session ID. */
   createdByUserId: number;
   /** Retains existing filtering of assignment maps and any private seeds. */

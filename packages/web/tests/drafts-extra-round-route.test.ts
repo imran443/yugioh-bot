@@ -228,6 +228,7 @@ it("saves config-backed scratch extras into actual cube rows", async () => {
 it.each([
   ["POST", "booster"], ["PUT", "booster"], ["POST", "theme"], ["PUT", "theme"],
 ])("rejects more than 1000 distinct extra ids on %s (%s) without draft writes", async (method, mode) => {
+  if (mode === "theme") vi.stubEnv("THEME_DRAFTS", "1");
   const { getDb } = await import("../src/lib/db");
   const db = getDb();
   const created = method === "PUT" ? await create() : undefined;

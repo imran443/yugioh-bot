@@ -6,6 +6,9 @@ A Discord-first Yu-Gi-Oh draft, tournament, and duel platform. Discord is the lo
 
 ### Drafts
 
+**Host stop / Cancelled draft**:
+Under the owner rule of 2026-10-09, a host stop cancels the whole draft: null and void. Players must do a new draft. Cancel discards every pick and gives no decks, exports or tournament. There is no End now action to keep picks. See `docs/api/draft-host-end.md` for the API and the unchanged automatic pool-exhaustion paths.
+
 **Cube**:
 A reusable, guild-owned draft configuration and card pool. Stored in `cubes` with optional explicit `cube_cards` entries split into `main` / `extra` pools and per-card `max_copies`. Supplies shared booster-style drafts or a player's private pool in a **Theme draft**. Bot template commands also save cubes.
 _Avoid_: Theme (for the saved resource)
@@ -64,7 +67,7 @@ A Domain-only monster in its own zone, set apart from the Main Deck. It can be r
 A scripted starting board for hand scenarios and e2e runs (`packages/duel-server/src/presets/`). The `list-presets` and `start-preset` host operations exist only when `DUEL_SCENARIOS=1`. Not a Master Rule preset.
 
 **Engine**:
-The wasm core that runs a **Table**. 1v1 tables use the **legacy** engine (default) or the **pinned** merged engine (`DUEL_1V1_ENGINE`). Tag and FFA tables always use a **multi core** (`ocgcore.multi.wasm`, or `ocgcore.multi-domain.wasm` for Domain). A 1v1 table saves its engine, so recover and replay use it after `DUEL_1V1_ENGINE` changes. See `docs/deployment/duel-engine-switch.md`.
+The wasm core that runs a **Table**. Compose defaults Standard 1v1 to the **pinned** merged engine (`DUEL_STANDARD_1V1_ENGINE=pinned`) and Domain 1v1 to **legacy** (`DUEL_1V1_ENGINE=legacy`). Native runs with no Standard override use the global choice, which defaults to legacy. Each game of a series reads the switch at its start. A 1v1 game saves its engine, so recover and replay use it after either switch changes. Tag and FFA tables always use a **multi core** (`ocgcore.multi.wasm`, or `ocgcore.multi-domain.wasm` for Domain). See `docs/deployment/duel-engine-switch.md`.
 
 ### Notifications
 

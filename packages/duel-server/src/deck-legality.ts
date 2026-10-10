@@ -454,6 +454,23 @@ function isPlayable(card: EngineCard): boolean {
   return true;
 }
 
+function deckMasterTypeProblem(card: EngineCard): string | null {
+  if ((card.type & (TYPE_SPELL | TYPE_TRAP)) !== 0) {
+    return "You can't use a Spell or Trap as your Deck Master.";
+  }
+  if (!isMonster(card) || !isPlayable(card)) return "Deck Master must be a playable monster card";
+  return null;
+}
+
+/** Checks an engine-normalized master without requiring a complete saved deck. */
+export function validateDeckMasterType(mode: DuelMode, deck: DuelDeck, dataDirectory: string): void {
+  if (mode !== "domain" || deck.deckMaster === undefined) return;
+  const card = readCard(loadCatalog(dataDirectory), deck.deckMaster);
+  if (!card) fail(`Unknown card ${deck.deckMaster}`);
+  const problem = deckMasterTypeProblem(card);
+  if (problem) fail(problem);
+}
+
 function readCard(catalog: Catalog, id: number): EngineCard | undefined {
   if (!Number.isInteger(id) || id <= 0) return undefined;
   return catalog.cards.get(id);
@@ -868,8 +885,9 @@ export function inspectDeck(
       });
     } else {
       const dmRef: DuelDeckCardRef = { section: "deckMaster", index: 0, code: deck.deckMaster, name: dm.name };
-      if (!isMonster(dm) || !isPlayable(dm)) {
-        issues.push({ message: "Deck Master must be a playable monster card", cards: [dmRef] });
+      const typeProblem = deckMasterTypeProblem(dm);
+      if (typeProblem) {
+        issues.push({ message: typeProblem, cards: [dmRef] });
       } else {
         dmValid = true;
         if (cardPool) {

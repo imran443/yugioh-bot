@@ -33,7 +33,7 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import { TYPE_MONSTER } from "@/components/duel/constants";
+import { canBeDeckMaster, isSpellOrTrapType, SPELL_TRAP_MASTER_MESSAGE } from "@/components/duel/deck-card-types";
 import { parseDeckText, selectDomainMaster, type DeckMasterSelection } from "@/components/duel/ydk";
 import { SheetRoot, StatusLine, SvButton, Zone, segmentSlide } from "@/components/sheet";
 import { useTabDirection } from "@/lib/tab-motion";
@@ -762,8 +762,8 @@ export function SavedDeckEditor({ deckId, pool }: { deckId?: string; pool?: Draf
       setNotice(`${card.name} is unavailable: ${card.unavailableReason}`);
       return;
     }
-    if (card && (card.type & TYPE_MONSTER) === 0) {
-      setNotice("The Deck Master must be a monster.");
+    if (card && !canBeDeckMaster(card.type)) {
+      setNotice(isSpellOrTrapType(card.type) ? SPELL_TRAP_MASTER_MESSAGE : "The Deck Master must be a monster.");
       return;
     }
     // A Deck Master that is not in the deck yet is a new copy, so it must fit the copy limit.
@@ -997,6 +997,7 @@ export function SavedDeckEditor({ deckId, pool }: { deckId?: string; pool?: Draf
     inspect(code, section ? { section, code, index: deck[section].indexOf(code) } : null);
   }
   const masterArts = deck.deckMaster != null ? altArtCount(deck.deckMaster, catalog) : 0;
+  const masterIsSpellTrap = deck.deckMaster != null && isSpellOrTrapType(catalog.get(deck.deckMaster)?.type);
   const masterGesture = press({
     remove: () => commit(selectDomainMaster(selection, undefined)),
     moveSide: () => setNotice("Domain has no Side Deck."),
@@ -1221,7 +1222,7 @@ export function SavedDeckEditor({ deckId, pool }: { deckId?: string; pool?: Draf
                 onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMasterDropping(false); }}
                 onDrop={(event) => { setMasterDropping(false); const drag = readCardDrag(event); if (!drag || drag.from === "master") return; event.preventDefault(); makeMaster(drag.code, drag.from === "list" ? undefined : drag.from); }}>
                 <div className={styles["de-mslot"]}>{deck.deckMaster != null ? <button type="button" className={styles["de-c"]} aria-label={`Deck Master: ${cardName(deck.deckMaster)}${masterArts > 0 ? `, ${artCountLabel(masterArts)}` : ""}`} aria-keyshortcuts="ContextMenu Shift+F10" aria-pressed={inspectCode === deck.deckMaster && selected == null} title={cardName(deck.deckMaster)} draggable {...masterGesture} onPointerEnter={(event) => { if (event.pointerType !== "touch") pointAt({ code: deck.deckMaster!, from: "master" }); }} onPointerLeave={() => pointAt(null)} onDragStart={(event) => { masterGesture.onDragStart(); writeCardDrag(event, { code: deck.deckMaster!, from: "master" }); }}><CardArt code={deck.deckMaster} name={cardName(deck.deckMaster)} /><ArtChip otherArts={masterArts} corner open={artMenu?.section === "deckMaster"} onOpen={(anchor) => openArtMenu({ section: "deckMaster", index: 0, code: deck.deckMaster!, anchor })} /></button> : <Zone state="dashed" size="md" style={{ "--zw": "58px" } as CSSProperties} />}</div>
-                <div className={styles.masterText}><h2 className={styles["de-st"]}>Deck Master</h2><p className="small">{deck.deckMaster != null ? `${cardName(deck.deckMaster)}. ` : ""}Drag a monster here, or select one and press Use as Deck Master.</p>{deck.deckMaster != null ? <SvButton variant="quiet" disabled={busy} onClick={() => commit(selectDomainMaster(selection, undefined))}>Clear</SvButton> : null}</div>
+                <div className={styles.masterText}><h2 className={styles["de-st"]}>Deck Master</h2><p className="small">{deck.deckMaster != null ? `${cardName(deck.deckMaster)}. ` : ""}Drag a monster here, or select one and press Use as Deck Master.</p>{masterIsSpellTrap ? <p role="alert" className={styles.errorText}>{SPELL_TRAP_MASTER_MESSAGE}</p> : null}{deck.deckMaster != null ? <SvButton variant="quiet" disabled={busy} onClick={() => commit(selectDomainMaster(selection, undefined))}>Clear</SvButton> : null}</div>
               </section>
             ) : null}
             <DeckSectionGrid {...sectionProps} title="Main" section="main" codes={deck.main} minimum={mainLow} maximum={DRAFT_MAIN_MAX} target={mode === "domain" ? "60" : `${mainLow}–${DRAFT_MAIN_MAX}`} emptyHint="Add cards from the list on the right." actions={clearButton("main", "Main")} />

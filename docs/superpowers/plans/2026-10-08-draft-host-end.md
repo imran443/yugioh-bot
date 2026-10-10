@@ -1,5 +1,7 @@
 # Draft host termination implementation plan
 
+> Superseded on 2026-10-09 by the owner rule: a host stop cancels the whole draft. The end route and `endNow` are removed. The entries below record the old implementation, not the current contract. See `2026-10-09-draft-cancel-only.md` and `../../api/draft-host-end.md`.
+
 **Goal:** Let hosts and app owners end an active draft or cancel a pending/active web draft.
 
 **Architecture:** Reuse `completeDraft` and `cancel` inside immediate SQLite transactions. Add small terminal functions without changing pick/pass rotation. Web routes share guild-scoped authorization and post-commit notification through existing broadcasters and announcers.

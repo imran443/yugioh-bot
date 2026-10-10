@@ -18,11 +18,13 @@ vi.mock("@/lib/notify", () => ({ broadcaster }));
 describe("POST /api/drafts/[slug]/pick (theme mode bots)", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.stubEnv("THEME_DRAFTS", "0");
     auth.mockReset();
     broadcaster.draft.mockReset();
     auth.mockResolvedValue({ user: { id: String(fixtureUserId("u1")), discordUserId: fixtureDiscordId("u1"), name: "P1" } });
   });
   afterEach(() => {
+    vi.unstubAllEnvs();
     delete process.env.DATABASE_PATH;
     delete process.env.DISCORD_GUILD_ID;
     while (tempDirs.length > 0) {
@@ -31,7 +33,7 @@ describe("POST /api/drafts/[slug]/pick (theme mode bots)", () => {
     }
   });
 
-  it("auto-picks a dev bot after the human's pick and advances the round", async () => {
+  it("keeps an existing theme draft picking, finishing, showing its summary and exporting when off", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "yugioh-theme-pick-"));
     const dbPath = join(tempDir, "pick.sqlite");
     tempDirs.push(tempDir);
@@ -100,6 +102,29 @@ describe("POST /api/drafts/[slug]/pick (theme mode bots)", () => {
     const verify = new Database(dbPath);
     const botPicks = verify.prepare("select count(*) as n from draft_picks where draft_id = ? and player_id = ? and wave_number = 1").get(draft.id, bot) as { n: number };
     expect(botPicks.n).toBe(1);
+    const continued = createDraftService(verify);
+    for (let round = 2; round <= 40; round += 1) {
+      const option = continued.currentPackOptions(draft.id, human)[0];
+      expect(option).toBeDefined();
+      const response = await POST(new Request("http://localhost/pick", {
+        method: "POST", body: JSON.stringify({ cardId: option.id }),
+      }) as NextRequest, { params: Promise.resolve({ slug: draft.webSlug! }) });
+      expect(response.status).toBe(200);
+    }
+    expect(continued.findById(draft.id).status).toBe("completed");
+    expect(verify.prepare("select count(*) as n from draft_picks where draft_id = ?").get(draft.id)).toEqual({ n: 80 });
+    const context = { params: Promise.resolve({ slug: draft.webSlug! }) };
+    const { GET: summary } = await import("../app/api/drafts/[slug]/route");
+    const summaryResponse = await summary(new Request("http://localhost/summary"), context);
+    expect(summaryResponse.status).toBe(200);
+    expect((await summaryResponse.json()).status).toBe("completed");
+    const { GET: exportDeck } = await import("../app/api/drafts/[slug]/export/route");
+    const exported = await exportDeck(new Request("http://localhost/export"), context);
+    expect(exported.status).toBe(200);
+    const ydk = await exported.text();
+    expect(ydk).toContain("#main");
+    expect(ydk).toContain("#extra");
+    expect(ydk.split("#main\n")[1].split("#extra")[0].trim().split("\n")).toHaveLength(40);
     verify.close();
   }, 30000);
 });

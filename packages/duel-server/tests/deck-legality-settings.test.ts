@@ -300,7 +300,7 @@ describe("validateDeck=false safety", () => {
         DATA,
         settings({ validateDeck: false }),
       ),
-    ).toThrow(/Deck Master must be a playable monster/);
+    ).toThrow("You can't use a Spell or Trap as your Deck Master.");
     expect(() =>
       validateDeck("domain", { main: fillerSpells(20), extra: [], side: [] }, DATA, settings({ validateDeck: false })),
     ).toThrow(/Deck Master is required/);

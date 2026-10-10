@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  checkSavedDeckMaster,
   loadDeckRegistrations,
   parseSavedDeckId,
   readSavedDeckBody,
@@ -57,6 +58,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (stored !== null && bodyDraftId.draftId !== undefined && bodyDraftId.draftId !== stored) {
       return NextResponse.json({ error: "This deck belongs to another draft" }, { status: 400 });
     }
+    const master = await checkSavedDeckMaster(body.mode, body.deck);
+    if (!master.ok) return master.response;
     const draftId = stored ?? bodyDraftId.draftId;
     if (draftId !== undefined) {
       const checked = await checkDraftDeckWrite(ctx.actor.guildId, ctx.actor.ownerUserId, draftId, body.deck);

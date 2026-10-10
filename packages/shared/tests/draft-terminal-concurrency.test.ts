@@ -58,8 +58,7 @@ function runWorker(ctx: ReturnType<typeof setup>, action: string, gate: SharedAr
     Atomics.wait(new Int32Array(data.gate), 0, 0);
     try {
       let value;
-      if (data.action === 'end') value = drafts.endNow(data.draftId);
-      else if (data.action === 'cancel') value = drafts.cancel(data.draftId);
+      if (data.action === 'cancel') value = drafts.cancel(data.draftId);
       else if (data.action === 'expiry') value = drafts.expireCurrentPickStep(data.draftId, new Date('2030-01-01T00:00:31Z'));
       else value = drafts.pickCard(data.draftId, data.playerId, data.cardId, data.action === 'bot' ? 'auto' : 'manual', new Date('2030-01-01T00:00:01Z'));
       parentPort.postMessage({ ok: true, value });
@@ -79,11 +78,11 @@ function runWorker(ctx: ReturnType<typeof setup>, action: string, gate: SharedAr
   return { ready, result };
 }
 
-it.each(["end", "cancel"] as const)("serializes %s against concurrent manual picks, bot picks and expiry", async action => {
+it("serializes cancellation against concurrent manual picks, bot picks and expiry", async () => {
   for (const contender of ["manual", "bot", "expiry"]) {
     const ctx = setup();
     const gate = new SharedArrayBuffer(4);
-    const terminal = runWorker(ctx, action, gate);
+    const terminal = runWorker(ctx, "cancel", gate);
     const picking = runWorker(ctx, contender, gate);
     await Promise.all([terminal.ready, picking.ready]);
     Atomics.store(new Int32Array(gate), 0, 1); Atomics.notify(new Int32Array(gate), 0, 2);
@@ -91,31 +90,22 @@ it.each(["end", "cancel"] as const)("serializes %s against concurrent manual pic
     expect(stopped).toMatchObject({ ok: true });
     if (!picked.ok) expect(picked.error).toMatch(/Draft must be active/);
     const draft = ctx.drafts.findById(ctx.draft.id);
-    expect(draft.status).toBe(action === "end" ? "completed" : "cancelled");
+    expect(draft.status).toBe("cancelled");
     expect(draft.pickDeadlineAt).toBeNull();
     const picks = ctx.drafts.picks(ctx.draft.id);
-    if (action === "cancel") expect(picks).toEqual([]);
-    else {
-      const expected = contender === "expiry"
-        ? (picked.value as { autoPickedPlayerIds: number[] }).autoPickedPlayerIds.length
-        : picked.ok ? 1 : 0;
-      expect(picks).toHaveLength(expected);
-      expect(new Set(picks.map(pick => `${pick.playerId}:${pick.waveNumber}:${pick.pickStep}`)).size).toBe(picks.length);
-    }
+    expect(picks).toEqual([]);
     expect(ctx.drafts.expireCurrentPickStep(ctx.draft.id, new Date("2031-01-01"))).toEqual({ autoPickedPlayerIds: [] });
     expect(ctx.drafts.picks(ctx.draft.id)).toEqual(picks);
   }
 }, 20_000);
 
-it.each(["end", "cancel"] as const)("serializes %s against the final capped Main pick and leftover cleanup", async action => {
+it("serializes cancellation against the final capped Main pick and leftover cleanup", async () => {
   for (const contender of ["manual", "bot", "expiry"]) {
     const ctx = setup(true);
     const baselinePicks = ctx.drafts.picks(ctx.draft.id);
-    const undealtBefore = (ctx.db.prepare("select count(*) as n from draft_undealt where draft_id = ?")
-      .get(ctx.draft.id) as { n: number }).n;
     expect(baselinePicks).toHaveLength(1);
     const gate = new SharedArrayBuffer(4);
-    const terminal = runWorker(ctx, action, gate);
+    const terminal = runWorker(ctx, "cancel", gate);
     const picking = runWorker(ctx, contender, gate);
     await Promise.all([terminal.ready, picking.ready]);
     Atomics.store(new Int32Array(gate), 0, 1); Atomics.notify(new Int32Array(gate), 0, 2);
@@ -126,15 +116,15 @@ it.each(["end", "cancel"] as const)("serializes %s against the final capped Main
       ? (picked.value as { autoPickedPlayerIds: number[] }).autoPickedPlayerIds.length
       : picked.ok ? 1 : 0;
     expect(ctx.drafts.findById(ctx.draft.id)).toMatchObject({
-      status: action === "end" ? "completed" : "cancelled", pickDeadlineAt: null,
+      status: "cancelled", pickDeadlineAt: null,
       currentPackRound: committed ? 2 : 1,
     });
-    expect(ctx.drafts.picks(ctx.draft.id)).toHaveLength(action === "cancel" ? 0 : 1 + committed);
-    // Only a pick committed before End may return the two leftover Main cards and open Extra packs.
+    expect(ctx.drafts.picks(ctx.draft.id)).toHaveLength(0);
+    // Cancellation removes both leftover Main cards and any newly opened Extra packs.
     expect(ctx.db.prepare("select count(*) as n from draft_undealt where draft_id = ?").get(ctx.draft.id))
-      .toEqual({ n: action === "cancel" ? 0 : undealtBefore + (committed ? 2 : 0) });
+      .toEqual({ n: 0 });
     expect(ctx.db.prepare("select count(*) as n from draft_packs where draft_id = ? and wave_number = 2").get(ctx.draft.id))
-      .toEqual({ n: action === "cancel" || !committed ? 0 : 2 });
+      .toEqual({ n: 0 });
     const snapshot = () => Object.fromEntries(["drafts", "draft_players", "draft_picks", "draft_cards",
       "draft_packs", "draft_undealt", "draft_deal", "draft_passes", "saved_decks"].map(table => [table,
       ctx.db.prepare(`select * from ${table} order by rowid`).all()]));
@@ -148,12 +138,12 @@ it.each(["end", "cancel"] as const)("serializes %s against the final capped Main
   }
 }, 20_000);
 
-it.each(["manual", "bot", "expiry"])("keeps committed %s picks when end runs second", contender => {
+it.each(["manual", "bot", "expiry"])("discards committed %s picks when cancellation runs second", contender => {
   const ctx = setup();
   if (contender === "expiry") ctx.drafts.expireCurrentPickStep(ctx.draft.id, new Date("2030-01-01T00:00:31Z"));
   else ctx.drafts.pickCard(ctx.draft.id, ctx.players[0], ctx.cardId, contender === "bot" ? "auto" : "manual");
   const picks = ctx.drafts.picks(ctx.draft.id);
   expect(picks).toHaveLength(contender === "expiry" ? 2 : 1);
-  ctx.drafts.endNow(ctx.draft.id);
-  expect(ctx.drafts.picks(ctx.draft.id)).toEqual(picks);
+  ctx.drafts.cancel(ctx.draft.id);
+  expect(ctx.drafts.picks(ctx.draft.id)).toEqual([]);
 });

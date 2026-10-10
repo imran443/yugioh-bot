@@ -190,27 +190,10 @@
 .dr .says button:hover:not(:disabled) { border-color: var(--rule-hi); background: var(--panel-3); }
 .dr .says button:disabled { color: var(--ink-3); cursor: default; }
 
-/* host controls: the menu under the Host button, and the confirm. Red is only for the destructive choice. */
-.dr .host-pop { width: 320px; }
-.dr .host-pop .host-lede { margin: -4px 0 10px; }
-.dr .host-acts { display: grid; gap: 6px; }
-.dr .host-acts button {
-  display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid var(--rule-lo);
-  border-radius: 9px;
-  background: rgb(0 0 0 / 0.2);
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
-.dr .host-acts button b { font-weight: 500; font-size: 14.5px; }
-.dr .host-acts button small { color: var(--ink-3); font-size: 13px; line-height: 1.35; }
-.dr .host-acts button:hover { border-color: var(--rule-hi); background: var(--panel-3); }
-.dr .host-acts button[data-tone="danger"] b { color: var(--loss-ink); }
-.dr .host-acts button[data-tone="danger"]:hover { border-color: rgb(228 90 77 / 0.6); background: rgb(228 90 77 / 0.1); }
-.dr .host-btn[aria-expanded="true"] { color: var(--pen-ink); }
+/* Cancel draft: the button in the bar, and the confirm. Red is only for this destructive choice. */
+.dr .cancel-btn { color: var(--loss-ink); border-color: rgb(228 90 77 / 0.3); }
+.dr .cancel-btn:hover { border-color: rgb(228 90 77 / 0.6); background: rgb(228 90 77 / 0.1); color: var(--loss-ink); }
+.dr .cancel-btn:focus-visible { outline: 2px solid var(--loss-ink); outline-offset: 2px; }
 
 .dr .hc-scrim {
   position: fixed;
@@ -1381,6 +1364,8 @@
   .dr .room-name, .dr .pass, .dr .clock small, .dr .ibtn .t { display: none; }
   .dr .right { gap: 8px; }
   .dr .ibtn { width: 36px; padding: 0; justify-content: center; }
+  /* Icon only here: a red tint keeps Cancel draft from reading as "close room". */
+  .dr .cancel-btn { border-color: rgb(228 90 77 / 0.55); background: rgb(228 90 77 / 0.12); }
   .dr .where { justify-content: center; gap: 14px; }
   .dr .where .w { font-size: 12.5px; }
   .dr .where .w b { font-size: 22px; }

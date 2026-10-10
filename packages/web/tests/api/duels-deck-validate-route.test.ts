@@ -63,4 +63,16 @@ describe("lobby deck validation lifecycle", () => {
     host.callDuelHost.mockResolvedValue({ ok: true, data: { issues: [] } });
     expect(await (await POST(request(), params)).json()).toEqual({ issues: [] });
   });
+
+  it("passes the Domain Spell/Trap Deck Master issue to the room editor", async () => {
+    actor("1v1");
+    const report = { issues: [{
+      message: "You can't use a Spell or Trap as your Deck Master.",
+      cards: [{ section: "deckMaster", index: 0, code: 55144522, name: "Pot of Greed" }],
+    }] };
+    host.callDuelHost.mockResolvedValue({ ok: true, data: report });
+    const response = await POST(request(), params);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(report);
+  });
 });

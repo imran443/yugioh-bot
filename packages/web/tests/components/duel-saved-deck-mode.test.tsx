@@ -20,6 +20,7 @@ vi.mock("../../src/components/decks/api", () => ({ listSavedDecks }));
 vi.mock("../../src/components/duel/api", () => ({
   validateDuelDeck: vi.fn(async () => ({ issues: [] }) as unknown as DuelDeckValidation),
   searchDuelCards: vi.fn(async () => ({ cards: [] })),
+  getDuelCards: vi.fn(async () => ({ cards: [], missing: [] })),
 }));
 
 function saved(id: number, name: string, mode: DuelMode, main: number[]): SavedDeck {

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { Crown, Minus, Plus, Search } from "lucide-react";
 import type { CardArchetype, DeckCardInfo, DuelDeck, DuelMode } from "@yugidraft/shared/duels";
-import { TYPE_MONSTER } from "@/components/duel/constants";
+import { canBeDeckMaster } from "@/components/duel/deck-card-types";
 import { cn } from "@/lib/utils";
 import { DeckButton } from "./controls";
 import { cardArchetypes } from "./filter-model";
@@ -69,7 +69,7 @@ export function CardActions({
   const status = inPool ? null : limitName(limit);
   const own = cardArchetypes(card.setcodes, archetypes);
   const isMaster = deck.deckMaster === card.code;
-  const canMaster = mode === "domain" && (card.type & TYPE_MONSTER) !== 0;
+  const canMaster = mode === "domain" && canBeDeckMaster(card.type);
 
   return (
     <div className={styles["de-acts-c"]}>

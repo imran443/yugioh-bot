@@ -22,6 +22,20 @@ export const CUBE_TYPE_HINTS: Record<CubeDraftType, string> = {
   any: "A plain cube you can use for either kind of draft.",
 };
 
+/**
+ * The types a screen offers. While theme drafts are closed, a new cube cannot be a theme cube.
+ * A cube that is already a theme cube keeps its type in view so the editor never shows a blank choice.
+ */
+export function offeredCubeTypes(themeDraftsEnabled: boolean, current?: CubeDraftType): CubeDraftType[] {
+  return CUBE_DRAFT_TYPES.filter((type) => type !== "theme" || themeDraftsEnabled || current === "theme");
+}
+
+/** The hint under the type choice. It names no theme draft while theme drafts are closed. */
+export function cubeTypeHint(type: CubeDraftType, themeDraftsEnabled: boolean): string {
+  if (type === "any" && !themeDraftsEnabled) return "A plain cube you can use in any cube draft.";
+  return CUBE_TYPE_HINTS[type];
+}
+
 export function parseCubeDraftType(value: unknown): CubeDraftType | null {
   return typeof value === "string" && (CUBE_DRAFT_TYPES as readonly string[]).includes(value)
     ? (value as CubeDraftType)

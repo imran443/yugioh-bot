@@ -13,6 +13,7 @@ import {
 import { requireWebAccess } from "@/lib/web-access";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
+import { callDuelHost, requireDuelActor } from "@/lib/duel-host";
 
 export type SavedDeckActor =
   | { ok: true; guildId: string; ownerUserId: number; discordUserId: string | null; decks: SavedDeckService }
@@ -59,6 +60,27 @@ export async function readSavedDeckBody(
   }
   const record = body as { name?: unknown; mode?: unknown; deck?: unknown };
   return { ok: true, name: record.name, mode: record.mode, deck: record.deck };
+}
+
+/** Library and import writes share this check; reads never validate or change old decks. */
+export async function checkSavedDeckMaster(mode: unknown, deck: unknown): Promise<
+  { ok: true } | { ok: false; response: NextResponse }
+> {
+  if (mode !== "domain" || !deck || typeof deck !== "object" || Array.isArray(deck)) return { ok: true };
+  const code = (deck as { deckMaster?: unknown }).deckMaster;
+  // The saved-deck service reports shape errors and permits unfinished decks.
+  if (code === undefined || typeof code !== "number" || !Number.isInteger(code) || code < 1 || code > 0xffff_ffff) return { ok: true };
+  const actor = await requireDuelActor();
+  if (!actor.ok) return actor;
+  const result = await callDuelHost({
+    op: "validate-deck-master", guildId: actor.guildId, playerId: actor.playerId, mode: "domain",
+    deck: { main: [], extra: [], side: [], deckMaster: code },
+  });
+  if (!result.ok) return result;
+  if ((result.data as { ok?: unknown } | null)?.ok !== true) {
+    return { ok: false, response: NextResponse.json({ error: "Invalid engine response" }, { status: 502 }) };
+  }
+  return { ok: true };
 }
 
 export function savedDeckErrorResponse(error: unknown) {

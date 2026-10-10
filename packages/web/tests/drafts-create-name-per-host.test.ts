@@ -20,6 +20,7 @@ const otherId = fixtureUserId("other");
 
 beforeEach(async () => {
   vi.resetModules();
+  vi.stubEnv("THEME_DRAFTS", "1");
   auth.mockReset();
   auth.mockResolvedValue({ user: { id: String(hostId), name: "Host" } });
   directory = mkdtempSync(join(tmpdir(), "draft-create-names-"));
@@ -35,6 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   db?.close();
   delete process.env.DATABASE_PATH;

@@ -1,6 +1,6 @@
 # VM Deployment Runbook
 
-This runbook covers deploying Dueling Domain web/WS/duel/worker to a VM. The stack runs via Docker Compose with Caddy as a reverse proxy. GitHub Actions deploys `main` automatically on push.
+This runbook covers deploying Dueling Domain web/WS/duel/worker to a VM. The stack runs via Docker Compose with Caddy as a reverse proxy. After owner setup and `STAGING_AUTO_DEPLOY=1`, a push to `main` can deploy staging. The owner runs the manual **Deploy** workflow for production in downtime.
 
 ## Current Repository State
 
@@ -59,9 +59,17 @@ Deploy jobs run in the `production` / `staging` GitHub Environments and require 
 
 ## Deployment Pipeline
 
-1. Code is pushed to `main` on GitHub.
-2. GitHub Actions starts the `Deploy` workflow on `ubuntu-latest` (amd64), with a 90-minute job limit.
-   The job runs only for `refs/heads/main`, including manual dispatches.
+1. Complete [staging setup and tests](staging.md#one-time-steps-for-the-owner), then set repository variable `STAGING_AUTO_DEPLOY=1`.
+   Merge code to `main`. **Deploy Staging** can build and start the separate staging stack on the VM.
+   It skips for live production duels, openings or active drafts, a failed activity guard, low memory/disk or a busy build lock.
+   Open tournament rounds and series alone do not block staging. Manual dispatch can skip only the activity guard.
+2. Test the deployed staging SHA. In downtime, open Actions → **Deploy** → Run workflow.
+   Use workflow from `main`, set `ref` to the tested SHA (default `main`), and leave `force=false`, `rollback=false`.
+   Prod has no push trigger. The prod job runs only with the workflow on `refs/heads/main`, on
+   `ubuntu-latest` (amd64), with a 90-minute limit. The target ref must resolve to a commit on `main`.
+   Right after target checkout, the runner runs `git fetch origin main && git merge-base --is-ancestor HEAD FETCH_HEAD`.
+   This check runs before `npm rebuild`, `duel:prepare`, `tsx` or other code from that ref.
+   `VM_SSH_PRIVATE_KEY` is in the Configure SSH key step only. This placement does not isolate the key from code that ran earlier.
 3. The workflow builds or restores the pinned duel-engine resource bundle
    (`cards.cdb`, `card-scripts/`, `strings.conf`, `ocgcore.domain.wasm`, `ocgcore.standard.wasm`, `manifest.json`, and the legacy 1v1 files `ocgcore.domain.legacy.wasm` and `card-scripts/domain.legacy.lua`)
    using `npm run duel:prepare`, `packages/duel-server/scripts/build-domain-core.ts` (Domain wasm) and `packages/duel-server/scripts/build-domain-core.ts standard` (Standard wasm: stock rules plus the shared fixes in `domain-core/src/apply-core-fixes.mjs`, `build-standard-core.sh`)
@@ -79,8 +87,18 @@ Deploy jobs run in the `production` / `staging` GitHub Environments and require 
    cached base bundle independent. See [staging's engine build details](staging.md#engine-files-and-image-build).
 4. The workflow SSHes into the VM and fetches the exact commit checked out on the runner. It also
    fetches `origin main` and checks that the deploy commit is an ancestor of `FETCH_HEAD` before preflight.
-   It waits up to 15 minutes for the shared VM build lock. It runs a
-   **preflight** before anything on the VM changes: the install script from that commit runs with
+   The VM also requires `git merge-base --is-ancestor HEAD "$DEPLOY_COMMIT"` before any checkout or image change.
+   An older or diverged target is refused unless the owner explicitly sets `rollback=true`. The target must still be on main.
+   Rollback does not restore the matching database or env; use the restore procedure when those are needed.
+   It waits only 15 minutes for the shared VM build lock; missing `flock` fails closed. A cold staging build can take longer.
+   If prod reaches the lock timeout, let staging finish, then run Deploy again.
+   Before checkout changes, backups or stopping staging, it runs `scripts/deployment/check-prod-activity.py`
+   from the workflow revision against the VM's `data/bot.sqlite`. It opens SQLite with `mode=ro` and `query_only=on`.
+   One snapshot counts active duels and lobby duels with RPS/dice openings, active drafts, open/pending-approval rounds in active tournaments,
+   and active/between-game series. Committed WAL writes are included. Missing, locked, corrupt or incomplete
+   DBs refuse the deploy. Any active count refuses unless `force=true` was explicitly set.
+   Force skips only this new guard; it never disables the engine preflight, lock or backups.
+   It then runs the existing **preflight** before anything on the VM changes: the install script from that commit runs with
    `DUEL_PREFLIGHT=1` on the new bundle and installs nothing. It refuses while a duel has `status = 'active'`
    in `data/bot.sqlite` and the base bundle would be replaced (a locked or corrupt DB fails closed).
    For a new multi core under an identical base bundle, only an active Tag/FFA duel refuses. On refusal, the old
@@ -95,6 +113,10 @@ Deploy jobs run in the `production` / `staging` GitHub Environments and require 
    the secret is read only by web at runtime from the protected VM `.env`.
    Compose fixes `DISCORD_BOT_ENABLED=0` for web and worker. The old bot image is recorded only for rollback;
    any previous bot container is stopped by its project/service labels before migration.
+   After the image build, it checks gameplay again immediately before any prod service stop.
+   A refusal there leaves prod containers running, but the checkout/images may already be updated and staging stopped.
+   The job prints: **Do not run compose up. Run Deploy again.** Wait for downtime, then run the full workflow again.
+   This is a snapshot guard, not an admission lock: the owner must prevent new games during the downtime window.
    It stops web/duel/worker and WS, captures a final drained backup, installs the engine bundle,
    and runs one migration with the new worker image before starting consumers. FK and integrity
    failures abort. The EXIT trap only cleans temporary files; after the coordinated stop, failure
@@ -147,9 +169,15 @@ The multiplayer merge changes the Standard and Domain cores, so its first deploy
 
 ### Engine switch and multiplayer flag
 
-The merge deploys with `DUEL_1V1_ENGINE=legacy` (1v1 duels run on main's old engine) and `MULTIPLAYER_TABLES` on (Tag,
-3-player and 4-player tables open; `MULTIPLAYER_TABLES=0` in `.env` closes them). Both are read by a restart of the `duel` service (the flag also by `web`). They need no
-empty server. See `duel-engine-switch.md` for the values, the engine saved for each duel and how to switch back.
+Compose defaults Standard 1v1 to `DUEL_STANDARD_1V1_ENGINE=pinned`, with no production `.env` edit.
+Domain keeps `DUEL_1V1_ENGINE=legacy`. To roll back Standard, set `DUEL_STANDARD_1V1_ENGINE=legacy` in `.env`, then run
+`docker compose -f docker-compose.yml up -d --force-recreate duel`. An empty or missing Standard value means `pinned`
+in Compose. A Compose `restart` does not apply changed environment values. Each game of a series reads the switch
+at its start; active games keep their saved engine.
+
+`MULTIPLAYER_TABLES` is on (Tag, 3-player and 4-player tables open); `MULTIPLAYER_TABLES=0` in `.env` closes new multi
+tables after `duel` and `web` are recreated. Switch changes need no empty server. See `duel-engine-switch.md` for the
+values, the engine saved for each game and bundle rebuild checks.
 
 ### Report bug button (GitHub issues)
 
@@ -358,6 +386,7 @@ WEB_URL=https://${SITE_DOMAIN}
 MARKETING_URL=https://duelingdomain.com
 DISCORD_GUILD_ID=your_community_id
 DISCORD_BOT_ENABLED=0
+THEME_DRAFTS=0
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=  # production key, also set as the repository variable
 CLERK_SECRET_KEY=  # production web runtime only; never a build arg
 WS_INTERNAL_SECRET=  # openssl rand -hex 32; web/duel/worker/ws share it
@@ -371,12 +400,20 @@ IMAGE_CLEANUP_CRON=0 4 * * *
 IMAGE_CLEANUP_TIMEZONE=UTC
 ```
 
+| Environment variable | Default | Behavior |
+| --- | --- | --- |
+| `THEME_DRAFTS` | `0` for production web | Only `1`, `true` and `on` permit new theme drafts. The code default is off in every build. |
+| `STAGING_THEME_DRAFTS` | `1` for staging web | Sets web's `THEME_DRAFTS` in staging Compose. Use `0` to close new theme drafts there. |
+
+The owner keeps new production theme drafts closed for the alpha testers. Existing theme lobbies
+and active games can finish when the flag is off. Summary and deck export remain available.
+`GET /api/drafts` and `GET /api/cubes` return `themeDraftsEnabled` for browser create flows.
+
 Protect `.env` as 0600. Web has an explicit environment list; no `NEXTAUTH_*`, obsolete `AUTH_*`, Discord bot token, bot announce vars or E2E gate are forwarded. Web receives `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` at runtime for existing-player recovery; retain the original Discord OAuth application's credentials in the protected runtime configuration. The Clerk secret is runtime-only and only web receives it; owner CLI runs use explicit `-e CLERK_SECRET_KEY`. Dev keys never reach staging/production. Staging uses a separate instance and source. `WEB_URL` is required; missing it fails Compose config instead of changing WS CORS to localhost.
 
 After runtime edits, recreate affected containers with `docker compose -f docker-compose.yml up -d`; `restart` does not reload `.env`. Changing the public key requires a web rebuild through the Deploy workflow. Preserve protected PR 1 credentials/env for the rollback window; current Compose has no bot service. Worker timers keep running without Discord delivery.
 
-The ARM VM does not compile Domain wasm. First production start should be a `main` push
-or `workflow_dispatch` so GitHub Actions can install `/opt/yugioh-bot/data/duel-engine`.
+The ARM VM does not compile Domain wasm. First production start must use the manual **Deploy** workflow so GitHub Actions can install `/opt/yugioh-bot/data/duel-engine`.
 The workflow also prepares the temporary image build context. Start already built images with the
 command below; use the workflow for rebuilds.
 
@@ -416,18 +453,45 @@ Go to your GitHub repo → Settings → Secrets and variables → Actions, and a
 | `VM_SSH_PRIVATE_KEY` | Full contents of your SSH private key |
 | `VM_PORT` | `22` |
 
-Also set repository **variable** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` to the production `pk_live_...` value. The runtime `CLERK_SECRET_KEY` stays on the VM. After these are set, every push to `main` will auto-deploy.
+Also set repository **variable** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` to the production `pk_live_...` value. The runtime `CLERK_SECRET_KEY` stays on the VM. Complete staging's [one-time setup and tests](staging.md#one-time-steps-for-the-owner), then set repository variable `STAGING_AUTO_DEPLOY=1` to enable staging push deploys. Production deploys are manual.
 
-## Auto Deploy From Main
+## Staging First, Manual Production
 
-`.github/workflows/deploy.yml` triggers on every push to `main` and on `workflow_dispatch`.
+`.github/workflows/deploy-staging.yml` runs on pushes to `main` only with `STAGING_AUTO_DEPLOY=1`, and on manual dispatch from `main`.
+`.github/workflows/deploy.yml` runs only on manual dispatch from `main`. Both use the shared VM build lock.
+
+The SSH key step does not protect the production key from staging ref code that runs before it. That code can use
+`GITHUB_ENV`, `GITHUB_PATH` or `RUNNER_TEMP` to reach the key in a later step. For a real control, put the production key
+in a GitHub environment with a required reviewer. This is an owner choice for later; it is not configured by these changes.
 
 Normal flow:
 
 1. Work on a branch.
 2. Open a pull request.
 3. Merge into `main`.
-4. GitHub Actions deploys automatically.
+4. After auto deploy is enabled, GitHub Actions deploys staging, or skips for prod activity, guard failure, or resource limits.
+5. Test staging and record its deployed SHA. A green run can mean a skip; check warnings, the step summary and the site.
+6. During downtime, the owner runs **Deploy** from `main`, with the tested SHA as `ref`, `force=false`, `rollback=false`.
+
+For a manual staging test of a branch or SHA, dispatch **Deploy Staging** from `main`, set that target as `ref`, and use
+`action=deploy`, `refresh_db=false`, `ignore_prod_activity=false`. Set `ignore_prod_activity=true` to build during production play.
+This input skips only the activity guard. It keeps the shared lock and all resource checks. Push deploys cannot enable it.
+Staging checks only live duels, openings and active drafts, before clone, fetch or checkout reset.
+Production keeps its full activity guard, including open tournament rounds and active/between-game series.
+Prod stops staging before its build; staging stays down until its workflow runs again.
+Prod waits only 15 minutes for the lock. A cold staging build can take longer and cause a prod lock timeout.
+
+Local safety checks (no VM access):
+
+```bash
+python3 -B -m unittest discover -s scripts/deployment -p test_deploy_safety.py -v
+node --test scripts/ci/deploy-flow.test.mjs
+npx vitest run scripts/staging/deploy.test.ts
+npx --yes @action-validator/cli@0.6.0 .github/workflows/deploy.yml
+npx --yes @action-validator/cli@0.6.0 .github/workflows/deploy-staging.yml
+npx --yes @action-validator/cli@0.6.0 .github/workflows/test.yml
+sh -n scripts/staging/remote-deploy.sh
+```
 
 ## Manual Operations
 
@@ -549,7 +613,8 @@ systemctl start "$unit.timer"
 - [ ] Repo cloned to `/opt/yugioh-bot`
 - [ ] [Production environment configured](#create-env)
 - [ ] GitHub Actions secrets configured
-- [ ] Push to `main` (or `workflow_dispatch`) installs `data/duel-engine` and starts services
+- [ ] Manual **Deploy** installs `data/duel-engine` and starts production services
+- [ ] [Staging DNS, HTTPS and separate Clerk instance configured](staging.md#one-time-steps-for-the-owner)
 - [ ] [Deployment verification passes](#verify)
 - [ ] [Clerk instance, callback, DNS/email and production keys configured](#clerk-configuration)
 - [ ] `duel` container logs show the private server listening
