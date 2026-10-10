@@ -108,3 +108,13 @@ export function isReplayForkSetup(value: unknown): value is ReplayForkSetup {
       && hasExactKeys(entry, ["seat", "displayName"])
       && (entry.displayName === null || (typeof entry.displayName === "string" && entry.displayName.length <= REPLAY_SOURCE_DISPLAY_NAME_MAX_LENGTH)));
 }
+
+/** Compare validated immutable private metadata without depending on JSON key order. */
+export function sameReplayForkSetup(left: ReplayForkSetup, right: ReplayForkSetup): boolean {
+  const a = left.origin, b = right.origin;
+  return left.ownerUserId === right.ownerUserId && left.control === right.control
+    && a.sourceSlug === b.sourceSlug && a.sourceVersion === b.sourceVersion && a.frameId === b.frameId
+    && a.step === b.step && a.prefixCount === b.prefixCount && a.prefixHash === b.prefixHash
+    && a.sourceSeats.length === b.sourceSeats.length
+    && a.sourceSeats.every((seat, index) => seat.seat === b.sourceSeats[index]?.seat && seat.displayName === b.sourceSeats[index]?.displayName);
+}

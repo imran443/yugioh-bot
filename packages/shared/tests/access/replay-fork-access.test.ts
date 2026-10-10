@@ -33,8 +33,6 @@ describe("server replay access guards", () => {
   beforeEach(() => {
     db = new Database(":memory:");
     migrate(db);
-    // B3 owns the production migration. Exercise its persisted-kind contract here.
-    db.exec("alter table duels add column kind text not null default 'play'");
     for (const actor of [owner, dev, alpha]) seedIdentity(db, { ...actor, name: "Test actor" });
     const sourcePlayer = seedIdentity(db, { guildId: owner.guildId, playerId: 64, userId: 201, name: "Source A" });
     const otherPlayer = seedIdentity(db, { guildId: "other-guild", playerId: 65, userId: 202, name: "Other guild" });
@@ -42,9 +40,11 @@ describe("server replay access guards", () => {
     const input = { name: "Private bug-report source", mode: "normal" as const, settings: { visibility: "private" } };
     sourceSlug = duels.create({ ...input, guildId: owner.guildId, organizerPlayerId: sourcePlayer.playerId }).slug;
     otherGuildSlug = duels.create({ ...input, guildId: "other-guild", organizerPlayerId: otherPlayer.playerId }).slug;
-    forkSlug = duels.create({ ...input, guildId: owner.guildId, organizerPlayerId: owner.playerId }).slug;
-    db.prepare("update duels set kind = 'replay-fork', setup_json = ? where web_slug = ?")
-      .run(JSON.stringify(forkSetup), forkSlug);
+    forkSlug = "fork-fixture";
+    // The kind is set only at insert. A normal play row cannot be promoted to a fork.
+    db.prepare(`insert into duels(guild_id,web_slug,name,organizer_player_id,mode,status,kind,setup_json)
+      values(?,?,'Fork fixture',?,'normal','active','replay-fork',?)`)
+      .run(owner.guildId, forkSlug, owner.playerId, JSON.stringify(forkSetup));
     vi.stubEnv("OWNER_USER_IDS", "101,102");
   });
 
@@ -115,6 +115,9 @@ describe("server replay access guards", () => {
     ["replay-fork", JSON.stringify({ ...forkSetup, botPolicies: { "1": "scripted" } })],
     ["play", JSON.stringify(forkSetup)],
   ])("denies inconsistent persisted kind/setup: %s, %s", (kind, setup) => {
+    // Simulate corrupt historical storage, bypassing the insert and immutable-kind constraints.
+    db.exec("drop trigger duels_kind_immutable");
+    db.pragma("ignore_check_constraints = on");
     db.prepare("update duels set kind = ?, setup_json = ? where web_slug = ?").run(kind, setup, sourceSlug);
     denied(() => assertOwnerReplaySourceAccess(db, sourceSlug, owner));
     denied(() => assertDuelForkAccess(db, sourceSlug, owner));
@@ -126,6 +129,7 @@ describe("server replay access guards", () => {
   });
 
   it("uses play for a pre-migration row and still rejects a stray fork mark", () => {
+    db.exec("drop trigger duels_kind_immutable");
     db.exec("alter table duels drop column kind");
     expect(assertOwnerReplaySourceAccess(db, sourceSlug, owner).kind).toBe("play");
     denied(() => assertOwnerReplaySourceAccess(db, forkSlug, owner));

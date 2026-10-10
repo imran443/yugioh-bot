@@ -914,6 +914,25 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "duels", "format", "text not null default '1v1'");
   addColumnIfMissing(db, "duels", "snapshot_seats_json", "text");
   addColumnIfMissing(db, "duels", "setup_json", "text");
+  addColumnIfMissing(db, "duels", "kind", "text not null default 'play' check (kind in ('play', 'replay-fork'))");
+  db.exec(`
+    create trigger if not exists duels_kind_immutable
+    before update of kind on duels
+    when new.kind is not old.kind
+    begin
+      select raise(abort, 'Duel kind is immutable');
+    end;
+    create table if not exists replay_fork_requests (
+      owner_user_id integer not null references users(id) on delete cascade,
+      request_id text not null,
+      source_slug text not null,
+      source_version text not null,
+      cursor_digest text not null,
+      fork_duel_id integer not null references duels(id) on delete cascade,
+      created_at text not null default current_timestamp,
+      primary key (owner_user_id, request_id)
+    );
+  `);
 
   db.transaction(() => {
     const seatInfo = db.prepare<[], { name: string; notnull: number }>("pragma table_info(duel_seats)").all();

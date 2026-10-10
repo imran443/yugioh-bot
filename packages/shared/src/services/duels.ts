@@ -23,9 +23,9 @@ import type {
   ReplayForkSetup,
   ReplayJournalEntry,
 } from "../duels/index.js";
-import { DEFAULT_DUEL_KIND } from "../duels/duel-kind.js";
-import { isEngineIdentity } from "../duels/replay.js";
-import { isReplayForkSetup } from "../duels/replay-fork.js";
+import { isDuelKind, isDuelKindSetup, type DuelKind } from "../duels/duel-kind.js";
+import { isEngineIdentity, sameEngineIdentity } from "../duels/replay.js";
+import { isReplayForkSetup, sameReplayForkSetup } from "../duels/replay-fork.js";
 import {
   clockWithServerNow,
   DEFAULT_DUEL_FORMAT,
@@ -251,6 +251,7 @@ export interface DuelService {
 
 type DuelRow = {
   id: number;
+  kind: DuelKind;
   guild_id: string;
   web_slug: string;
   name: string;
@@ -416,12 +417,13 @@ function isPolicyMap(value: unknown): value is Record<string, string> {
   );
 }
 
-function parseSetup(raw: string | null | undefined): DuelSetup | undefined {
-  if (!raw) return undefined;
+function parseSetup(raw: string | null | undefined, kind: DuelKind, format: DuelFormat): DuelSetup | undefined {
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const parsed: unknown = raw == null ? undefined : JSON.parse(raw);
+    if (!isDuelKindSetup(kind, parsed, format)) throw new Error("Invalid kind/setup pair");
+    if (parsed == null) return undefined;
     const input = parsed as Record<string, unknown>;
+    if (Object.hasOwn(input, "engineIdentity") && !isEngineIdentity(input.engineIdentity)) throw new Error("Invalid engine identity");
     const setup: DuelSetup = {};
     if (isEngineIdentity(input.engineIdentity)) setup.engineIdentity = input.engineIdentity;
     if (isReplayForkSetup(input.replayFork)) setup.replayFork = input.replayFork;
@@ -439,18 +441,35 @@ function parseSetup(raw: string | null | undefined): DuelSetup | undefined {
     if (isDuelEngineChoice(input.engine)) setup.engine = input.engine;
     return setup;
   } catch {
-    return undefined;
+    throw new DuelServiceError("Duel setup record is invalid", 500);
   }
 }
 
-function validateSetup(setup: unknown): DuelSetup {
+/** Validate mutable host rules. Only an existing server mark or identity can be supplied unchanged. */
+export function validateSetup(setup: unknown, recorded?: DuelSetup): DuelSetup {
   if (!setup || typeof setup !== "object" || Array.isArray(setup)) {
     throw new DuelServiceError("Duel setup must be an object", 400);
   }
   const input = setup as Record<string, unknown>;
-  const extra = Object.keys(input).find((key) => key !== "scriptErrorMode" && key !== "firstTurnDraw" && key !== "startupScripts" && key !== "scenarioId" && key !== "surrenderedSeats" && key !== "presetId" && key !== "botPolicies" && key !== "engine");
+  const extra = Object.keys(input).find((key) => key !== "scriptErrorMode" && key !== "firstTurnDraw" && key !== "startupScripts" && key !== "scenarioId" && key !== "surrenderedSeats" && key !== "presetId" && key !== "botPolicies" && key !== "engine"
+    && !(key === "replayFork" && recorded?.replayFork) && !(key === "engineIdentity" && recorded?.engineIdentity));
   if (extra) throw new DuelServiceError(`Unknown duel setup field: ${extra}`, 400);
   const out: DuelSetup = {};
+  if (recorded?.replayFork) {
+    if (Object.hasOwn(input, "replayFork") && (!isReplayForkSetup(input.replayFork) || !sameReplayForkSetup(input.replayFork, recorded.replayFork))) {
+      throw new DuelServiceError("Replay fork creator and origin are immutable", 409);
+    }
+    if (["botPolicies", "presetId", "scenarioId"].some(key => Object.hasOwn(input, key))) {
+      throw new DuelServiceError("Replay fork seats must stay Manual", 409);
+    }
+    out.replayFork = recorded.replayFork;
+  }
+  if (recorded?.engineIdentity) {
+    if (Object.hasOwn(input, "engineIdentity") && (!isEngineIdentity(input.engineIdentity) || !sameEngineIdentity(input.engineIdentity, recorded.engineIdentity))) {
+      throw new DuelServiceError("Recorded engine identity is immutable", 409);
+    }
+    out.engineIdentity = recorded.engineIdentity;
+  }
   if (input.scriptErrorMode !== undefined) {
     if (input.scriptErrorMode !== "tolerant" && input.scriptErrorMode !== "strict") throw new DuelServiceError("scriptErrorMode must be tolerant or strict", 400);
     out.scriptErrorMode = input.scriptErrorMode;
@@ -721,14 +740,14 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
   const seatRows = (duelId: number): SeatRow[] => selectSeats.all(duelId);
 
   const mapSession = (row: DuelRow): DuelSession => {
-    if (!isDuelMode(row.mode) || !isDuelStatus(row.status) || !isDuelMasterRule(row.master_rule)) {
+    if (!isDuelKind(row.kind) || !isDuelMode(row.mode) || !isDuelStatus(row.status) || !isDuelMasterRule(row.master_rule)) {
       throw new DuelServiceError("Duel record is invalid", 500);
     }
+    parseSetup(row.setup_json, row.kind, rowFormat(row));
     return {
       id: row.id,
       slug: row.web_slug,
-      // P0 projects existing rows only. B3 must replace this with validated persisted kind/setup.
-      kind: DEFAULT_DUEL_KIND,
+      kind: row.kind,
       name: row.name,
       guildId: row.guild_id,
       organizerPlayerId: row.organizer_player_id,
@@ -810,7 +829,7 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
         ...clock, remainingMs: order.map((seat) => clock.remainingMs[seat]!),
         activeSeat: clock.activeSeat === null ? null : newSeat(clock.activeSeat),
       }), duelId);
-      const setup = parseSetup(row.setup_json);
+      const setup = parseSetup(row.setup_json, row.kind, rowFormat(row));
       if (setup) updateSetup.run(JSON.stringify({
         ...setup,
         ...(setup.botPolicies ? { botPolicies: Object.fromEntries(Object.entries(setup.botPolicies)
@@ -886,6 +905,7 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
       bestOf?: DuelBestOf;
       ranked?: boolean;
     }) => {
+      if (Object.hasOwn(input, "kind")) throw new DuelServiceError("Duel kind is server-owned", 400);
       const format = input.format ?? DEFAULT_DUEL_FORMAT;
       if (!isDuelFormat(format)) throw new DuelServiceError("Duel format must be 1v1, tag, ffa3, or ffa4", 400);
       const name = input.name.trim();
@@ -1409,7 +1429,7 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
           command: JSON.parse(entry.command_json) as DuelCommand,
         })),
         clock: rowClock(row),
-        setup: parseSetup(row.setup_json),
+        setup: parseSetup(row.setup_json, row.kind, rowFormat(row)),
       };
     },
 
@@ -1508,12 +1528,13 @@ export function createDuelService(db: Database.Database, options: { rollDie?: ()
     setSetup(slug, guildId, setup) {
       db.transaction(() => {
         const row = loadDuelRow(slug, guildId);
-        const checked = setup === null ? null : validateSetup(setup);
-        const recorded = parseSetup(row.setup_json)?.engineIdentity;
-        if (recorded && checked === null) {
-          throw new DuelServiceError("Recorded engine identity is immutable", 409);
+        const recorded = parseSetup(row.setup_json, row.kind, rowFormat(row));
+        const checked = setup === null ? null : validateSetup(setup, recorded);
+        if ((recorded?.replayFork || recorded?.engineIdentity) && checked === null) {
+          throw new DuelServiceError("Recorded identity and replay fork mark are immutable", 409);
         }
-        updateSetup.run(checked === null ? null : JSON.stringify({ ...checked, ...(recorded ? { engineIdentity: recorded } : {}) }), row.id);
+        if (!isDuelKindSetup(row.kind, checked, rowFormat(row))) throw new DuelServiceError("Duel setup record is invalid", 400);
+        updateSetup.run(checked === null ? null : JSON.stringify(checked), row.id);
       })();
     },
 
