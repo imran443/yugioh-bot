@@ -125,6 +125,15 @@ it.each([0, 1, 3])("launches prefix %s with no opening or scenario phase scripts
   expect(workers[0]!.created).not.toHaveProperty("startupScripts");
   expect(result.body.room.opening).toBeNull(); expect(result.body.room.engine.revision).toBe(count === 0 ? 1 : count === 3 ? 3 : 2);
 });
+it("follows a pending-loss prompt and asks at every living seat after launch", async () => {
+  source("ffa4");
+  makeWorker = () => { const w = new ForkWorker(); w.promptSeat = 2; w.pending = 2; w.eliminated = 1; return w; };
+  const result = await post({ op: "replay-fork", ...request(0) });
+  expect(result.response.status).toBe(200);
+  expect(result.body).toMatchObject({ initialSeat: 2, room: { mySeat: 0, fork: { actingSeat: 2,
+    chainModes: { 0: "always", 2: "always", 3: "always" } }, engine: { prompt: { seat: 2 } } } });
+  expect(createReplayForkService(db).privateState(result.body.slug, owner).commands.map(c => c.seat)).toEqual([0, 2, 3]);
+});
 it("reuses a retry after source deletion and rejects a different cursor for the same key", async () => {
   const input = request(), result = await post({ op: "replay-fork", ...input });
   expect(result.response.status).toBe(200);
@@ -170,11 +179,9 @@ it("cleans up on resource, target, transaction and registration failures", async
   expect(db.prepare("select * from duels where kind = 'replay-fork'").all()).toEqual([]);
   db.exec("drop trigger fail_fork");
   makeWorker = () => {
-    const w = new ForkWorker(), view = w.view.bind(w);
-    w.view = async seat => {
-      if (db.prepare("select id from duels where kind = 'replay-fork'").get()) throw new Error("Registration failed");
-      return view(seat);
-    };
+    const w = new ForkWorker(); let alive = true;
+    Object.defineProperty(w, "running", { get: () => alive && !db.prepare("select id from duels where kind = 'replay-fork'").get(),
+      set: value => { alive = value; } });
     return w;
   };
   const failed = await post({ op: "replay-fork", ...request() }); expect(failed.response.status).toBe(503);
@@ -247,6 +254,21 @@ it("refuses a changed source or revoked owner during the detached run", async ()
   expect(result.response.status).toBe(404); expect(result.body.code).toBe("ACCESS_DENIED");
   expect(db.prepare("select * from replay_fork_requests").all()).toEqual([]); expect(workers.every(w => !w.running)).toBe(true);
 });
+it.each(["replay-fork", "fork-restart", "fork-cancel"])("rechecks creator access after the %s event wait", async op => {
+  const launch = op !== "replay-fork" ? await post({ op: "replay-fork", ...request() }) : null;
+  onChange.mockImplementation(() => { vi.stubEnv("OWNER_USER_IDS", ""); });
+  const result = await post(op === "replay-fork" ? { op, ...request() } : { op, slug: launch!.body.slug });
+  expect(result.response.status).toBe(404); expect(result.body.code).toBe("ACCESS_DENIED");
+  expect(result.body).not.toHaveProperty("engine"); expect(result.body).not.toHaveProperty("room");
+});
+it.each(["debug-trace", "bug-context"])("rechecks creator access after %s reads the worker", async op => {
+  vi.stubEnv("DUEL_SCENARIOS", "1");
+  const launch = await post({ op: "replay-fork", ...request() });
+  const w = workers[0]!, view = w.view.bind(w);
+  w.view = async seat => { const result = await view(seat); vi.stubEnv("OWNER_USER_IDS", ""); return result; };
+  const result = await post({ op, slug: launch.body.slug });
+  expect(result.response.status).toBe(404); expect(result.body).toMatchObject({ code: "ACCESS_DENIED" });
+});
 it("refuses unsequenced old losses instead of applying the source final losses to a prefix", async () => {
   db.prepare("update duels set setup_json = json_set(setup_json, '$.surrenderedSeats', json('[1]')) where web_slug = ?").run(slug);
   expect((await post({ op: "replay-fork", ...request(0) })).body.code).toBe("NOT_PLAYABLE"); expect(workers).toHaveLength(0);
@@ -261,6 +283,9 @@ it("limits active forks, permits exact retries at the limit, and allows a new fo
   expect((await post({ op: "replay-fork", ...input, requestId: "limit-0" })).body.slug).toBe(first.slug);
   await post({ op: "fork-cancel", slug: first.slug });
   expect((await post({ op: "replay-fork", ...input, requestId: "limit-4" })).response.status).toBe(200);
+  expect((await post({ op: "fork-restart", slug: first.slug })).body.code).toBe("FORK_LIMIT");
+  const active = db.prepare("select web_slug as slug from duels where kind = 'replay-fork' and status = 'active' limit 1").get() as { slug: string };
+  expect((await post({ op: "fork-restart", slug: active.slug })).response.status).toBe(200);
 });
 it("keeps the fork's previous journal and worker if restart validation fails", async () => {
   const launch = await post({ op: "replay-fork", ...request() });
@@ -269,6 +294,23 @@ it("keeps the fork's previous journal and worker if restart validation fails", a
   expect((await post({ op: "fork-restart", slug: forkSlug })).body.code).toBe("REPLAY_MISMATCH");
   expect(createReplayForkService(db).privateState(forkSlug, owner)).toEqual(before);
   expect(workers[0]!.running).toBe(true); expect(workers[1]!.running).toBe(false);
+});
+it("restores the exact previous branch and board when restart registration fails", async () => {
+  const launch = await post({ op: "replay-fork", ...request() }), forkSlug = launch.body.slug;
+  await post({ op: "respond", slug: forkSlug, command: { promptId: "p2", revision: 2, answer: { choice: "next" } } });
+  const before = [db.prepare("select * from duels where web_slug = ?").get(forkSlug),
+    db.prepare("select * from duel_commands where duel_id = (select id from duels where web_slug = ?) order by seq").all(forkSlug)];
+  makeWorker = () => {
+    const w = new ForkWorker(); let alive = true;
+    Object.defineProperty(w, "running", { get: () => alive && createReplayForkService(db).privateState(forkSlug, owner).commands.length > 3,
+      set: value => { alive = value; } });
+    return w;
+  };
+  expect((await post({ op: "fork-restart", slug: forkSlug })).body.code).toBe("ENGINE_BUSY");
+  expect([db.prepare("select * from duels where web_slug = ?").get(forkSlug),
+    db.prepare("select * from duel_commands where duel_id = (select id from duels where web_slug = ?) order by seq").all(forkSlug)]).toEqual(before);
+  expect(workers[0]!.running).toBe(true); expect(workers[1]!.running).toBe(false);
+  expect((await post({ op: "view", slug: forkSlug })).body.engine.revision).toBe(3);
 });
 it("does not commit after a detached worker completes past the deadline", async () => {
   await host.close(); startHost({ forkTimeoutMs: 20 });
@@ -291,4 +333,20 @@ it("binds fork chain-mode changes to the current revision and optional prompt", 
   expect((await post({ ...command, revision: undefined })).response.status).toBe(400);
   const result = await post(command); expect(result.response.status).toBe(200);
   expect(result.body.fork).toMatchObject({ actingSeat: 1, chainModes: { 0: "always", 1: "off" } });
+});
+it("keeps acting-seat controls and creator checks in a blocked queue fallback", async () => {
+  await host.close(); startHost({ queueBlockedMs: 20 });
+  const launch = await post({ op: "replay-fork", ...request() }), forkSlug = launch.body.slug;
+  const w = workers[0]!, answer = w.answer.bind(w);
+  let complete!: () => void;
+  w.answer = async (seat, id, input) => { await new Promise<void>(resolve => { complete = resolve; }); await answer(seat, id, input); };
+  const waiting = post({ op: "respond", slug: forkSlug, command: { revision: 2, promptId: "p2", answer: { choice: "next" } } });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  try {
+    const stale = await post({ op: "view", slug: forkSlug, as: 1, reveal: false });
+    expect(stale.body).toMatchObject({ stale: true, mySeat: 0, fork: { actingSeat: 1, revealHands: false } });
+    expect(stale.body.engine.seats[0].hand[0].code).toBeUndefined(); expect(stale.body.engine.seats[1].hand[0].code).toBe(901);
+    const forged = await post({ op: "view", slug: forkSlug, as: 1, userId: 102 });
+    expect(forged.response.status).toBe(404); expect(forged.body).not.toHaveProperty("engine");
+  } finally { complete(); await waiting; }
 });

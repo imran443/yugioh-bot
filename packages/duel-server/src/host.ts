@@ -1256,15 +1256,18 @@ export function createDuelHost(options: {
   const forkLauncher = createReplayForkLauncher({ db: options.db, codec: replayCursorCodec,
     sourceOf: journalSourceOf, resourcesOf: state => journalResourcesOf(resourcesOfSource(state)),
     createWorker: duelId => spawn(duelId), timeoutMs: options.forkTimeoutMs,
-    remove: disposeGame,
-    register: async (session, game, check) => {
+    remove: async (slug, game) => { if (games.get(slug)?.game === game) await disposeGame(slug); },
+    register: (session, game, views) => {
       if (!game.running || stopped) throw new ReplayForkLaunchError("Fork worker cannot be registered.", "ENGINE_BUSY");
-      await disposeGame(session.slug);
-      check();
+      const state = service.privateState(session.slug, session.guildId);
+      const room = replayForkRoom(stampRoomClock(service.room(session.slug, session.guildId, session.organizerPlayerId), now()),
+        state.setup!.replayFork!, views, initialForkSeat(views[0]!), true);
+      assertReplayForkAccess(options.db, session.slug, { guildId: session.guildId, playerId: session.organizerPlayerId });
+      const previous = games.get(session.slug);
       games.set(session.slug, { game, guildId: session.guildId, lastRequestAt: now(), surrendered: new Set(),
         policies: new Map(), traces: new Map() });
-      const room = await project(session.slug, session.guildId, session.organizerPlayerId, game);
-      await emitChange(session.slug, session.guildId);
+      lastViews.set(session.slug, new Map(views.map((view, seat) => [seat, view])));
+      if (previous) void safeClose(previous.game);
       return room;
     },
     room: async (slug, actor) => {
@@ -1981,10 +1984,20 @@ export function createDuelHost(options: {
   }
 
   /** A room read while the duel queue is blocked: the last view built for this seat, marked stale. Null when there is none. */
-  function staleRoom(slug: string, guildId: string, actor: number): (DuelRoom & { stale: true }) | null {
+  function staleRoom(slug: string, guildId: string, actor: number, control: { as?: unknown; reveal?: boolean } = {}): (DuelRoom & { stale: true }) | null {
     const room = stampRoomClock(service.room(slug, guildId, actor), now());
     if (room.session.status !== "active") return null;
     const cached = lastViews.get(slug);
+    if (isReplayFork(room.session)) {
+      const ownViews = room.session.seats.map(s => cached?.get(s.seat) ?? null);
+      const first = ownViews.find(view => view !== null);
+      let seat: number;
+      try { seat = resolveReplayForkSeat(room.session, control.as, first ? initialForkSeat(first) : 0); }
+      catch { throw new RequestError("Invalid replay fork acting seat", 400); }
+      if (!ownViews[seat]) return null;
+      const state = service.privateState(slug, guildId);
+      return { ...replayForkRoom(room, state.setup!.replayFork!, ownViews, seat, control.reveal ?? true), stale: true };
+    }
     const view = cached?.get(room.mySeat ?? -1);
     if (!view) return null;
     room.engine = view;
@@ -2120,6 +2133,12 @@ export function createDuelHost(options: {
     if (typeof guildId !== "string" || !guildId || !Number.isSafeInteger(playerId) || (playerId as number) <= 0 || typeof slug !== "string" || !slug || slug.length > 128) {
       return queued;
     }
+    const target = assertDuelForkAccess(options.db, slug, { guildId, playerId: playerId as number,
+      ...(body.userId !== undefined ? { userId: body.userId as number } : {}) });
+    if (body.as !== undefined && (!isReplayFork(target) || op !== "view")) throw new RequestError("Invalid acting-seat override", 400);
+    if (body.reveal !== undefined && (!isReplayFork(target) || op !== "view" || typeof body.reveal !== "boolean")) {
+      throw new RequestError("Invalid reveal override", 400);
+    }
     if (op === "report") {
       requireScenarios();
       ctl.abandoned = true;
@@ -2127,7 +2146,7 @@ export function createDuelHost(options: {
     }
     // A spectator switch must never fall back to this player's private cached view.
     if (body.spectate === true) return queued;
-    return staleRoom(slug, guildId, playerId as number) ?? queued;
+    return staleRoom(slug, guildId, playerId as number, { as: body.as, reveal: body.reveal as boolean | undefined }) ?? queued;
   }
 
   /** The checks every start makes: a lobby duel, every seat ready, and legal decks for the format. */
@@ -2388,8 +2407,11 @@ export function createDuelHost(options: {
     if (op === "replay-fork") {
       if (typeof body.slug !== "string" || !body.slug) throw new RequestError("Duel slug is required", 400, "INVALID_CURSOR");
       if (body.as !== undefined || body.reveal !== undefined) throw new RequestError("Invalid replay fork request", 400, "INVALID_CURSOR");
-      return forkLauncher.launch(body.slug, accessActor, { cursor: body.cursor, sourceVersion: body.sourceVersion,
+      const result = await forkLauncher.launch(body.slug, accessActor, { cursor: body.cursor, sourceVersion: body.sourceVersion,
         requestId: body.requestId } as import("@yugidraft/shared/duels").ReplayForkRequest);
+      await emitChange(result.slug, guildId);
+      assertReplayForkAccess(options.db, result.slug, accessActor);
+      return result;
     }
     const target = typeof body.slug === "string" && body.slug ? assertDuelForkAccess(options.db, body.slug, accessActor) : null;
     if (body.reveal !== undefined && (op !== "view" || !target || !isReplayFork(target) || typeof body.reveal !== "boolean")) {
@@ -2405,7 +2427,12 @@ export function createDuelHost(options: {
     if (op === "fork-restart" || op === "fork-cancel") {
       if (typeof body.slug !== "string" || !body.slug) throw new ReplayAccessError();
       assertReplayForkAccess(options.db, body.slug, accessActor);
-      if (op === "fork-restart") return forkLauncher.restart(body.slug, accessActor);
+      if (op === "fork-restart") {
+        const room = await forkLauncher.restart(body.slug, accessActor);
+        await emitChange(body.slug, guildId);
+        assertReplayForkAccess(options.db, body.slug, accessActor);
+        return room;
+      }
       const session = service.cancel(body.slug, guildId, actor);
       await disposeGame(body.slug); await emitChange(body.slug, guildId);
       return { session };
@@ -2959,11 +2986,16 @@ export function createDuelHost(options: {
         try { body = JSON.parse(raw); } catch { throw new RequestError("Invalid JSON", 400); }
         if (!body || typeof body !== "object" || Array.isArray(body)) throw new RequestError("Invalid request", 400);
         if (typeof body.op === "string" && DUEL_OPS.has(body.op)) requestOp = body.op;
+        const fork = typeof body.slug === "string" && typeof body.guildId === "string"
+          && options.db.prepare<[string, string], { kind: string }>("select kind from duels where web_slug = ? and guild_id = ?")
+            .get(body.slug, body.guildId)?.kind === "replay-fork";
         const key = body.op === "replay-fork" ? `fork-owner:${body.guildId}:${body.playerId}` : typeof body.slug === "string" ? body.slug : "catalog";
         // Diagnostics skip the queue; GitHub status reads must not block card editor requests.
         const ctl = { abandoned: false };
         const queued = (body.op === "debug-trace" || body.op === "bug-context" || body.op === "engine-data-status" || body.op === "replay" || body.op === "owner-replay" ? operate(body) : enqueue(key, () => operate(body, ctl)));
         const answer = (body.op === "report" || body.op === "view") && queueBlockedMs > 0 ? await answerOrFallback(body, queued, ctl) : await queued;
+        if (fork) assertReplayForkAccess(options.db, body.slug as string, { guildId: body.guildId as string,
+          playerId: body.playerId as number, ...(body.userId !== undefined ? { userId: body.userId as number } : {}) });
         return Response.json(answer, { headers: { "cache-control": "no-store" } });
       } catch (error) {
         if (isCardFetchError(error)) {

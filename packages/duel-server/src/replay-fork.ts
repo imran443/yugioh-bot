@@ -4,7 +4,7 @@ import { assertOwnerReplaySourceAccess, assertReplayForkAccess, resolveOwnerPlay
   type OwnerPlayerActor } from "@yugidraft/shared/access/owner-access";
 import { createDuelService, createReplayForkService, hashReplayForkPrefix, ReplayForkStorageError,
   type DuelPrivateState } from "@yugidraft/shared/services";
-import { isReplayForkRequest, type DuelCommand, type DuelRoom, type DuelSession, type ReplayForkRequest,
+import { isReplayForkRequest, type DuelCommand, type DuelEngineView, type DuelRoom, type DuelSession, type ReplayForkRequest,
   type ReplayForkResult, type ReplaySource, type ReplayErrorCode } from "@yugidraft/shared/duels";
 import { runJournalPrefix, type JournalResources, type JournalRunResult } from "./journal-runner.js";
 import { replayBuildError, replayHasUnsequencedLoss } from "./replay-builder.js";
@@ -29,8 +29,9 @@ interface ForkLaunchOptions {
   resourcesOf: (state: DuelPrivateState) => JournalResources;
   /** Recorder is disabled until persistence. The closure supplies the new fork ID after commit. */
   createWorker: (duelId: () => number | undefined) => DuelGameWorker;
-  register: (session: DuelSession, worker: DuelGameWorker, check: () => void) => Promise<DuelRoom>;
-  remove: (slug: string) => Promise<void>;
+  /** All engine reads finish before commit. Handoff has no asynchronous failure window. */
+  register: (session: DuelSession, worker: DuelGameWorker, views: DuelEngineView[]) => DuelRoom;
+  remove: (slug: string, worker: DuelGameWorker) => Promise<void>;
   room: (slug: string, actor: OwnerPlayerActor) => Promise<DuelRoom>;
   timeoutMs?: number;
 }
@@ -57,7 +58,7 @@ export function createReplayForkLauncher(options: ForkLaunchOptions) {
 
   async function detached(actor: OwnerPlayerActor, state: DuelPrivateState, prefixCount: number,
     target: { revision: number } | undefined, save: (defaults: Array<{ seat: number; command: DuelCommand }>) => { session: DuelSession; reused: boolean },
-    enforceActive: boolean): Promise<DuelRoom> {
+    enforceActive: boolean, restore?: () => void): Promise<DuelRoom> {
     const release = reserve(actor, enforceActive);
     let worker: DuelGameWorker | undefined, committed: DuelSession | undefined, recorderId: number | undefined;
     let expired = false, handedOff = false, timer: ReturnType<typeof setTimeout> | undefined;
@@ -77,6 +78,11 @@ export function createReplayForkLauncher(options: ForkLaunchOptions) {
         await worker!.setChainMode(seat, "always"); check();
         defaults.push({ seat, command: { promptId: "chain-mode:always", revision: before.revision, answer: {} } });
       }
+      const views: DuelEngineView[] = [];
+      for (const seat of source.session.seats) {
+        views.push(await worker!.view(seat.seat)); check();
+      }
+      if (views.some(view => view.result)) throw new ReplayForkLaunchError("This checkpoint has no playable engine state.", "NOT_PLAYABLE");
       check();
       const saved = save(defaults);
       if (saved.reused) {
@@ -85,7 +91,7 @@ export function createReplayForkLauncher(options: ForkLaunchOptions) {
       }
       committed = saved.session; recorderId = committed.id;
       check();
-      const room = await options.register(committed, worker!, check); check();
+      const room = options.register(committed, worker!, views); check();
       assertReplayForkAccess(db, committed.slug, actor);
       handedOff = true;
       return room;
@@ -108,11 +114,14 @@ export function createReplayForkLauncher(options: ForkLaunchOptions) {
       if (!handedOff) {
         if (worker) { try { await worker.close(); } catch { /* Worker already exited. */ } }
         if (committed) {
-          await options.remove(committed.slug);
-          // Cleanup must still work when the owner was revoked during handoff. Only this new marked row is changed.
-          db.prepare(`update duels set status = 'cancelled', ended_at = datetime('now'), archived_at = datetime('now'),
-            clock_json = null, result_reason = 'Fork launch failed', winner_player_id = null, winner_seat = null
-            where id = ? and kind = 'replay-fork' and status = 'active'`).run(committed.id);
+          await options.remove(committed.slug, worker!);
+          if (restore) restore();
+          else {
+            // Cleanup still works after access revocation. Only this new marked row is changed.
+            db.prepare(`update duels set status = 'cancelled', ended_at = datetime('now'), archived_at = datetime('now'),
+              clock_json = null, result_reason = 'Fork launch failed', winner_player_id = null, winner_seat = null
+              where id = ? and kind = 'replay-fork' and status = 'active'`).run(committed.id);
+          }
         }
       }
       release();
@@ -162,9 +171,28 @@ export function createReplayForkLauncher(options: ForkLaunchOptions) {
       assertReplayForkAccess(db, slug, actor);
       const state = store.privateState(slug, actor), sourceVersion = replaySourceVersion(options.sourceOf(state));
       const count = state.setup!.replayFork!.origin.prefixCount;
+      let undo: (() => void) | undefined;
       return detached(actor, state, count, undefined, defaults => db.transaction(() => {
         const current = store.privateState(slug, actor);
         if (sourceVersion !== replaySourceVersion(options.sourceOf(current))) throw new ReplayCursorError("SOURCE_CHANGED");
+        const owner = resolveOwnerPlayer(db, actor)!;
+        if (current.session.status !== "active" && activeCount(owner, owner.userId) >= REPLAY_FORK_ACTIVE_LIMIT) {
+          throw new ReplayForkLaunchError("Replay fork limit reached.", "FORK_LIMIT");
+        }
+        // Keep the previous branch and final board if the replacement worker cannot be registered.
+        const row = db.prepare("select * from duels where id = ?").get(state.session.id) as Record<string, unknown>;
+        const journal = db.prepare("select * from duel_commands where duel_id = ? order by seq").all(state.session.id) as Array<Record<string, unknown>>;
+        undo = () => db.transaction(() => {
+          const columns = Object.keys(row).filter(key => key !== "id");
+          db.prepare(`update duels set ${columns.map(key => `${key} = ?`).join(", ")} where id = ?`)
+            .run(...columns.map(key => row[key]), state.session.id);
+          db.prepare("delete from duel_commands where duel_id = ?").run(state.session.id);
+          for (const entry of journal) {
+            const fields = Object.keys(entry);
+            db.prepare(`insert into duel_commands (${fields.join(", ")}) values (${fields.map(() => "?").join(", ")})`)
+              .run(...fields.map(key => entry[key]));
+          }
+        }).immediate();
         db.prepare(`delete from duel_commands where duel_id = ? and seq not in
           (select seq from duel_commands where duel_id = ? order by seq limit ?)`).run(state.session.id, state.session.id, count);
         db.prepare(`update duels set status = 'active', ended_at = null, archived_at = null, winner_player_id = null,
@@ -173,7 +201,7 @@ export function createReplayForkLauncher(options: ForkLaunchOptions) {
           last_activity_at = datetime('now') where id = ? and kind = 'replay-fork'`).run(state.session.id);
         for (const { seat, command } of defaults) duels.recordCommand(slug, actor.guildId, seat, command, null);
         return { session: duels.get(slug, actor.guildId), reused: false };
-      }).immediate(), false);
+      }).immediate(), state.session.status !== "active", () => undo?.());
     },
   };
 }
