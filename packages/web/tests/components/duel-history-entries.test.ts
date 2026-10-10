@@ -622,7 +622,7 @@ describe("history entries: chain link targets", () => {
   const veiler: DuelEvent[] = [
     { id: 1, kind: "activate", seat: 0, card: info(1, "Pot of Greed"), chainIndex: 1, text: "" },
     { id: 2, kind: "activate", seat: 1, card: info(2, "Effect Veiler"), chainIndex: 2, text: "" },
-    { id: 3, kind: "target", seat: 1, chainIndex: 2, text: "Chain Link 2 targets Black Luster Soldier", targets: [zone(0, MZONE, 0)] },
+    { id: 3, kind: "target", seat: 1, chainIndex: 2, text: "Chain Link 2 targets Black Luster Soldier", targets: [zone(0, MZONE, 0)], targetLabels: ["Black Luster Soldier"] },
   ];
 
   it("words the target of a link on its own entry, as a sentence and as a tag", () => {
@@ -634,9 +634,39 @@ describe("history entries: chain link targets", () => {
   });
 
   it("keeps the wording the engine gave for a hidden target and ignores an event that clears the targets", () => {
-    const hidden = entries([...veiler.slice(0, 2), { ...veiler[2]!, text: "Chain Link 2 targets a face-down card" }]);
+    const hidden = entries([...veiler.slice(0, 2), { ...veiler[2]!, text: "Chain Link 2 targets a face-down card", targetLabels: ["a face-down card"] }]);
     expect(hidden.find((entry) => entry.sentence.includes("Effect Veiler"))!.sentence).toContain("Targeting a face-down card.");
     const cleared = entries([...veiler, { id: 4, kind: "target", seat: 1, chainIndex: 2, text: "Chain Link 2 targets 0 cards", targets: [] }]);
     expect(cleared.find((entry) => entry.sentence.includes("Effect Veiler"))!.sentence).toContain("Targeting Black Luster Soldier.");
+  });
+
+  it("replaces the original target using structured labels regardless of the event wording", () => {
+    const list = entries([...veiler, { id: 4, kind: "target", chainIndex: 2, text: "Retargeted", targets: [zone(0, MZONE, 1)], targetLabels: ["Blue-Eyes White Dragon"] }]);
+    const link = list.find((entry) => entry.sentence.includes("Effect Veiler"))!;
+    expect(link.sentence).toContain("Targeting Blue-Eyes White Dragon.");
+    expect(link.tags).toContainEqual({ label: "Targets Blue-Eyes White Dragon", tone: "chain", plain: true });
+    expect(link.sentence).not.toContain("Targeting Black Luster Soldier");
+  });
+
+  it("replaces a public name with the privacy-filtered label of a hidden replacement", () => {
+    const list = entries([...veiler, { id: 4, kind: "target", chainIndex: 2, text: "Chain Link 2 targets 1 card", targets: [zone(0, HAND)], targetLabels: ["a card"] }]);
+    expect(list.find((entry) => entry.sentence.includes("Effect Veiler"))!.sentence).toContain("Targeting a card.");
+  });
+
+  it("finishes an already ingested announcement when its labels settle after a prompt", () => {
+    const pending = [...veiler.slice(0, 2), { ...veiler[2]!, text: "Chain Link 2 targets 1 card", targetLabels: ["a card"] }];
+    const before = ingestHistory(emptyHistory(), pending, ctx());
+    const after = ingestHistory(before, veiler, ctx({ revision: 2 }));
+    const list = buildHistoryView(after.items, opts).groups.flatMap((group) => group.rows).filter((row): row is HistoryEntry => row.type === "entry");
+    expect(list.find((entry) => entry.sentence.includes("Effect Veiler"))!.sentence).toContain("Targeting Black Luster Soldier.");
+  });
+
+  it("keeps the latest retarget when an older announcement settles after the chain ends", () => {
+    const replacement: DuelEvent = { id: 4, kind: "target", chainIndex: 2, text: "Retargeted", targetLabels: ["Blue-Eyes White Dragon"] };
+    const end: DuelEvent = { id: 5, kind: "chain-end", text: "Chain ended" };
+    const before = ingestHistory(emptyHistory(), [...veiler, replacement, end], ctx());
+    const after = ingestHistory(before, [...veiler, replacement, end], ctx({ revision: 2 }));
+    const list = buildHistoryView(after.items, opts).groups.flatMap((group) => group.rows).filter((row): row is HistoryEntry => row.type === "entry");
+    expect(list.find((entry) => entry.sentence.includes("Effect Veiler"))!.sentence).toContain("Targeting Blue-Eyes White Dragon.");
   });
 });

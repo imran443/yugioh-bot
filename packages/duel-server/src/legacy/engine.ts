@@ -54,6 +54,8 @@ import {
   phaseName,
   projectView,
   resetEventBatch,
+  snapshotLinkTargets,
+  targetEventLabels,
   targetEventText,
   type DomainSeatState,
   type LogEntry,
@@ -421,24 +423,33 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
   /** The log lines of a chain link's target: the public line, and a private note when the player had no choice. */
   const logChainTarget = (event: StoredDuelEvent) => {
     const link = event.chainIndex != null ? chainMemory.find((entry) => entry.index === event.chainIndex) : undefined;
-    if (!link) return;
+    if (!link || !event.targetAnnouncement) return;
+    const snapshot = snapshotLinkTargets(link);
     const source = cards.get(link.code)?.name ?? `Card ${link.code}`;
     const lines: Array<{ entry: LogEntry; text: (phrase: string) => string }> = [];
     const add = (text: (phrase: string) => string, audience: "all" | number) => {
-      lines.push({ entry: appendLog(text(linkTargetPhrase(link)), audience), text });
+      lines.push({ entry: appendLog(text(linkTargetPhrase(snapshot)), audience), text });
     };
     add((phrase) => `Chain Link ${link.index}: ${source} targets ${phrase}`, "all");
-    if (autoPickSeat != null) {
+    if (autoPickSeat === link.seat) {
       add((phrase) => `Only legal target: ${phrase}`, autoPickSeat);
       autoPickSeat = null;
     }
-    if (!nameLinkTargets(eventContext, link, cards)) unnamedTargets.push({ link, event, lines });
+    const complete = nameLinkTargets(eventContext, snapshot, cards);
+    event.text = event.publicText = targetEventText(snapshot);
+    event.targetLabels = targetEventLabels(snapshot);
+    if (!complete) {
+      unnamedTargets.push({ link: snapshot, event, lines });
+      // Match the event ring's bound even if a broken reporter never supplies the missing notes.
+      if (unnamedTargets.length > 400) unnamedTargets.shift();
+    }
   };
   const settleTargetNames = () => {
     for (let index = unnamedTargets.length - 1; index >= 0; index -= 1) {
       const pending = unnamedTargets[index]!;
       if (!nameLinkTargets(eventContext, pending.link, cards)) continue;
-      pending.event.text = targetEventText(pending.link);
+      pending.event.text = pending.event.publicText = targetEventText(pending.link);
+      pending.event.targetLabels = targetEventLabels(pending.link);
       const phrase = linkTargetPhrase(pending.link);
       for (const line of pending.lines) line.entry.text = line.text(phrase);
       unnamedTargets.splice(index, 1);
@@ -470,6 +481,13 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
     for (const target of observeChainTargetEvents(message, chainMemory, nextEventId, eventContext, cards)) {
       pushEvent(target);
       logChainTarget(target);
+    }
+    if (message.type === OcgMessageType.CHAIN_END || message.type === OcgMessageType.WIN) {
+      settleTargetNames();
+      unnamedTargets.length = 0;
+      eventContext.targetNotes.length = 0;
+      eventContext.chainTargetNotes.length = 0;
+      autoPickSeat = null;
     }
   };
 
@@ -630,7 +648,6 @@ export async function createEngineGame(options: EngineGameOptions): Promise<Engi
     // Native materials move before position/place selection, so those prompts continue the same summon.
     const continuingSummon = pending?.message.type === OcgMessageType.SELECT_POSITION || pending?.message.type === OcgMessageType.SELECT_PLACE;
     resetEventBatch(eventContext, continuingSummon);
-    unnamedTargets.length = 0;
     autoPickSeat = null;
     leftFieldLines.length = 0;
     let processCalls = 0;

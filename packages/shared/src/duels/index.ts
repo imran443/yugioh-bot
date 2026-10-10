@@ -406,6 +406,9 @@ export interface DuelEvent {
   /** target: the link's complete current target list (including [] when cleared). Coordinates only;
    * identities must come from the viewer's redacted board. Also accepted on activation events. */
   targets?: DuelZoneRef[];
+  /** target announcements: public labels at targeting time, already filtered for hidden cards.
+   * Omitted on ordinary coordinate updates; [] announces that the link has no targets. */
+  targetLabels?: string[];
   text: string;
   description?: string;
   /** toss: public outcomes; `card` names the resolving source when known. */

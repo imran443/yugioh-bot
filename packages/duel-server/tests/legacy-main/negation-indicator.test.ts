@@ -5,6 +5,10 @@ import { createEngineGame, type EngineGame } from "../../src/legacy/engine.js";
 import { compileBoard } from "../../src/presets/board.js";
 import { engineDataDirectory as DATA } from "../engine-data-dir.js";
 import { describeWithCores, needs } from "../support/cores.js";
+import { createLegacyEngineGame } from "../../src/legacy/index.js";
+import { Session } from "../support/session.js";
+import { runScenarios } from "../support/runner.js";
+import { TARGET_NAMING_SCENARIOS } from "../scenarios/multiplayer/negation-indicator.js";
 
 const TOY = "Toy Soldier";
 const VEILER = "Effect Veiler";
@@ -19,6 +23,18 @@ function waiting(game: EngineGame): { seat: number; view: DuelEngineView } {
 }
 
 describeWithCores("legacy 1v1 negation indicator", [needs.cards(), needs.scripts()], () => {
+  runScenarios("legacy target naming", TARGET_NAMING_SCENARIOS.map((scenario) => ({
+    ...scenario, id: scenario.id.replace("ffa4", "legacy"), setup: { ...scenario.setup, format: "1v1" as const, p2: undefined, p3: undefined },
+  })), async (scenario) => {
+    const compiled = compileBoard(scenario.setup, DATA);
+    const game = await createLegacyEngineGame({ ...compiled.options, seed: ["1", "2", "3", "4"], dataDirectory: DATA });
+    try {
+      const session = new Session(scenario, game);
+      session.reachMainPhase();
+      session.startRecording();
+      scenario.steps.forEach((step, index) => session.run(step, index + 1));
+    } finally { game.close(); }
+  });
   it("Effect Veiler negates its only legal target: the monster shows negated, the log names it, and only seat 1 gets the note", async () => {
     const compiled = compileBoard({
       p0: { hand: [POT], monsters: [TOY, { card: "Dark Magician", pos: "set" }] },

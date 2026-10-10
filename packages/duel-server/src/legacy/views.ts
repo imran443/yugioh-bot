@@ -18,7 +18,7 @@ import {
 import { raceLabel, type CardDatabase } from "../cards.js";
 import { fillPlaceholders, locationLabel } from "../text.js";
 import { HandIdentities } from "../hand-identities.js";
-import { chainTargetPhrase, parseTargetCardNote, publicTargetLabel, TARGET_CARD_NOTE_LUA, TARGET_CARD_NOTE_PREFIX, type TargetCardNote } from "../target-names.js"; // LEGACY-1V1: shared target naming
+import { chainTargetPhrase, parseTargetCardNote, publicTargetLabel, TARGET_CARD_NOTE_LUA, TARGET_CARD_NOTE_PREFIX, type TargetCardNote, type TargetLabel } from "../target-names.js"; // LEGACY-1V1: shared target naming
 
 export const LOCATION_DECKMASTER = 0x4000;
 export const DOMAIN_LEAVE_TAX_STEP = 500;
@@ -294,8 +294,8 @@ export interface StoredChainLink {
   description?: string;
   zone: DuelZoneRef;
   targets: DuelZoneRef[];
-  /** Public label of each target by zone key (`controller:location:sequence`): a name, "a face-down card" or "a card". */
-  targetLabels?: Record<string, string>;
+  /** Naming records follow live coordinates; snapshots retain the original targets and records. */
+  targetLabels?: Record<string, TargetLabel>;
   chosenOptions?: DuelChainLink["chosenOptions"]; // LEGACY-1V1: public chosen chain options
 }
 
@@ -322,6 +322,9 @@ export interface StoredDuelEvent {
   target?: DuelZoneRef;
   battle?: DuelEvent["battle"];
   targets?: DuelZoneRef[];
+  targetLabels?: DuelEvent["targetLabels"];
+  /** Internal: a fresh targeting, rather than an ordinary board-marker update. */
+  targetAnnouncement?: true;
   amount?: number;
   cause?: DuelEvent["cause"];
   sourceCode?: number;
@@ -402,10 +405,11 @@ export const DESTROY_NOTE_PREFIX = "YGD:DESTROY:";
 
 export const CHAIN_TARGET_NOTE_PREFIX = "YGD:CHAIN_TARGET:";
 
-/** ChangeTargetCard emits BECOME_TARGET without the changed link number (which can be an
- * earlier link than CHAIN_SOLVING). Record only its index and coordinates, never identities.
- * The original core call still supplies the target message and performs every game-state change. */
+/** ChangeTargetCard emits a target message without its link number or EVENT_BECOME_TARGET.
+ * Report the changed link and its cards; TypeScript applies the same privacy filter as for fresh targets.
+ * The original core call still performs every game-state change. */
 export const CHAIN_TARGET_NOTE_SCRIPT = `
+${TARGET_CARD_NOTE_LUA}
 local changeTargetCard=Duel.ChangeTargetCard
 Duel.ChangeTargetCard=function(index,targets)
   changeTargetCard(index,targets)
@@ -416,11 +420,12 @@ Duel.ChangeTargetCard=function(index,targets)
   if not g or not re or not re:IsHasProperty(EFFECT_FLAG_CARD_TARGET) then return end
   local zones={}
   for tc in aux.Next(g) do
-    zones[#zones+1]=tc:GetControler()..":"..tc:GetLocation()..":"..tc:GetSequence()
+    local controller=Duel.MPSeatOf and Duel.MPSeatOf(tc) or tc:GetControler()
+    zones[#zones+1]=controller..":"..tc:GetLocation()..":"..tc:GetSequence()
+    pcall(noteTargetCard,tc)
   end
   Debug.Message("${CHAIN_TARGET_NOTE_PREFIX}"..index..";"..table.concat(zones,","))
-end
-${TARGET_CARD_NOTE_LUA}`;
+end`;
 
 /** Startup script that reports destroyed cards. Registers one global continuous effect and changes no game state. */
 export const DESTROY_NOTE_SCRIPT = `
@@ -668,7 +673,6 @@ export function drainDeferredDestroys(ctx: EventContext, cards: CardDatabase, fi
 export function resetEventBatch(ctx: EventContext, continuingSummon = false): void {
   ctx.destroyNotes.length = 0;
   ctx.chainTargetNotes.length = 0;
-  ctx.targetNotes.length = 0;
   ctx.pendingMoves.length = 0;
   ctx.moves.length = 0;
   if (!continuingSummon) clearSummonMaterials(ctx);
@@ -697,6 +701,7 @@ export function projectStoredEvent(event: StoredDuelEvent, viewer: number | null
     ...(event.battle.target ? { target: { ...event.battle.target } } : {}),
   };
   if (event.targets) projected.targets = event.targets.map(zoneOf);
+  if (event.targetLabels) projected.targetLabels = [...event.targetLabels];
   if (event.from) projected.from = { ...event.from };
   if (event.reason) projected.reason = event.reason;
   if (event.faceDown != null) projected.faceDown = event.faceDown;
@@ -789,7 +794,7 @@ function zoneKeyOf(zone: DuelZoneRef): string {
 
 /** The targets of a link as a phrase for the log: names of public cards, "a face-down card", or the count. */
 export function linkTargetPhrase(link: StoredChainLink): string {
-  return chainTargetPhrase(link.targets.map((zone) => link.targetLabels?.[zoneKeyOf(zone)]), link.targets.length);
+  return chainTargetPhrase(link.targets.map((zone) => link.targetLabels?.[zoneKeyOf(zone)]?.label), link.targets.length);
 }
 
 /**
@@ -801,26 +806,38 @@ export function nameLinkTargets(ctx: EventContext, link: StoredChainLink, cards:
   let complete = true;
   for (const zone of link.targets) {
     const key = zoneKeyOf(zone);
-    if (link.targetLabels?.[key] != null) continue;
-    const at = ctx.targetNotes.findIndex((entry) => sameZone(entry, zone));
+    const target = (link.targetLabels ??= {})[key] ??= { zone: zoneOf(zone) };
+    if (target.label != null) continue;
+    const at = ctx.targetNotes.findIndex((entry) => sameZone(entry, target.zone));
     if (at < 0) {
       complete = false;
       continue;
     }
     const note = ctx.targetNotes.splice(at, 1)[0]!;
-    (link.targetLabels ??= {})[key] = publicTargetLabel({ location: note.location, position: note.position, name: cards.get(note.code)?.name });
+    target.label = publicTargetLabel({ location: note.location, position: note.position, name: cards.get(note.code)?.name });
   }
   return complete;
+}
+
+/** Coordinates and target membership are frozen; only the original targets' missing names can settle later. */
+export function snapshotLinkTargets(link: StoredChainLink): StoredChainLink {
+  return { ...link, targets: link.targets.map(zoneOf), targetLabels: { ...link.targetLabels } };
+}
+
+/** Public names belong to announcements, never to the live board coordinates of a moved target. */
+export function targetEventLabels(link: StoredChainLink): string[] {
+  return link.targets.map((zone) => link.targetLabels?.[zoneKeyOf(zone)]?.label ?? "a card");
 }
 
 export function targetEventText(link: StoredChainLink): string {
   return `Chain Link ${link.index} targets ${linkTargetPhrase(link)}`;
 }
 
-function targetEvent(link: StoredChainLink, id: number): StoredDuelEvent {
+function targetEvent(link: StoredChainLink, id: number, announcement = false): StoredDuelEvent {
   const text = targetEventText(link);
   return { id, kind: "target", seat: link.seat, chainIndex: link.index,
-    targets: link.targets.map(zoneOf), text, publicText: text, revealCardTo: "all" };
+    targets: link.targets.map(zoneOf), text, publicText: text, revealCardTo: "all",
+    ...(announcement ? { targetAnnouncement: true as const } : {}) };
 }
 
 /** BECOME_TARGET has no link number: append while building the newest link, replace while resolving.
@@ -842,8 +859,11 @@ export function observeChainTargetEvents(message: OcgMessage, chain: StoredChain
       const zone = zoneOf(card);
       if (!link.targets.some((target) => sameZone(target, zone))) link.targets.push(zone);
     }
+    // Create each naming record before any coordinate changes. Announcements and the live link share these
+    // write-once records, so one delayed note completes every snapshot that includes the same target.
+    for (const zone of link.targets) (link.targetLabels ??= {})[zoneKeyOf(zone)] ??= { zone: zoneOf(zone) };
     if (ctx && cards) nameLinkTargets(ctx, link, cards);
-    return [targetEvent(link, id)];
+    return [targetEvent(link, id, true)];
   }
 
   // Follow the actual card, never the next occupant of its old slot. Lists also compact on removal
@@ -919,7 +939,14 @@ export function observeChainTargetEvents(message: OcgMessage, chain: StoredChain
   for (const link of chain) {
     const targets = link.targets.map(transform).filter((zone): zone is DuelZoneRef => zone != null);
     if (targets.length === link.targets.length && targets.every((zone, index) => sameZone(zone, link.targets[index]))) continue;
+    const labels: Record<string, TargetLabel> = {};
+    for (const zone of link.targets) {
+      const moved = transform(zone);
+      const label = link.targetLabels?.[zoneKeyOf(zone)];
+      if (moved && label) labels[zoneKeyOf(moved)] = label;
+    }
     link.targets = targets;
+    link.targetLabels = labels;
     events.push(targetEvent(link, id + events.length));
   }
   return events;

@@ -14,7 +14,8 @@ export const TARGET_CARD_NOTE_PREFIX = "YGD:TARGET_CARD:";
 /** Appended to the chain-target startup script. Registers one global continuous effect and changes no game state. */
 export const TARGET_CARD_NOTE_LUA = `
 local function noteTargetCard(tc)
-  Debug.Message("${TARGET_CARD_NOTE_PREFIX}"..tc:GetControler()..":"..tc:GetLocation()..":"..tc:GetSequence()..":"..tc:GetCode()..":"..tc:GetPosition())
+  local controller=Duel.MPSeatOf and Duel.MPSeatOf(tc) or tc:GetControler()
+  Debug.Message("${TARGET_CARD_NOTE_PREFIX}"..controller..":"..tc:GetLocation()..":"..tc:GetSequence()..":"..tc:GetCode()..":"..tc:GetPosition())
 end
 local becomeTarget=Effect.GlobalEffect()
 becomeTarget:SetType(EFFECT_TYPE_FIELD|EFFECT_TYPE_CONTINUOUS)
@@ -31,6 +32,12 @@ export interface TargetCardNote {
   sequence: number;
   code: number;
   position: number;
+}
+
+/** A target's original coordinates and its write-once public name, shared by announcement snapshots. */
+export interface TargetLabel {
+  zone: { controller: number; location: number; sequence: number };
+  label?: string;
 }
 
 /** Parse "controller:location:sequence:code:position" (the text after the prefix), or null when malformed. */

@@ -3,7 +3,7 @@
 // Seat 1 chains Destined Rivals to the first Pot of Greed (Souls and Toy Soldier are negated, Black Luster Soldier is not), then
 // Effect Veiler to the second one. Veiler skips monsters that are already negated, so Black Luster Soldier is its only legal target
 // and the engine picks it without asking seat 1.
-import { activate, expectBoard, expectEvents, expectLogSeen, pass, defineScenario, type Scenario } from "../../support/dsl.js";
+import { activate, expectBoard, expectEvents, expectLogSeen, pass, select, zone, position, defineScenario, type Scenario } from "../../support/dsl.js";
 
 const BLS = "Black Luster Soldier - Soldier of Light and Darkness";
 const SOULS = "Magicians' Souls";
@@ -68,3 +68,61 @@ export const NEGATION_INDICATOR_SCENARIOS: Scenario[] = [
     ],
   }),
 ];
+
+// These fixtures also run on the legacy engine with a two-seat setup.
+export const TARGET_NAMING_SCENARIOS: Scenario[] = [
+  defineScenario({
+    id: "target-naming-ffa4-salvage-snapshot",
+    title: "Salvage keeps its original two names after returning the targets and shuffling the hand",
+    source: "PR #328: deferred naming must use the announcement's targets",
+    tags: ["multiplayer", "chain-target", "ffa4"],
+    setup: { format: "ffa4", p0: { hand: ["Salvage"], grave: ["Deep Sea Diva", "Swap Frog"] }, p1: {}, p2: {}, p3: {} },
+    steps: [
+      activate("Salvage", "p0"),
+      expectBoard({ p0: { hand: { include: ["Deep Sea Diva", "Swap Frog"] }, grave: ["Salvage"] } }),
+      expectEvents({ kind: "target", text: "targets Deep Sea Diva and Swap Frog" }),
+      expectLogSeen("spectator", { has: ["Salvage targets Deep Sea Diva and Swap Frog"], lacks: ["Salvage targets 0 cards", "Salvage targets 1 card", "Salvage targets 2 cards"] }),
+    ],
+  }),
+  defineScenario({
+    id: "target-naming-ffa4-reborn-movement",
+    title: "Monster Reborn follows the target to the field without announcing another targeting",
+    source: "PR #328: ordinary movement is a board-marker update",
+    tags: ["multiplayer", "chain-target", "ffa4"],
+    setup: { format: "ffa4", p0: { hand: ["Monster Reborn"], grave: ["Dark Magician"] }, p1: {}, p2: {}, p3: {} },
+    steps: [
+      activate("Monster Reborn", "p0"), zone("p0", "s0"), zone("p0", "m0"), position("atk"),
+      expectBoard({ p0: { zones: { m0: "Dark Magician" }, grave: ["Monster Reborn"] } }),
+      expectLogSeen("p0", { has: ["Monster Reborn targets Dark Magician", "Only legal target: Dark Magician"], lacks: ["Monster Reborn targets 1 card", "Only legal target: 1 card"] }),
+      expectLogSeen("spectator", { has: ["Monster Reborn targets Dark Magician"], lacks: ["Monster Reborn targets 1 card", "Only legal target"] }),
+    ],
+  }),
+  defineScenario({
+    id: "target-naming-ffa4-shift-retarget",
+    title: "Shift names Book of Moon's replacement target on the original chain link",
+    source: "PR #328: ChangeTargetCard needs its own target-card notes",
+    tags: ["multiplayer", "chain-target", "ffa4"],
+    setup: { format: "ffa4", p0: { hand: ["Book of Moon"] }, p1: { monsters: ["Dark Magician", BLUE_EYES], spells: [{ card: "Shift", pos: "set" }] }, p2: {}, p3: {} },
+    steps: [
+      activate("Book of Moon", "p0"), select("Dark Magician"), activate("Shift", "p1"),
+      expectBoard({ p1: { zones: { m0: { card: "Dark Magician", pos: "faceup" }, m1: { card: BLUE_EYES, pos: "facedown" } } } }),
+      expectEvents({ kind: "target", text: "Chain Link 1 targets Dark Magician" }, { kind: "target", text: "Chain Link 1 targets " + BLUE_EYES }),
+      expectLogSeen("spectator", { has: ["Book of Moon targets Dark Magician", "Book of Moon targets " + BLUE_EYES], lacks: ["Book of Moon targets 1 card"] }),
+    ],
+  }),
+  defineScenario({
+    id: "target-naming-ffa4-scrap-prompt",
+    title: "Scrap Dragon's automatic self-target finishes naming after the opposing-target prompt is answered",
+    source: "PR #328: unfinished announcements survive a human answer",
+    tags: ["multiplayer", "chain-target", "ffa4"],
+    setup: { format: "ffa4", p0: { monsters: ["Scrap Dragon"] }, p1: { monsters: ["Dark Magician", BLUE_EYES] }, p2: {}, p3: {} },
+    steps: [
+      activate("Scrap Dragon", "p0"), select("Dark Magician"),
+      expectBoard({ p0: { grave: ["Scrap Dragon"] }, p1: { grave: ["Dark Magician"], zones: { m1: BLUE_EYES } } }),
+      expectEvents({ kind: "target", text: "Chain Link 1 targets Scrap Dragon" }),
+      expectLogSeen("p0", { has: ["Only legal target: Scrap Dragon", "Scrap Dragon targets Scrap Dragon"], lacks: ["Only legal target: 1 card", "Only legal target: Scrap Dragon and", "Scrap Dragon targets 1 card"] }),
+      expectLogSeen("spectator", { has: ["Scrap Dragon targets Scrap Dragon"], lacks: ["Only legal target", "Scrap Dragon targets 1 card"] }),
+    ],
+  }),
+];
+NEGATION_INDICATOR_SCENARIOS.push(...TARGET_NAMING_SCENARIOS);

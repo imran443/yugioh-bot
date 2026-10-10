@@ -97,7 +97,7 @@ export interface HistoryTile {
   /** Phase label when this happened; empty when unknown. */
   phase: string;
   /** `targets`: who the link targets, as the engine words it for this viewer ("Black Luster Soldier ...", "a face-down card"). */
-  chain?: { index: number; size: number; status: ChainStatus; targets?: string };
+  chain?: { index: number; size: number; status: ChainStatus; targets?: string; targetEventId?: number };
   /** attack only */
   target?: { seat: number | null; card: HistoryCard | null; direct: boolean };
   hits: HistoryHit[];
@@ -260,7 +260,27 @@ export function detectGains(
   return gains;
 }
 
+function targetLabelsPhrase(labels: readonly string[]): string | undefined {
+  if (labels.length === 0) return undefined;
+  return labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
 export function ingestHistory(state: HistoryState, events: readonly DuelEvent[], ctx: HistoryContext): HistoryState {
+  // Naming notes can arrive after a prompt, refining an event whose id was already ingested. Only the latest
+  // announcement on each tile may refresh its labels, including when the chain has since ended.
+  const settledTargets = new Map(events.filter((event) => event.kind === "target" && event.targetLabels && event.id <= state.lastId)
+    .map((event) => [event.id, event.targetLabels!]));
+  let refreshed = false;
+  const refreshedItems = state.items.map((item) => {
+    if (item.type !== "tile" || item.chain?.targetEventId == null) return item;
+    const labels = settledTargets.get(item.chain.targetEventId);
+    if (!labels) return item;
+    const targets = targetLabelsPhrase(labels);
+    if (targets === item.chain.targets) return item;
+    refreshed = true;
+    return { ...item, chain: { ...item.chain, targets } };
+  });
+  if (refreshed) state = { ...state, items: refreshedItems };
   const fresh = events
     .filter((event) => typeof event.id === "number" && event.id > state.lastId)
     .sort((a, b) => a.id - b.id);
@@ -434,13 +454,11 @@ export function ingestHistory(state: HistoryState, events: readonly DuelEvent[],
         // Keep outcomes out of the rail until the toss layer can release them after landing.
         break;
       case "target": {
-        // Coordinates update the board markers; activation already owns the history tile. Its words go on that tile,
-        // so a target the engine picked without asking is still read in the history.
-        // "1 card" is the engine's count fallback when no name was read; it says nothing the tile does not.
-        const phrase = (event.targets?.length ?? 0) > 0 ? /^Chain Link \d+ targets (.+)$/.exec(event.text ?? "")?.[1] : undefined;
-        const named = phrase && !/^\d+ cards?$/.test(phrase) ? phrase : undefined;
+        // Only announcements carry labels. Movement updates the board markers without rewriting history.
+        const labels = event.targetLabels;
+        const named = labels ? targetLabelsPhrase(labels) : undefined;
         const key = chain?.keys[event.chainIndex ?? 1];
-        if (named && key != null) patch(key, (t) => (t.chain ? { ...t, chain: { ...t.chain, targets: named } } : t));
+        if (labels && key != null) patch(key, (t) => (t.chain ? { ...t, chain: { ...t.chain, targets: named, targetEventId: event.id } } : t));
         break;
       }
       case "summon":
