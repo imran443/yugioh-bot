@@ -18,6 +18,7 @@ export const sources = {
   strings: "54a6e2395c532648ff762540e9615319fac4f51b",
   databaseFormat: "official-releases-prerelease-v4",
   // Immutable support boundary; abbreviated so the weekly pin rewrite never advances it.
+  // Moved back to 52d5221df32c to recover BETB preview passcodes from prerelease-betb.cdb, removed on 2026-09-23.
   prereleaseHistoryStart: "52d5221df32c",
 };
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
